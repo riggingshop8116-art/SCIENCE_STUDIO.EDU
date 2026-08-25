@@ -38,7 +38,12 @@ import {
   Hash,
   Shield,
   Zap,
-  CheckCheck
+  CheckCheck,
+  Key,
+  Filter,
+  ArrowDown,
+  Layers,
+  HelpCircle
 } from 'lucide-react';
 
 interface StudentDashboardProps {
@@ -111,16 +116,16 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
 
   // Track enrolled course titles for student
   const [enrolledCourses, setEnrolledCourses] = useState<string[]>(() => {
-    try {
-      const saved = localStorage.getItem(`scicenter_enrolled_${user.id}`);
-      if (saved) return JSON.parse(saved);
-    } catch (e) {
-      console.error(e);
-    }
     return user.enrolledCourseTitles && user.enrolledCourseTitles.length > 0
       ? user.enrolledCourseTitles
       : [];
   });
+
+  useEffect(() => {
+    if (user.enrolledCourseTitles) {
+      setEnrolledCourses(user.enrolledCourseTitles);
+    }
+  }, [user.enrolledCourseTitles]);
 
   useEffect(() => {
     const fetchCourses = async () => {
@@ -129,18 +134,6 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
         if (res.ok) {
           const data: Course[] = await res.json();
           setCoursesList(data);
-
-          // If no enrolled courses saved yet for this student, initialize with first course
-          const saved = localStorage.getItem(`scicenter_enrolled_${user.id}`);
-          if (!saved && (!user.enrolledCourseTitles || user.enrolledCourseTitles.length === 0) && data.length > 0) {
-            const initialEnrolled = [data[0].title];
-            setEnrolledCourses(initialEnrolled);
-            try {
-              localStorage.setItem(`scicenter_enrolled_${user.id}`, JSON.stringify(initialEnrolled));
-            } catch (err) {
-              console.error(err);
-            }
-          }
         }
       } catch (err) {
         console.warn("Notice: loading courses retry pending", err);
@@ -192,14 +185,23 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
         console.error("Error registering course enrollment:", err);
       }
 
-      if (!enrolledCourses.includes(courseTitle)) {
-        const updated = [...enrolledCourses, courseTitle];
-        setEnrolledCourses(updated);
-        try {
-          localStorage.setItem(`scicenter_enrolled_${user.id}`, JSON.stringify(updated));
-        } catch (err) {
-          console.error(err);
-        }
+      const updatedEnrolled = enrolledCourses.includes(courseTitle) ? enrolledCourses : [...enrolledCourses, courseTitle];
+      setEnrolledCourses(updatedEnrolled);
+      try {
+        localStorage.setItem(`scicenter_enrolled_${user.id}`, JSON.stringify(updatedEnrolled));
+      } catch (err) {
+        console.error(err);
+      }
+
+      if (onUpdateUser) {
+        onUpdateUser({
+          ...user,
+          enrolledCourseTitles: updatedEnrolled,
+          transactionId: transactionId.trim(),
+          paymentMethod: paymentMethod,
+          senderPhone: senderPhone.trim(),
+          isApproved: false
+        });
       }
     }
 
@@ -339,6 +341,15 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
     downloadPdfFile(note.pdfUrl, note.title);
   };
 
+  // User is considered pending approval ONLY if they have enrolled in a course or submitted transaction details, AND are not yet approved by admin.
+  // Newly registered students without any course enrollment / transaction submission will see their account page & unlocked classroom & available courses.
+  const hasEnrolledOrTrx = Boolean(
+    (user.enrolledCourseTitles && user.enrolledCourseTitles.length > 0) ||
+    (enrolledCourses && enrolledCourses.length > 0) ||
+    (user.transactionId && user.transactionId.trim().length > 0)
+  );
+  const isPendingApproval = !user.isApproved && hasEnrolledOrTrx;
+
   return (
     <div className="w-full max-w-[1800px] mx-auto px-2 sm:px-6 lg:px-10 xl:px-12 py-6 sm:py-8">
       {/* Student Welcome Header Banner */}
@@ -366,12 +377,14 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
           <div>
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-2xl font-display font-bold text-white">স্বাগতম, {user.name}!</h1>
-              <span className={`text-[10px] font-mono uppercase px-1.5 py-0.5 rounded ${
+              <span className={`text-[10px] font-mono uppercase px-2 py-0.5 rounded-full font-bold ${
                 user.isApproved 
                   ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30' 
-                  : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                  : isPendingApproval
+                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                    : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
               }`}>
-                {user.isApproved ? 'Active Student' : 'Pending Approval'}
+                {user.isApproved ? 'Active Student' : isPendingApproval ? 'Pending Approval' : 'Registered Student'}
               </span>
             </div>
 
@@ -392,7 +405,9 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
             <p className="text-slate-300 text-xs mt-1.5 font-sans">
               {user.isApproved 
                 ? 'আজকের ক্লাস এবং স্টাডি মেটেরিয়ালসমূহ নিচে দেওয়া হলো। আপনার বিজ্ঞান চর্চাকে আরও বেগবান করুন।'
-                : 'আপনার অ্যাকাউন্টটি সফলভাবে তৈরি হয়েছে। বর্তমানে এটি অ্যাডমিন অনুমোদনের অপেক্ষায় রয়েছে।'}
+                : isPendingApproval
+                  ? 'আপনার কোর্স এনরোলমেন্ট বর্তমানে অ্যাডমিন অনুমোদনের অপেক্ষায় রয়েছে। ভেরিফিকেশন সম্পন্ন হলে স্বয়ংক্রিয়ভাবে পূর্ণ ক্লাসরুম আনলক হবে।'
+                  : 'স্বাগতম! যেকোনো কোর্সে এনরোল করে সম্পূর্ণ প্রিমিয়াম ক্লাসরুম আনলক করুন। নিচে সকল কোর্স ও ক্লাসরুমের উপকরণ দেওয়া হলো।'}
             </p>
           </div>
         </div>
@@ -440,7 +455,7 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
         classLevels={settings?.classLevels}
       />
 
-      {!user.isApproved ? (
+      {isPendingApproval ? (
         <div className="space-y-8 my-4 animate-fade-in">
           {/* Dedicated Pending Approval & Verification View */}
           <PendingApprovalView
@@ -452,327 +467,342 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
             onOpenPaymentModal={(course) => {
               setSelectedCourseForPayment(course);
               setPaymentSuccessMessage('');
+              setPaymentError('');
             }}
           />
-
-          {/* Payment Modal */}
-          {selectedCourseForPayment && (
-            <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-xl flex items-center justify-center p-4 overflow-y-auto animate-fade-in">
-              <div className="bg-[#0a1122]/95 border-2 border-cyan-400/60 rounded-3xl max-w-lg w-full p-6 sm:p-7 space-y-6 relative shadow-[0_0_60px_rgba(34,211,238,0.25)] my-8 overflow-hidden">
-                
-                {/* Background Ambient Glows */}
-                <div className="absolute -top-20 -right-20 w-56 h-56 bg-cyan-500/15 rounded-full blur-3xl pointer-events-none" />
-                <div className="absolute -bottom-20 -left-20 w-56 h-56 bg-pink-500/15 rounded-full blur-3xl pointer-events-none" />
-
-                {/* Modal Close Button */}
-                <button 
-                  onClick={() => {
-                    setSelectedCourseForPayment(null);
-                    setPaymentError('');
-                    setPaymentSuccessMessage('');
-                  }}
-                  className="absolute top-4 right-4 p-2.5 text-slate-400 hover:text-white rounded-2xl bg-slate-900/90 border-2 border-white/10 hover:border-cyan-400/60 hover:bg-cyan-500/15 hover:shadow-[0_0_20px_rgba(34,211,238,0.35)] transition-all duration-300 z-30 cursor-pointer group"
-                  title="বন্ধ করুন (Close)"
-                >
-                  <X className="w-5 h-5 text-slate-400 group-hover:text-cyan-300 group-hover:scale-110 group-hover:rotate-90 transition-transform duration-300" />
-                </button>
-
-                {/* Modal Header */}
-                <div className="relative z-10 space-y-3 pr-8 border-b border-white/10 pb-5">
-                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-gradient-to-r from-cyan-500/20 to-teal-500/20 border border-cyan-400/40 text-cyan-300 font-mono text-[11px] font-bold uppercase tracking-wider shadow-[0_0_15px_rgba(34,211,238,0.2)]">
-                    <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
-                    <span>সিকিউর পেমেন্ট গেটওয়ে (SSL Checkout)</span>
-                  </div>
-
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <h3 className="text-xl sm:text-2xl font-display font-extrabold text-white leading-snug">
-                        {selectedCourseForPayment.title}
-                      </h3>
-                      <div className="flex flex-wrap items-center gap-2 mt-1.5">
-                        <span className="text-[10px] font-mono font-bold text-cyan-400 bg-cyan-500/10 border border-cyan-500/30 px-2 py-0.5 rounded">
-                          {selectedCourseForPayment.subject}
-                        </span>
-                        {selectedCourseForPayment.classLevel && (
-                          <span className="text-[10px] font-mono font-bold text-purple-300 bg-purple-500/10 border border-purple-500/30 px-2 py-0.5 rounded">
-                            {selectedCourseForPayment.classLevel}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="text-right shrink-0 bg-slate-900/90 border border-cyan-500/40 px-3 py-2 rounded-2xl shadow-inner">
-                      <span className="text-[9px] font-mono uppercase text-slate-400 block font-semibold">কোর্স ফি</span>
-                      <span className="text-xl sm:text-2xl font-display font-black text-cyan-400">
-                        ৳{selectedCourseForPayment.price.toLocaleString('bn-BD')}
-                      </span>
-                      {selectedCourseForPayment.originalPrice && (
-                        <span className="text-[10px] text-slate-500 line-through block">
-                          ৳{selectedCourseForPayment.originalPrice.toLocaleString('bn-BD')}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Operator Selector Tabs */}
-                <div className="relative z-10 space-y-2.5">
-                  <label className="text-xs font-mono text-slate-200 font-bold flex items-center justify-between">
-                    <span>পেমেন্ট মেথড বা অপারেটর নির্বাচন করুন:</span>
-                    <span className="text-[10px] text-cyan-400 font-normal">Personal Send Money</span>
-                  </label>
-                  
-                  <div className="grid grid-cols-3 gap-2.5">
-                    {/* bKash */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setPaymentMethod('bkash');
-                        setCopiedNumber(false);
-                      }}
-                      className={`p-3 sm:p-3.5 rounded-2xl border-2 flex flex-col items-center justify-center gap-1.5 cursor-pointer transition-all duration-300 relative overflow-hidden group ${
-                        paymentMethod === 'bkash' 
-                          ? 'bg-gradient-to-br from-pink-500/25 via-pink-600/15 to-pink-950/40 border-pink-500 text-pink-300 font-bold shadow-[0_0_20px_rgba(236,72,153,0.35)] scale-[1.02]' 
-                          : 'bg-white/5 border-white/10 text-slate-400 hover:text-white hover:border-pink-500/40 hover:bg-pink-500/10'
-                      }`}
-                    >
-                      <div className="w-8 h-8 rounded-full bg-pink-500/20 border border-pink-400/50 flex items-center justify-center text-pink-400 font-black text-xs group-hover:scale-110 transition-transform">
-                        bK
-                      </div>
-                      <span className="text-xs font-bold text-white">bKash</span>
-                      <span className="text-[9px] opacity-80 font-mono">বিকাশ (Personal)</span>
-                      {paymentMethod === 'bkash' && (
-                        <div className="absolute top-1 right-1.5 w-2 h-2 rounded-full bg-pink-400 animate-ping" />
-                      )}
-                    </button>
-
-                    {/* Nagad */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setPaymentMethod('nagad');
-                        setCopiedNumber(false);
-                      }}
-                      className={`p-3 sm:p-3.5 rounded-2xl border-2 flex flex-col items-center justify-center gap-1.5 cursor-pointer transition-all duration-300 relative overflow-hidden group ${
-                        paymentMethod === 'nagad' 
-                          ? 'bg-gradient-to-br from-amber-500/25 via-orange-600/15 to-orange-950/40 border-amber-500 text-amber-300 font-bold shadow-[0_0_20px_rgba(245,158,11,0.35)] scale-[1.02]' 
-                          : 'bg-white/5 border-white/10 text-slate-400 hover:text-white hover:border-amber-500/40 hover:bg-amber-500/10'
-                      }`}
-                    >
-                      <div className="w-8 h-8 rounded-full bg-amber-500/20 border border-amber-400/50 flex items-center justify-center text-amber-400 font-black text-xs group-hover:scale-110 transition-transform">
-                        NG
-                      </div>
-                      <span className="text-xs font-bold text-white">Nagad</span>
-                      <span className="text-[9px] opacity-80 font-mono">নগদ (Personal)</span>
-                      {paymentMethod === 'nagad' && (
-                        <div className="absolute top-1 right-1.5 w-2 h-2 rounded-full bg-amber-400 animate-ping" />
-                      )}
-                    </button>
-
-                    {/* Rocket */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setPaymentMethod('rocket');
-                        setCopiedNumber(false);
-                      }}
-                      className={`p-3 sm:p-3.5 rounded-2xl border-2 flex flex-col items-center justify-center gap-1.5 cursor-pointer transition-all duration-300 relative overflow-hidden group ${
-                        paymentMethod === 'rocket' 
-                          ? 'bg-gradient-to-br from-purple-500/25 via-purple-600/15 to-purple-950/40 border-purple-500 text-purple-300 font-bold shadow-[0_0_20px_rgba(168,85,247,0.35)] scale-[1.02]' 
-                          : 'bg-white/5 border-white/10 text-slate-400 hover:text-white hover:border-purple-500/40 hover:bg-purple-500/10'
-                      }`}
-                    >
-                      <div className="w-8 h-8 rounded-full bg-purple-500/20 border border-purple-400/50 flex items-center justify-center text-purple-400 font-black text-xs group-hover:scale-110 transition-transform">
-                        RK
-                      </div>
-                      <span className="text-xs font-bold text-white">Rocket</span>
-                      <span className="text-[9px] opacity-80 font-mono">রকেট / Upay</span>
-                      {paymentMethod === 'rocket' && (
-                        <div className="absolute top-1 right-1.5 w-2 h-2 rounded-full bg-purple-400 animate-ping" />
-                      )}
-                    </button>
-                  </div>
-                </div>
-
-                {/* Receiver Info & One-click Copy Box */}
-                <div className="relative z-10 p-4 sm:p-4.5 rounded-2xl bg-[#030712]/90 border-2 border-cyan-500/30 text-xs space-y-3 shadow-inner">
-                  <div className="flex items-center justify-between gap-2 border-b border-white/10 pb-3">
-                    <div className="space-y-0.5">
-                      <span className="text-[11px] font-semibold text-slate-300 flex items-center gap-1.5">
-                        <Phone className="w-3.5 h-3.5 text-cyan-400" />
-                        <span>প্রাপক নম্বর ({paymentMethod.toUpperCase()} Personal):</span>
-                      </span>
-                      <span className="text-[10px] text-slate-400 block font-mono">
-                        উক্ত নম্বরে সেন্ড মানি (Send Money) করুন
-                      </span>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <strong className="text-cyan-300 font-mono text-sm tracking-widest bg-cyan-500/10 px-3 py-1.5 rounded-xl border border-cyan-500/40 shadow-sm">
-                        {getTargetPaymentNumber()}
-                      </strong>
-                      <button
-                        type="button"
-                        onClick={() => handleCopyNumber(getTargetPaymentNumber())}
-                        className={`px-3 py-1.5 rounded-xl text-[11px] font-bold font-mono flex items-center gap-1.5 transition-all cursor-pointer border ${
-                          copiedNumber
-                            ? 'bg-emerald-500 text-slate-950 border-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.4)]'
-                            : 'bg-white/10 hover:bg-cyan-500/20 text-cyan-300 border-cyan-400/40 hover:border-cyan-400'
-                        }`}
-                        title="নম্বর কপি করুন"
-                      >
-                        {copiedNumber ? (
-                          <>
-                            <CheckCheck className="w-3.5 h-3.5" />
-                            <span>কপি হয়েছে!</span>
-                          </>
-                        ) : (
-                          <>
-                            <Copy className="w-3.5 h-3.5" />
-                            <span>কপি</span>
-                          </>
-                        )}
-                      </button>
-                    </div>
-                  </div>
-
-                  {settings?.paymentInstructions ? (
-                    <p className="text-[11px] text-slate-300 leading-relaxed whitespace-pre-line bg-white/5 p-3 rounded-xl border border-white/5">
-                      {settings.paymentInstructions}
-                    </p>
-                  ) : (
-                    <div className="space-y-1.5 text-[11px] text-slate-300 font-sans leading-relaxed">
-                      <div className="flex items-start gap-2">
-                        <span className="w-4 h-4 rounded-full bg-cyan-500/20 border border-cyan-500/40 text-cyan-400 font-mono text-[10px] font-bold flex items-center justify-center shrink-0 mt-0.5">1</span>
-                        <span>{paymentMethod.toUpperCase()} অ্যাপ অথবা ইউএসএসডি (*247#) থেকে <strong>'Send Money'</strong> অপশন বাছুন।</span>
-                      </div>
-                      <div className="flex items-start gap-2">
-                        <span className="w-4 h-4 rounded-full bg-cyan-500/20 border border-cyan-500/40 text-cyan-400 font-mono text-[10px] font-bold flex items-center justify-center shrink-0 mt-0.5">2</span>
-                        <span>প্রাপক নম্বর <strong className="text-cyan-300 font-mono">{getTargetPaymentNumber()}</strong> এবং পরিমাণ <strong className="text-amber-400 font-mono">৳{selectedCourseForPayment.price}</strong> লিখুন।</span>
-                      </div>
-                      <div className="flex items-start gap-2">
-                        <span className="w-4 h-4 rounded-full bg-cyan-500/20 border border-cyan-500/40 text-cyan-400 font-mono text-[10px] font-bold flex items-center justify-center shrink-0 mt-0.5">3</span>
-                        <span>সেন্ড মানি সফল হলে প্রেরক নম্বর ও SMS-এ প্রাপ্ত <strong>Transaction ID (TrxID)</strong> নিচে লিখুন।</span>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Payment Submission Form */}
-                <form onSubmit={handlePaymentSubmit} className="relative z-10 space-y-4 text-xs">
-                  {paymentSuccessMessage ? (
-                    <div className="p-5 rounded-2xl bg-emerald-500/15 border-2 border-emerald-500/40 text-emerald-300 space-y-3 text-center shadow-[0_0_30px_rgba(16,185,129,0.2)] animate-fade-in">
-                      <ShieldCheck className="w-12 h-12 text-emerald-400 mx-auto animate-bounce" />
-                      <h4 className="font-bold text-base text-white">পেমেন্ট রিকোয়েস্ট সফলভাবে জমা হয়েছে!</h4>
-                      <p className="text-xs text-slate-200 leading-relaxed max-w-md mx-auto">
-                        {paymentSuccessMessage}
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSelectedCourseForPayment(null);
-                          setPaymentSuccessMessage('');
-                        }}
-                        className="mt-2 px-6 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 text-slate-950 font-extrabold cursor-pointer hover:from-emerald-400 hover:to-teal-400 transition-all shadow-[0_0_20px_rgba(16,185,129,0.4)]"
-                      >
-                        ঠিক আছে (Done)
-                      </button>
-                    </div>
-                  ) : (
-                    <>
-                      {paymentError && (
-                        <div className="p-3.5 rounded-xl bg-rose-500/15 border border-rose-500/40 text-rose-300 text-xs font-semibold flex items-center gap-2.5 shadow-sm">
-                          <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
-                          <span>{paymentError}</span>
-                        </div>
-                      )}
-
-                      <div className="space-y-1.5">
-                        <label className="block text-slate-200 font-bold text-xs flex items-center gap-1.5">
-                          <Phone className="w-3.5 h-3.5 text-cyan-400" />
-                          <span>প্রেরক নম্বর (Sender Mobile Number) <span className="text-rose-400">*</span></span>
-                        </label>
-                        <div className="relative">
-                          <input
-                            type="text"
-                            required
-                            placeholder="যেমন: 017XXXXXXXX"
-                            value={senderPhone}
-                            onChange={(e) => setSenderPhone(e.target.value)}
-                            className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-950/90 border-2 border-cyan-500/30 text-white placeholder:text-slate-500 focus:border-cyan-400 focus:shadow-[0_0_15px_rgba(34,211,238,0.25)] outline-none font-mono text-sm transition-all"
-                          />
-                          <Phone className="w-4 h-4 text-cyan-400/60 absolute left-3.5 top-3 pointer-events-none" />
-                        </div>
-                      </div>
-
-                      <div className="space-y-1.5">
-                        <label className="block text-slate-200 font-bold text-xs flex items-center gap-1.5">
-                          <Hash className="w-3.5 h-3.5 text-cyan-400" />
-                          <span>ট্রানজেকশন আইডি (Transaction ID / TrxID) <span className="text-rose-400">*</span></span>
-                        </label>
-                        <div className="relative">
-                          <input
-                            type="text"
-                            required
-                            placeholder="যেমন: 9J82KSLA10"
-                            value={transactionId}
-                            onChange={(e) => setTransactionId(e.target.value)}
-                            className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-950/90 border-2 border-cyan-500/30 text-white placeholder:text-slate-500 focus:border-cyan-400 focus:shadow-[0_0_15px_rgba(34,211,238,0.25)] outline-none font-mono uppercase text-sm transition-all"
-                          />
-                          <Hash className="w-4 h-4 text-cyan-400/60 absolute left-3.5 top-3 pointer-events-none" />
-                        </div>
-                      </div>
-
-                      <button
-                        type="submit"
-                        disabled={paymentSubmitting}
-                        className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-cyan-400 via-teal-400 to-emerald-400 hover:from-cyan-300 hover:to-emerald-300 text-slate-950 font-extrabold text-sm flex items-center justify-center gap-2 transition-all cursor-pointer shadow-[0_0_30px_rgba(34,211,238,0.4)] disabled:opacity-50 btn-shine hover:scale-[1.01]"
-                      >
-                        <CreditCard className="w-4 h-4 text-slate-950" />
-                        <span>{paymentSubmitting ? 'প্রসেসিং করা হচ্ছে...' : 'পেমেন্ট সাবমিট করুন (Confirm Payment)'}</span>
-                      </button>
-
-                      <div className="pt-2 flex items-center justify-center gap-4 text-[10px] text-slate-400 font-mono border-t border-white/5">
-                        <span className="flex items-center gap-1">
-                          <Shield className="w-3 h-3 text-cyan-400" />
-                          <span>256-Bit SSL Encrypted</span>
-                        </span>
-                        <span>•</span>
-                        <span className="flex items-center gap-1">
-                          <Zap className="w-3 h-3 text-amber-400" />
-                          <span>Instant Admin Review</span>
-                        </span>
-                      </div>
-                    </>
-                  )}
-                </form>
-              </div>
-            </div>
-          )}
         </div>
       ) : (
         <>
-          {/* Eligibility Banner & Notice */}
-          <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-950/80 via-slate-900/90 to-cyan-950/80 border border-emerald-500/40 text-emerald-300 text-xs font-semibold flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xl mb-6">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 shrink-0">
-                <CheckCircle className="w-5 h-5" />
+          {/* Eligibility / Status Banner */}
+          {user.isApproved ? (
+            <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-950/80 via-slate-900/90 to-cyan-950/80 border border-emerald-500/40 text-emerald-300 text-xs font-semibold flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xl mb-6">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 shrink-0">
+                  <CheckCircle className="w-5 h-5" />
+                </div>
+                <div>
+                  <span className="text-[11px] text-emerald-400 font-mono uppercase tracking-wider block font-bold">
+                    কোর্স অ্যাক্সেস কনফার্মেশন (Eligible Enrolled Course)
+                  </span>
+                  <span className="text-white text-xs sm:text-sm font-bold">
+                    ইউ আর এলিজেবল ফর দা কোর্স: <span className="text-cyan-300 underline underline-offset-4 decoration-cyan-500/50">{selectedCourseFilter !== 'All' ? selectedCourseFilter : (enrolledCourses.length > 0 ? enrolledCourses.join(', ') : 'আপনার এনরোলকৃত কোর্স')}</span>
+                  </span>
+                </div>
               </div>
-              <div>
-                <span className="text-[11px] text-emerald-400 font-mono uppercase tracking-wider block font-bold">
-                  কোর্স অ্যাক্সেস কনফার্মেশন (Eligible Enrolled Course)
-                </span>
-                <span className="text-white text-xs sm:text-sm font-bold">
-                  ইউ আর এলিজেবল ফর দা কোর্স: <span className="text-cyan-300 underline underline-offset-4 decoration-cyan-500/50">{selectedCourseFilter !== 'All' ? selectedCourseFilter : (enrolledCourses.length > 0 ? enrolledCourses.join(', ') : 'আপনার এনরোলকৃত কোর্স')}</span>
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="text-[11px] bg-emerald-500/20 text-emerald-200 border border-emerald-500/30 px-3 py-1 rounded-full font-mono">
+                  ✓ Eligible Active Student
                 </span>
               </div>
             </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <span className="text-[11px] bg-emerald-500/20 text-emerald-200 border border-emerald-500/30 px-3 py-1 rounded-full font-mono">
-                ✓ Eligible Student
-              </span>
+          ) : null}
+
+          {/* Dedicated Unlock Classroom Process Guide Box */}
+          <div className="mb-8 p-6 sm:p-7 rounded-3xl bg-gradient-to-br from-[#061224]/95 via-[#0a1b38]/90 to-[#041021]/95 border-2 border-cyan-500/40 shadow-[0_0_40px_rgba(34,211,238,0.15)] relative overflow-hidden">
+            {/* Ambient glowing orbs */}
+            <div className="absolute -top-24 -right-24 w-72 h-72 bg-cyan-500/15 rounded-full blur-3xl pointer-events-none" />
+            <div className="absolute -bottom-24 -left-24 w-72 h-72 bg-emerald-500/15 rounded-full blur-3xl pointer-events-none" />
+
+            {/* Header of the Unlock Classroom Box */}
+            <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-white/10 pb-5">
+              <div className="flex items-start sm:items-center gap-3.5">
+                <div className="p-3 rounded-2xl bg-gradient-to-br from-cyan-500/25 via-teal-500/20 to-emerald-500/25 border-2 border-cyan-400/50 text-cyan-300 shadow-[0_0_20px_rgba(34,211,238,0.3)] shrink-0">
+                  <Key className="w-6 h-6 animate-pulse" />
+                </div>
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h2 className="text-xl sm:text-2xl font-display font-extrabold text-white">
+                      আনলক ক্লাসরুম (Unlock Classroom Access)
+                    </h2>
+                    <span className="text-[11px] font-mono font-bold px-2.5 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-400/40">
+                      সহজ ৩টি ধাপ
+                    </span>
+                  </div>
+                  <p className="text-xs sm:text-sm text-slate-300 mt-1">
+                    সায়েন্স কেয়ার ডিজিটাল ক্লাসরুমে সকল চ্যাপ্টার, লাইভ লেকচার ও এক্সক্লুসিভ পিডিএফ হ্যান্ডনোট আনলক করার সহজ নিয়মাবলী:
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const el = document.getElementById('courses-section');
+                    if (el) el.scrollIntoView({ behavior: 'smooth' });
+                  }}
+                  className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500/20 to-teal-500/20 hover:from-cyan-500/30 hover:to-teal-500/30 text-cyan-300 border border-cyan-400/40 hover:border-cyan-400 font-bold text-xs flex items-center gap-2 transition-all cursor-pointer shadow-md group"
+                >
+                  <span>কোর্সসমূহ দেখুন</span>
+                  <ArrowDown className="w-4 h-4 text-cyan-400 group-hover:translate-y-0.5 transition-transform" />
+                </button>
+              </div>
+            </div>
+
+            {/* 3 Step Visual Cards */}
+            <div className="relative z-10 grid grid-cols-1 md:grid-cols-3 gap-4 pt-6">
+              {/* Step 1 */}
+              <div className="p-4 sm:p-5 rounded-2xl bg-white/[0.04] border border-white/10 hover:border-cyan-400/50 hover:bg-cyan-950/20 transition-all duration-300 space-y-3 group">
+                <div className="flex items-center justify-between">
+                  <span className="w-8 h-8 rounded-xl bg-cyan-500/20 border border-cyan-400/50 text-cyan-300 font-mono font-bold text-sm flex items-center justify-center shadow-sm">
+                    ১
+                  </span>
+                  <span className="text-[10px] font-mono uppercase text-cyan-400 font-semibold px-2 py-0.5 rounded bg-cyan-500/10 border border-cyan-500/20">
+                    Step 01
+                  </span>
+                </div>
+                <div>
+                  <h3 className="text-sm sm:text-base font-bold text-white group-hover:text-cyan-300 transition-colors">
+                    কোর্স নির্বাচন করুন
+                  </h3>
+                  <p className="text-xs text-slate-300 mt-1.5 leading-relaxed">
+                    নিচের কোর্স তালিকা থেকে আপনার শ্রেণী (যেমন: ৬ষ্ঠ-১২শ) ও বিষয় অনুযায়ী কোর্সটি বেছে নিয়ে <strong>'এনরোল করুন'</strong> বাটনে ক্লিক করুন।
+                  </p>
+                </div>
+              </div>
+
+              {/* Step 2 */}
+              <div className="p-4 sm:p-5 rounded-2xl bg-white/[0.04] border border-white/10 hover:border-pink-400/50 hover:bg-pink-950/20 transition-all duration-300 space-y-3 group">
+                <div className="flex items-center justify-between">
+                  <span className="w-8 h-8 rounded-xl bg-pink-500/20 border border-pink-400/50 text-pink-300 font-mono font-bold text-sm flex items-center justify-center shadow-sm">
+                    ২
+                  </span>
+                  <span className="text-[10px] font-mono uppercase text-pink-400 font-semibold px-2 py-0.5 rounded bg-pink-500/10 border border-pink-500/20">
+                    Step 02
+                  </span>
+                </div>
+                <div>
+                  <h3 className="text-sm sm:text-base font-bold text-white group-hover:text-pink-300 transition-colors">
+                    পেমেন্ট ও TrxID সাবমিট
+                  </h3>
+                  <p className="text-xs text-slate-300 mt-1.5 leading-relaxed">
+                    বিকাশ, নগদ বা রকেটে কোর্স ফি Send Money করে আপনার প্রেরক নম্বর ও SMS-এ প্রাপ্ত <strong>Transaction ID (TrxID)</strong> সাবমিট করুন।
+                  </p>
+                </div>
+              </div>
+
+              {/* Step 3 */}
+              <div className="p-4 sm:p-5 rounded-2xl bg-white/[0.04] border border-white/10 hover:border-emerald-400/50 hover:bg-emerald-950/20 transition-all duration-300 space-y-3 group">
+                <div className="flex items-center justify-between">
+                  <span className="w-8 h-8 rounded-xl bg-emerald-500/20 border border-emerald-400/50 text-emerald-300 font-mono font-bold text-sm flex items-center justify-center shadow-sm">
+                    ৩
+                  </span>
+                  <span className="text-[10px] font-mono uppercase text-emerald-400 font-semibold px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20">
+                    Step 03
+                  </span>
+                </div>
+                <div>
+                  <h3 className="text-sm sm:text-base font-bold text-white group-hover:text-emerald-300 transition-colors">
+                    ভেরিফিকেশন ও ক্লাসরুম আনলক
+                  </h3>
+                  <p className="text-xs text-slate-300 mt-1.5 leading-relaxed">
+                    অ্যাডমিন আপনার পেমেন্ট ট্রানজেকশন যাচাই করে অনুমোদন দিলেই স্বয়ংক্রিয়ভাবে পূর্ণ ক্লাসরুম ও সকল স্টাডি মেটেরিয়াল আনলক হয়ে যাবে!
+                  </p>
+                </div>
+              </div>
             </div>
           </div>
+
+          {/* Published Courses Section (কোর্সসমূহ) */}
+          {coursesList.length > 0 && (
+            <div id="courses-section" className="mb-10 p-6 sm:p-7 rounded-3xl bg-[#081224]/80 backdrop-blur-xl border border-cyan-500/20 shadow-2xl space-y-6 scroll-mt-6">
+              <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 border-b border-white/10 pb-5">
+                <div className="flex items-center gap-3.5">
+                  <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-cyan-500/20 to-teal-500/20 border border-cyan-400/40 flex items-center justify-center text-cyan-400 shrink-0 shadow-[0_0_15px_rgba(34,211,238,0.2)]">
+                    <BookOpen className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h2 className="text-xl sm:text-2xl font-display font-extrabold text-white flex items-center gap-2.5">
+                      <span>কোর্সসমূহ (Available Courses)</span>
+                      <span className="text-xs font-mono font-bold px-2.5 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+                        {displayCoursesList.length} টি কোর্স
+                      </span>
+                    </h2>
+                    <p className="text-xs text-slate-300 mt-0.5">
+                      আপনার প্রয়োজনীয় কোর্সে এনরোল করে সম্পূর্ণ প্রিমিয়াম ক্লাসরুম আনলক করুন
+                    </p>
+                  </div>
+                </div>
+
+                {/* Class Level Dropdown Menu */}
+                {classOptions.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+                    <div className="relative flex items-center gap-2 w-full sm:w-auto">
+                      <div className="flex items-center gap-1.5 text-xs font-mono text-cyan-300 font-bold shrink-0">
+                        <Filter className="w-4 h-4 text-cyan-400" />
+                        <span>শ্রেণী ফিল্টার:</span>
+                      </div>
+
+                      <div className="relative flex-1 sm:flex-initial">
+                        <select
+                          value={selectedClassFilter}
+                          onChange={(e) => setSelectedClassFilter(e.target.value)}
+                          className="w-full sm:w-64 appearance-none pl-3.5 pr-9 py-2 rounded-xl bg-slate-900/90 border-2 border-cyan-500/40 hover:border-cyan-400 text-white font-mono text-xs font-bold focus:outline-none focus:ring-2 focus:ring-cyan-400/50 shadow-inner cursor-pointer transition-all"
+                        >
+                          <option value="All" className="bg-slate-900 text-white">
+                            সকল শ্রেণী ({coursesList.length} টি কোর্স)
+                          </option>
+                          {classOptions.map(clsName => {
+                            const count = coursesList.filter(c => c.classLevel?.trim().toLowerCase() === clsName.trim().toLowerCase()).length;
+                            return (
+                              <option key={clsName} value={clsName} className="bg-slate-900 text-white">
+                                {clsName} ({count} টি কোর্স)
+                              </option>
+                            );
+                          })}
+                        </select>
+                        <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-cyan-400 text-[10px]">
+                          ▼
+                        </div>
+                      </div>
+
+                      {selectedClassFilter !== 'All' && (
+                        <button
+                          type="button"
+                          onClick={() => setSelectedClassFilter('All')}
+                          className="px-2.5 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white text-xs font-mono transition-all cursor-pointer"
+                          title="ফিল্টার রিসেট করুন"
+                        >
+                          সব দেখুন
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Courses Grid */}
+              {displayCoursesList.length === 0 ? (
+                <div className="p-8 text-center rounded-2xl bg-white/5 border border-white/10 space-y-3">
+                  <BookOpen className="w-10 h-10 text-slate-500 mx-auto" />
+                  <p className="text-sm font-semibold text-slate-300">
+                    "{selectedClassFilter}" শ্রেণীর জন্য বর্তমানে কোনো কোর্স পাওয়া যায়নি।
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedClassFilter('All')}
+                    className="px-4 py-2 rounded-xl bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 text-xs font-bold font-mono hover:bg-cyan-500/30 transition-all cursor-pointer"
+                  >
+                    সকল কোর্স দেখুন
+                  </button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5 sm:gap-6">
+                  {displayCoursesList.map((course) => {
+                    const isEnrolledInThis = userEnrolledTitles.includes(course.title);
+                    return (
+                      <div
+                        key={course.id}
+                        className="group relative rounded-2xl bg-gradient-to-b from-slate-900/90 to-[#0a1428]/95 border-2 border-white/10 hover:border-cyan-400/60 p-4 sm:p-5 flex flex-col justify-between transition-all duration-300 hover:shadow-[0_0_30px_rgba(34,211,238,0.2)] hover:-translate-y-1 overflow-hidden"
+                      >
+                        {/* Top Badges & Image */}
+                        <div className="space-y-3.5">
+                          {course.imageUrl ? (
+                            <div className="w-full h-36 rounded-xl overflow-hidden border border-white/10 relative group-hover:border-cyan-400/40 transition-colors bg-slate-950">
+                              <img
+                                src={course.imageUrl}
+                                alt={course.title}
+                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                              />
+                              <div className="absolute top-2 right-2 flex flex-col gap-1 items-end">
+                                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-slate-950/80 text-cyan-300 border border-cyan-400/40 backdrop-blur-md">
+                                  {course.subject}
+                                </span>
+                                {course.classLevel && (
+                                  <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-purple-950/80 text-purple-300 border border-purple-400/40 backdrop-blur-md">
+                                    {course.classLevel}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-[10px] font-mono font-bold px-2.5 py-1 rounded-lg bg-cyan-500/10 text-cyan-300 border border-cyan-500/30">
+                                {course.subject}
+                              </span>
+                              {course.classLevel && (
+                                <span className="text-[10px] font-mono font-bold px-2.5 py-1 rounded-lg bg-purple-500/10 text-purple-300 border border-purple-500/30">
+                                  {course.classLevel}
+                                </span>
+                              )}
+                            </div>
+                          )}
+
+                          <div>
+                            <h3 className="text-base sm:text-lg font-display font-extrabold text-white group-hover:text-cyan-300 transition-colors line-clamp-2">
+                              {course.title}
+                            </h3>
+                            {course.description && (
+                              <p className="text-xs text-slate-400 mt-1.5 line-clamp-2 leading-relaxed">
+                                {course.description}
+                              </p>
+                            )}
+                          </div>
+
+                          {/* Features checklist */}
+                          {course.features && course.features.length > 0 && (
+                            <ul className="space-y-1 text-[11px] text-slate-300 font-sans">
+                              {course.features.slice(0, 3).map((feat, idx) => (
+                                <li key={idx} className="flex items-center gap-1.5">
+                                  <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                                  <span className="truncate">{feat}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </div>
+
+                        {/* Price & Action Button */}
+                        <div className="pt-4 mt-4 border-t border-white/10 space-y-3">
+                          <div className="flex items-baseline justify-between">
+                            <div>
+                              <span className="text-[10px] font-mono text-slate-400 block">কোর্স ফি</span>
+                              <div className="flex items-baseline gap-2">
+                                <span className="text-lg sm:text-xl font-display font-black text-cyan-300">
+                                  ৳{course.price.toLocaleString('bn-BD')}
+                                </span>
+                                {course.originalPrice && course.originalPrice > course.price && (
+                                  <span className="text-xs text-slate-500 line-through">
+                                    ৳{course.originalPrice.toLocaleString('bn-BD')}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            {course.duration && (
+                              <span className="text-[10px] font-mono text-slate-400 flex items-center gap-1">
+                                <Clock className="w-3 h-3 text-cyan-400" />
+                                <span>{course.duration}</span>
+                              </span>
+                            )}
+                          </div>
+
+                          {isEnrolledInThis && user.isApproved ? (
+                            <div className="w-full py-2.5 px-3 rounded-xl bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-xs font-bold font-mono flex items-center justify-center gap-1.5 shadow-sm">
+                              <CheckCircle className="w-4 h-4 text-emerald-400" />
+                              <span>এনরোলকৃত (Active)</span>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedCourseForPayment(course);
+                                setPaymentSuccessMessage('');
+                                setPaymentError('');
+                              }}
+                              className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-cyan-400 via-teal-400 to-emerald-400 hover:from-cyan-300 hover:to-emerald-300 text-slate-950 font-display font-black text-xs flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(34,211,238,0.3)] transition-all cursor-pointer active:scale-95 group-hover:shadow-[0_0_25px_rgba(34,211,238,0.5)]"
+                            >
+                              <CreditCard className="w-4 h-4 text-slate-950" />
+                              <span>এনরোল করুন (Enroll Now)</span>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Control Panel: Search & Subject/Course Filters */}
           <div className="bg-white/5 backdrop-blur-md rounded-xl border border-white/10 p-4 mb-8 space-y-3">
@@ -1430,6 +1460,301 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
         </div>
       )}
     </>
+  )}
+
+  {/* Universal Payment Modal for Enrollment */}
+  {selectedCourseForPayment && (
+    <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-xl flex items-center justify-center p-4 overflow-y-auto animate-fade-in">
+      <div className="bg-[#0a1122]/95 border-2 border-cyan-400/60 rounded-3xl max-w-lg w-full p-6 sm:p-7 space-y-6 relative shadow-[0_0_60px_rgba(34,211,238,0.25)] my-8 overflow-hidden">
+        
+        {/* Background Ambient Glows */}
+        <div className="absolute -top-20 -right-20 w-56 h-56 bg-cyan-500/15 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute -bottom-20 -left-20 w-56 h-56 bg-pink-500/15 rounded-full blur-3xl pointer-events-none" />
+
+        {/* Modal Close Button */}
+        <button 
+          onClick={() => {
+            setSelectedCourseForPayment(null);
+            setPaymentError('');
+            setPaymentSuccessMessage('');
+          }}
+          className="absolute top-4 right-4 p-2.5 text-slate-400 hover:text-white rounded-2xl bg-slate-900/90 border-2 border-white/10 hover:border-cyan-400/60 hover:bg-cyan-500/15 hover:shadow-[0_0_20px_rgba(34,211,238,0.35)] transition-all duration-300 z-30 cursor-pointer group"
+          title="বন্ধ করুন (Close)"
+        >
+          <X className="w-5 h-5 text-slate-400 group-hover:text-cyan-300 group-hover:scale-110 group-hover:rotate-90 transition-transform duration-300" />
+        </button>
+
+        {/* Modal Header */}
+        <div className="relative z-10 space-y-3 pr-8 border-b border-white/10 pb-5">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-gradient-to-r from-cyan-500/20 to-teal-500/20 border border-cyan-400/40 text-cyan-300 font-mono text-[11px] font-bold uppercase tracking-wider shadow-[0_0_15px_rgba(34,211,238,0.2)]">
+            <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
+            <span>সিকিউর পেমেন্ট গেটওয়ে (SSL Checkout)</span>
+          </div>
+
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h3 className="text-xl sm:text-2xl font-display font-extrabold text-white leading-snug">
+                {selectedCourseForPayment.title}
+              </h3>
+              <div className="flex flex-wrap items-center gap-2 mt-1.5">
+                <span className="text-[10px] font-mono font-bold text-cyan-400 bg-cyan-500/10 border border-cyan-500/30 px-2 py-0.5 rounded">
+                  {selectedCourseForPayment.subject}
+                </span>
+                {selectedCourseForPayment.classLevel && (
+                  <span className="text-[10px] font-mono font-bold text-purple-300 bg-purple-500/10 border border-purple-500/30 px-2 py-0.5 rounded">
+                    {selectedCourseForPayment.classLevel}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div className="text-right shrink-0 bg-slate-900/90 border border-cyan-500/40 px-3 py-2 rounded-2xl shadow-inner">
+              <span className="text-[9px] font-mono uppercase text-slate-400 block font-semibold">কোর্স ফি</span>
+              <span className="text-xl sm:text-2xl font-display font-black text-cyan-400">
+                ৳{selectedCourseForPayment.price.toLocaleString('bn-BD')}
+              </span>
+              {selectedCourseForPayment.originalPrice && (
+                <span className="text-[10px] text-slate-500 line-through block">
+                  ৳{selectedCourseForPayment.originalPrice.toLocaleString('bn-BD')}
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Operator Selector Tabs */}
+        <div className="relative z-10 space-y-2.5">
+          <label className="text-xs font-mono text-slate-200 font-bold flex items-center justify-between">
+            <span>পেমেন্ট মেথড বা অপারেটর নির্বাচন করুন:</span>
+            <span className="text-[10px] text-cyan-400 font-normal">Personal Send Money</span>
+          </label>
+          
+          <div className="grid grid-cols-3 gap-2.5">
+            {/* bKash */}
+            <button
+              type="button"
+              onClick={() => {
+                setPaymentMethod('bkash');
+                setCopiedNumber(false);
+              }}
+              className={`p-3 sm:p-3.5 rounded-2xl border-2 flex flex-col items-center justify-center gap-1.5 cursor-pointer transition-all duration-300 relative overflow-hidden group ${
+                paymentMethod === 'bkash' 
+                  ? 'bg-gradient-to-br from-pink-500/25 via-pink-600/15 to-pink-950/40 border-pink-500 text-pink-300 font-bold shadow-[0_0_20px_rgba(236,72,153,0.35)] scale-[1.02]' 
+                  : 'bg-white/5 border-white/10 text-slate-400 hover:text-white hover:border-pink-500/40 hover:bg-pink-500/10'
+              }`}
+            >
+              <div className="w-8 h-8 rounded-full bg-pink-500/20 border border-pink-400/50 flex items-center justify-center text-pink-400 font-black text-xs group-hover:scale-110 transition-transform">
+                bK
+              </div>
+              <span className="text-xs font-bold text-white">bKash</span>
+              <span className="text-[9px] opacity-80 font-mono">বিকাশ (Personal)</span>
+              {paymentMethod === 'bkash' && (
+                <div className="absolute top-1 right-1.5 w-2 h-2 rounded-full bg-pink-400 animate-ping" />
+              )}
+            </button>
+
+            {/* Nagad */}
+            <button
+              type="button"
+              onClick={() => {
+                setPaymentMethod('nagad');
+                setCopiedNumber(false);
+              }}
+              className={`p-3 sm:p-3.5 rounded-2xl border-2 flex flex-col items-center justify-center gap-1.5 cursor-pointer transition-all duration-300 relative overflow-hidden group ${
+                paymentMethod === 'nagad' 
+                  ? 'bg-gradient-to-br from-amber-500/25 via-orange-600/15 to-orange-950/40 border-amber-500 text-amber-300 font-bold shadow-[0_0_20px_rgba(245,158,11,0.35)] scale-[1.02]' 
+                  : 'bg-white/5 border-white/10 text-slate-400 hover:text-white hover:border-amber-500/40 hover:bg-amber-500/10'
+              }`}
+            >
+              <div className="w-8 h-8 rounded-full bg-amber-500/20 border border-amber-400/50 flex items-center justify-center text-amber-400 font-black text-xs group-hover:scale-110 transition-transform">
+                NG
+              </div>
+              <span className="text-xs font-bold text-white">Nagad</span>
+              <span className="text-[9px] opacity-80 font-mono">নগদ (Personal)</span>
+              {paymentMethod === 'nagad' && (
+                <div className="absolute top-1 right-1.5 w-2 h-2 rounded-full bg-amber-400 animate-ping" />
+              )}
+            </button>
+
+            {/* Rocket */}
+            <button
+              type="button"
+              onClick={() => {
+                setPaymentMethod('rocket');
+                setCopiedNumber(false);
+              }}
+              className={`p-3 sm:p-3.5 rounded-2xl border-2 flex flex-col items-center justify-center gap-1.5 cursor-pointer transition-all duration-300 relative overflow-hidden group ${
+                paymentMethod === 'rocket' 
+                  ? 'bg-gradient-to-br from-purple-500/25 via-purple-600/15 to-purple-950/40 border-purple-500 text-purple-300 font-bold shadow-[0_0_20px_rgba(168,85,247,0.35)] scale-[1.02]' 
+                  : 'bg-white/5 border-white/10 text-slate-400 hover:text-white hover:border-purple-500/40 hover:bg-purple-500/10'
+              }`}
+            >
+              <div className="w-8 h-8 rounded-full bg-purple-500/20 border border-purple-400/50 flex items-center justify-center text-purple-400 font-black text-xs group-hover:scale-110 transition-transform">
+                RK
+              </div>
+              <span className="text-xs font-bold text-white">Rocket</span>
+              <span className="text-[9px] opacity-80 font-mono">রকেট / Upay</span>
+              {paymentMethod === 'rocket' && (
+                <div className="absolute top-1 right-1.5 w-2 h-2 rounded-full bg-purple-400 animate-ping" />
+              )}
+            </button>
+          </div>
+        </div>
+
+        {/* Receiver Info & One-click Copy Box */}
+        <div className="relative z-10 p-4 sm:p-4.5 rounded-2xl bg-[#030712]/90 border-2 border-cyan-500/30 text-xs space-y-3 shadow-inner">
+          <div className="flex items-center justify-between gap-2 border-b border-white/10 pb-3">
+            <div className="space-y-0.5">
+              <span className="text-[11px] font-semibold text-slate-300 flex items-center gap-1.5">
+                <Phone className="w-3.5 h-3.5 text-cyan-400" />
+                <span>প্রাপক নম্বর ({paymentMethod.toUpperCase()} Personal):</span>
+              </span>
+              <span className="text-[10px] text-slate-400 block font-mono">
+                উক্ত নম্বরে সেন্ড মানি (Send Money) করুন
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <strong className="text-cyan-300 font-mono text-sm tracking-widest bg-cyan-500/10 px-3 py-1.5 rounded-xl border border-cyan-500/40 shadow-sm">
+                {getTargetPaymentNumber()}
+              </strong>
+              <button
+                type="button"
+                onClick={() => handleCopyNumber(getTargetPaymentNumber())}
+                className={`px-3 py-1.5 rounded-xl text-[11px] font-bold font-mono flex items-center gap-1.5 transition-all cursor-pointer border ${
+                  copiedNumber
+                    ? 'bg-emerald-500 text-slate-950 border-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.4)]'
+                    : 'bg-white/10 hover:bg-cyan-500/20 text-cyan-300 border-cyan-400/40 hover:border-cyan-400'
+                }`}
+                title="নম্বর কপি করুন"
+              >
+                {copiedNumber ? (
+                  <>
+                    <CheckCheck className="w-3.5 h-3.5" />
+                    <span>কপি হয়েছে!</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-3.5 h-3.5" />
+                    <span>কপি</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+
+          {settings?.paymentInstructions ? (
+            <p className="text-[11px] text-slate-300 leading-relaxed whitespace-pre-line bg-white/5 p-3 rounded-xl border border-white/5">
+              {settings.paymentInstructions}
+            </p>
+          ) : (
+            <div className="space-y-1.5 text-[11px] text-slate-300 font-sans leading-relaxed">
+              <div className="flex items-start gap-2">
+                <span className="w-4 h-4 rounded-full bg-cyan-500/20 border border-cyan-500/40 text-cyan-400 font-mono text-[10px] font-bold flex items-center justify-center shrink-0 mt-0.5">1</span>
+                <span>{paymentMethod.toUpperCase()} অ্যাপ অথবা ইউএসএসডি (*247#) থেকে <strong>'Send Money'</strong> অপশন বাছুন।</span>
+              </div>
+              <div className="flex items-start gap-2">
+                <span className="w-4 h-4 rounded-full bg-cyan-500/20 border border-cyan-500/40 text-cyan-400 font-mono text-[10px] font-bold flex items-center justify-center shrink-0 mt-0.5">2</span>
+                <span>প্রাপক নম্বর <strong className="text-cyan-300 font-mono">{getTargetPaymentNumber()}</strong> এবং পরিমাণ <strong className="text-amber-400 font-mono">৳{selectedCourseForPayment.price}</strong> লিখুন।</span>
+              </div>
+              <div className="flex items-start gap-2">
+                <span className="w-4 h-4 rounded-full bg-cyan-500/20 border border-cyan-500/40 text-cyan-400 font-mono text-[10px] font-bold flex items-center justify-center shrink-0 mt-0.5">3</span>
+                <span>সেন্ড মানি সফল হলে প্রেরক নম্বর ও SMS-এ প্রাপ্ত <strong>Transaction ID (TrxID)</strong> নিচে লিখুন।</span>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Payment Submission Form */}
+        <form onSubmit={handlePaymentSubmit} className="relative z-10 space-y-4 text-xs">
+          {paymentSuccessMessage ? (
+            <div className="p-5 rounded-2xl bg-emerald-500/15 border-2 border-emerald-500/40 text-emerald-300 space-y-3 text-center shadow-[0_0_30px_rgba(16,185,129,0.2)] animate-fade-in">
+              <ShieldCheck className="w-12 h-12 text-emerald-400 mx-auto animate-bounce" />
+              <h4 className="font-bold text-base text-white">পেমেন্ট রিকোয়েস্ট সফলভাবে জমা হয়েছে!</h4>
+              <p className="text-xs text-slate-200 leading-relaxed max-w-md mx-auto">
+                {paymentSuccessMessage}
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedCourseForPayment(null);
+                  setPaymentSuccessMessage('');
+                }}
+                className="mt-2 px-6 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 text-slate-950 font-extrabold cursor-pointer hover:from-emerald-400 hover:to-teal-400 transition-all shadow-[0_0_20px_rgba(16,185,129,0.4)]"
+              >
+                ঠিক আছে (Done)
+              </button>
+            </div>
+          ) : (
+            <>
+              {paymentError && (
+                <div className="p-3.5 rounded-xl bg-rose-500/15 border border-rose-500/40 text-rose-300 text-xs font-semibold flex items-center gap-2.5 shadow-sm">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
+                  <span>{paymentError}</span>
+                </div>
+              )}
+
+              <div className="space-y-1.5">
+                <label className="block text-slate-200 font-bold text-xs flex items-center gap-1.5">
+                  <Phone className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>প্রেরক নম্বর (Sender Mobile Number) <span className="text-rose-400">*</span></span>
+                </label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    required
+                    placeholder="যেমন: 017XXXXXXXX"
+                    value={senderPhone}
+                    onChange={(e) => setSenderPhone(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-950/90 border-2 border-cyan-500/30 text-white placeholder:text-slate-500 focus:border-cyan-400 focus:shadow-[0_0_15px_rgba(34,211,238,0.25)] outline-none font-mono text-sm transition-all"
+                  />
+                  <Phone className="w-4 h-4 text-cyan-400/60 absolute left-3.5 top-3 pointer-events-none" />
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="block text-slate-200 font-bold text-xs flex items-center gap-1.5">
+                  <Hash className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>ট্রানজেকশন আইডি (Transaction ID / TrxID) <span className="text-rose-400">*</span></span>
+                </label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    required
+                    placeholder="যেমন: 9J82KSLA10"
+                    value={transactionId}
+                    onChange={(e) => setTransactionId(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-950/90 border-2 border-cyan-500/30 text-white placeholder:text-slate-500 focus:border-cyan-400 focus:shadow-[0_0_15px_rgba(34,211,238,0.25)] outline-none font-mono uppercase text-sm transition-all"
+                  />
+                  <Hash className="w-4 h-4 text-cyan-400/60 absolute left-3.5 top-3 pointer-events-none" />
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={paymentSubmitting}
+                className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-cyan-400 via-teal-400 to-emerald-400 hover:from-cyan-300 hover:to-emerald-300 text-slate-950 font-extrabold text-sm flex items-center justify-center gap-2 transition-all cursor-pointer shadow-[0_0_30px_rgba(34,211,238,0.4)] disabled:opacity-50 btn-shine hover:scale-[1.01]"
+              >
+                <CreditCard className="w-4 h-4 text-slate-950" />
+                <span>{paymentSubmitting ? 'প্রসেসিং করা হচ্ছে...' : 'পেমেন্ট সাবমিট করুন (Confirm Payment)'}</span>
+              </button>
+
+              <div className="pt-2 flex items-center justify-center gap-4 text-[10px] text-slate-400 font-mono border-t border-white/5">
+                <span className="flex items-center gap-1">
+                  <Shield className="w-3 h-3 text-cyan-400" />
+                  <span>256-Bit SSL Encrypted</span>
+                </span>
+                <span>•</span>
+                <span className="flex items-center gap-1">
+                  <Zap className="w-3 h-3 text-amber-400" />
+                  <span>Instant Admin Review</span>
+                </span>
+              </div>
+            </>
+          )}
+        </form>
+      </div>
+    </div>
   )}
 </div>
   );
