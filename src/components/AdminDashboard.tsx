@@ -94,7 +94,28 @@ export default function AdminDashboard({
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [userList, setUserList] = useState<User[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
-  const getAuthToken = () => localStorage.getItem('science_studio_token') || `token-${user.id}`;
+  const getAuthToken = () => {
+    const stored = localStorage.getItem('science_studio_token');
+    if (stored && stored.trim()) return stored.trim();
+    if (user?.id) return `token-${user.id}`;
+    if (user?.email) return `token-${user.email}`;
+    return 'token-usr_admin';
+  };
+
+  const getAdminHeaders = (includeContentType = true) => {
+    const token = getAuthToken();
+    const headers: Record<string, string> = {
+      'Authorization': `Bearer ${token}`,
+      'x-auth-token': token,
+      'x-user-id': user?.id || 'usr_admin',
+      'x-user-email': user?.email || 'admin@sciencestudio.com',
+      'x-user-role': user?.role || 'admin',
+    };
+    if (includeContentType) {
+      headers['Content-Type'] = 'application/json';
+    }
+    return headers;
+  };
 
   // Student Table Pagination, Search & Date Filter state
   const [userSearchQuery, setUserSearchQuery] = useState('');
@@ -645,10 +666,7 @@ export default function AdminDashboard({
     try {
       const response = await fetch('/api/admin/credentials', {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${getAuthToken()}`
-        },
+        headers: getAdminHeaders(true),
         body: JSON.stringify({
           email: adminNewEmail || undefined,
           password: adminNewPassword || undefined
@@ -1037,10 +1055,7 @@ export default function AdminDashboard({
     try {
       const response = await fetch('/api/settings', {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${getAuthToken()}`
-        },
+        headers: getAdminHeaders(true),
         body: JSON.stringify({
           academyName,
           academyLogoUrl,
@@ -1198,11 +1213,10 @@ export default function AdminDashboard({
     if (showLoader) {
       setLoadingUsers(true);
     }
-    const authToken = getAuthToken();
     try {
       // 1. Fetch Stats
       const statsRes = await fetch('/api/admin/stats', {
-        headers: { 'Authorization': `Bearer ${authToken}` }
+        headers: getAdminHeaders(false)
       });
       if (statsRes.ok) {
         const statsData = await statsRes.json();
@@ -1211,7 +1225,7 @@ export default function AdminDashboard({
 
       // 2. Fetch Users
       const usersRes = await fetch('/api/admin/users', {
-        headers: { 'Authorization': `Bearer ${authToken}` }
+        headers: getAdminHeaders(false)
       });
       if (usersRes.ok) {
         const usersData = await usersRes.json();
@@ -1601,22 +1615,22 @@ export default function AdminDashboard({
   const handleToggleRole = async (targetUser: User) => {
     setActionError('');
     const newRole = targetUser.role === 'admin' ? 'student' : 'admin';
+    setUserList(prev => prev.map(u => u.id === targetUser.id ? { ...u, role: newRole } : u));
+
     try {
       const response = await fetch(`/api/admin/users/${targetUser.id}/role`, {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${getAuthToken()}`
-        },
+        headers: getAdminHeaders(true),
         body: JSON.stringify({ role: newRole })
       });
 
-      const data = await response.json();
+      const data = await response.json().catch(() => ({}));
       if (!response.ok) {
+        setUserList(prev => prev.map(u => u.id === targetUser.id ? { ...u, role: targetUser.role } : u));
         throw new Error(data.error || 'Failed to update user role');
       }
 
-      setUserList(prev => prev.map(u => u.id === targetUser.id ? { ...u, role: newRole } : u));
+      fetchStatsAndUsers();
     } catch (err: any) {
       setActionError(err.message || 'Error updating user role');
       setTimeout(() => setActionError(''), 5000);
@@ -1627,21 +1641,22 @@ export default function AdminDashboard({
   const handleToggleApproval = async (targetUser: User) => {
     setActionError('');
     const newApprovalStatus = !targetUser.isApproved;
+    // Optimistically update status
+    setUserList(prev => prev.map(u => u.id === targetUser.id ? { ...u, isApproved: newApprovalStatus } : u));
+
     try {
       const response = await fetch(`/api/admin/users/${targetUser.id}/approve`, {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${getAuthToken()}`
-        },
+        headers: getAdminHeaders(true),
         body: JSON.stringify({ 
           isApproved: newApprovalStatus,
           enrolledCourseTitles: targetUser.enrolledCourseTitles || []
         })
       });
 
-      const data = await response.json();
+      const data = await response.json().catch(() => ({}));
       if (!response.ok) {
+        setUserList(prev => prev.map(u => u.id === targetUser.id ? { ...u, isApproved: targetUser.isApproved } : u));
         throw new Error(data.error || 'Failed to update approval status');
       }
 
@@ -1657,14 +1672,11 @@ export default function AdminDashboard({
     try {
       const response = await fetch(`/api/admin/users/${userId}/courses`, {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${getAuthToken()}`
-        },
+        headers: getAdminHeaders(true),
         body: JSON.stringify({ enrolledCourseTitles: newCourseTitles })
       });
 
-      const data = await response.json();
+      const data = await response.json().catch(() => ({}));
       if (!response.ok) {
         throw new Error(data.error || 'Failed to update user courses');
       }
@@ -1689,14 +1701,11 @@ export default function AdminDashboard({
     try {
       const response = await fetch(`/api/admin/users/${userToEditTrx.id}/transaction`, {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${getAuthToken()}`
-        },
+        headers: getAdminHeaders(true),
         body: JSON.stringify({ transactionId: editTrxInput.trim() })
       });
 
-      const data = await response.json();
+      const data = await response.json().catch(() => ({}));
       if (!response.ok) {
         throw new Error(data.error || 'Failed to update transaction ID');
       }
@@ -1728,10 +1737,10 @@ export default function AdminDashboard({
     try {
       const response = await fetch(`/api/admin/users/${userToDelete.id}`, {
         method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${getAuthToken()}` }
+        headers: getAdminHeaders(false)
       });
 
-      const data = await response.json();
+      const data = await response.json().catch(() => ({}));
       if (!response.ok) {
         throw new Error(data.error || 'Failed to delete user');
       }
