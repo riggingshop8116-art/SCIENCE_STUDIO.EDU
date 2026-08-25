@@ -24,7 +24,8 @@ import {
 dotenv.config();
 
 const appDir = typeof __dirname !== 'undefined' ? __dirname : process.cwd();
-const DB_PATH = process.env.VERCEL ? path.join('/tmp', 'db.json') : path.join(appDir, 'db.json');
+const isVercel = !!process.env.VERCEL || !!process.env.AWS_LAMBDA_FUNCTION_NAME || !!process.env.NOW_REGION;
+const DB_PATH = isVercel ? path.join('/tmp', 'db.json') : path.join(appDir, 'db.json');
 const PORT = 3000;
 
 // Initialize Database structure
@@ -448,17 +449,21 @@ function readDB(): DBStructure {
 function writeDB(data: DBStructure) {
   try {
     fs.writeFileSync(DB_PATH, JSON.stringify(data, null, 2));
-    // Asynchronously push updates to Supabase
+  } catch (err) {
+    console.warn("Notice: Local DB file write skipped:", err);
+  }
+  // Asynchronously push updates to Supabase
+  try {
     syncToSupabase(data);
   } catch (err) {
-    console.error("Error writing to database:", err);
+    console.warn("Notice: Supabase sync warning:", err);
   }
 }
 
 export const app = express();
 
 // Sync database state with Supabase safely without blocking startup
-if (!process.env.VERCEL) {
+if (!isVercel) {
   try {
     const currentLocal = readDB();
     loadFromSupabase(currentLocal).then((supabaseData) => {
@@ -482,9 +487,13 @@ if (!process.env.VERCEL) {
 app.use(express.json({ limit: '200mb' }));
 app.use(express.urlencoded({ limit: '200mb', extended: true }));
 
-const uploadsDir = path.join(appDir, 'uploads');
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
+const uploadsDir = isVercel ? path.join('/tmp', 'uploads') : path.join(appDir, 'uploads');
+try {
+  if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+  }
+} catch (e) {
+  // Silent fallback for read-only environments
 }
 
 // Optimized video & media streaming static middleware for /uploads
