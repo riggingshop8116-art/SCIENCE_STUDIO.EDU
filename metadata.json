@@ -1,0 +1,6 @@
+{
+  "name": "Science Studio by Sakib",
+  "description": "A modern, tech-infused full-stack coaching platform featuring a secure student/admin portal, video classes, and PDF lecture notes storage.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

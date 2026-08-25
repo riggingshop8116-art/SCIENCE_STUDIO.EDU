@@ -1,0 +1,378 @@
+@import url('https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,600;0,700;0,900;1,400;1,600;1,700&family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Hind Siliguri", "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Hind Siliguri", "Space Grotesk", sans-serif;
+  --font-serif: "Playfair Display", Georgia, serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+@layer base {
+  body {
+    background-color: #020617;
+    color: #cbd5e1;
+  }
+}
+
+/* Custom frosted glass utility styles */
+.glass-panel {
+  backdrop-filter: blur(16px);
+  background-color: rgba(15, 23, 42, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.glass-card {
+  backdrop-filter: blur(12px);
+  background-color: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.glass-card-hover:hover {
+  background-color: rgba(255, 255, 255, 0.06);
+  border-color: rgba(34, 211, 238, 0.3);
+  box-shadow: 0 0 15px rgba(34, 211, 238, 0.1);
+}
+
+.glow-cyan {
+  text-shadow: 0 0 10px rgba(34, 211, 238, 0.5), 0 0 20px rgba(34, 211, 238, 0.2);
+}
+
+.glow-blue {
+  text-shadow: 0 0 10px rgba(59, 130, 246, 0.5), 0 0 20px rgba(59, 130, 246, 0.2);
+}
+
+/* Premium Button Hover & Light Sweep Utility Classes */
+.glow-btn, .btn-cyan {
+  position: relative;
+  overflow: hidden;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 0 15px rgba(34, 211, 238, 0.2);
+}
+
+.glow-btn:hover, .btn-cyan:hover {
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: 0 0 25px rgba(34, 211, 238, 0.5), 0 4px 15px rgba(6, 182, 212, 0.3);
+}
+
+.glow-btn:active, .btn-cyan:active {
+  transform: translateY(0) scale(0.98);
+}
+
+.btn-emerald {
+  position: relative;
+  overflow: hidden;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 0 15px rgba(52, 211, 153, 0.2);
+}
+
+.btn-emerald:hover {
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: 0 0 25px rgba(52, 211, 153, 0.5), 0 4px 15px rgba(16, 185, 129, 0.3);
+}
+
+.btn-emerald:active {
+  transform: translateY(0) scale(0.98);
+}
+
+.btn-rose {
+  position: relative;
+  overflow: hidden;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 0 15px rgba(244, 63, 94, 0.2);
+}
+
+.btn-rose:hover {
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: 0 0 25px rgba(244, 63, 94, 0.5), 0 4px 15px rgba(225, 29, 72, 0.3);
+}
+
+.btn-rose:active {
+  transform: translateY(0) scale(0.98);
+}
+
+.btn-glass {
+  position: relative;
+  overflow: hidden;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.btn-glass:hover {
+  transform: translateY(-1.5px);
+  background-color: rgba(255, 255, 255, 0.12);
+  border-color: rgba(34, 211, 238, 0.4);
+  box-shadow: 0 0 15px rgba(34, 211, 238, 0.2);
+}
+
+.btn-glass:active {
+  transform: translateY(0) scale(0.98);
+}
+
+/* Light Reflection Sweep Effect on Hover */
+.btn-shine::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.25),
+    transparent
+  );
+  transition: left 0.6s ease-in-out;
+}
+
+.btn-shine:hover::after {
+  left: 100%;
+}
+
+/* Grid background animation */
+.bg-grid-pattern {
+  background-size: 40px 40px;
+  background-image: 
+    linear-gradient(to right, rgba(34, 211, 238, 0.03) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(34, 211, 238, 0.03) 1px, transparent 1px);
+}
+
+/* ==========================================================================
+   LIGHT MODE STYLING SYSTEM
+   ========================================================================== */
+html[data-theme="light"],
+.light-mode {
+  color-scheme: light;
+}
+
+html[data-theme="light"] body,
+.light-mode body {
+  background-color: #f1f5f9 !important;
+  color: #0f172a !important;
+}
+
+/* Light mode panels and cards */
+html[data-theme="light"] .glass-panel,
+.light-mode .glass-panel {
+  background-color: rgba(255, 255, 255, 0.92) !important;
+  border-color: rgba(203, 213, 225, 0.9) !important;
+  box-shadow: 0 10px 30px -10px rgba(15, 23, 42, 0.08) !important;
+  backdrop-filter: blur(16px);
+}
+
+html[data-theme="light"] .glass-card,
+.light-mode .glass-card {
+  background-color: rgba(255, 255, 255, 0.95) !important;
+  border-color: rgba(226, 232, 240, 0.95) !important;
+  box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.06) !important;
+}
+
+html[data-theme="light"] .glass-card-hover:hover,
+.light-mode .glass-card-hover:hover {
+  background-color: #ffffff !important;
+  border-color: rgba(6, 182, 212, 0.6) !important;
+  box-shadow: 0 10px 25px -5px rgba(6, 182, 212, 0.2) !important;
+}
+
+/* Dark container background overrides in light mode */
+html[data-theme="light"] .bg-slate-950,
+html[data-theme="light"] .bg-slate-900,
+html[data-theme="light"] .bg-slate-800,
+.light-mode .bg-slate-950,
+.light-mode .bg-slate-900,
+.light-mode .bg-slate-800 {
+  background-color: #ffffff !important;
+}
+
+html[data-theme="light"] .bg-slate-900\/80,
+html[data-theme="light"] .bg-slate-900\/90,
+html[data-theme="light"] .bg-slate-950\/80,
+html[data-theme="light"] .bg-slate-950\/90,
+.light-mode .bg-slate-900\/80,
+.light-mode .bg-slate-900\/90,
+.light-mode .bg-slate-950\/80,
+.light-mode .bg-slate-950\/90 {
+  background-color: #f8fafc !important;
+}
+
+html[data-theme="light"] .bg-white\/5,
+html[data-theme="light"] .bg-white\/10,
+.light-mode .bg-white\/5,
+.light-mode .bg-white\/10 {
+  background-color: rgba(241, 245, 249, 0.85) !important;
+}
+
+/* Border color overrides for light mode */
+html[data-theme="light"] .border-slate-800,
+html[data-theme="light"] .border-white\/10,
+html[data-theme="light"] .border-white\/15,
+html[data-theme="light"] .border-white\/5,
+html[data-theme="light"] .border-slate-800\/60,
+.light-mode .border-slate-800,
+.light-mode .border-white\/10,
+.light-mode .border-white\/15,
+.light-mode .border-white\/5,
+.light-mode .border-slate-800\/60 {
+  border-color: #cbd5e1 !important;
+}
+
+/* Text color contrast overrides in light mode */
+html[data-theme="light"] .text-white,
+.light-mode .text-white {
+  color: #0f172a !important;
+}
+
+html[data-theme="light"] .text-slate-200,
+html[data-theme="light"] .text-slate-300,
+.light-mode .text-slate-200,
+.light-mode .text-slate-300 {
+  color: #1e293b !important;
+}
+
+html[data-theme="light"] .text-slate-400,
+.light-mode .text-slate-400 {
+  color: #475569 !important;
+}
+
+html[data-theme="light"] .text-slate-500,
+.light-mode .text-slate-500 {
+  color: #64748b !important;
+}
+
+/* Accent text vibrant contrast in light mode */
+html[data-theme="light"] .text-cyan-400,
+html[data-theme="light"] .text-cyan-300,
+.light-mode .text-cyan-400,
+.light-mode .text-cyan-300 {
+  color: #0284c7 !important;
+}
+
+html[data-theme="light"] .text-emerald-400,
+html[data-theme="light"] .text-emerald-300,
+.light-mode .text-emerald-400,
+.light-mode .text-emerald-300 {
+  color: #059669 !important;
+}
+
+html[data-theme="light"] .text-amber-400,
+html[data-theme="light"] .text-amber-300,
+.light-mode .text-amber-400,
+.light-mode .text-amber-300 {
+  color: #d97706 !important;
+}
+
+html[data-theme="light"] .text-purple-400,
+html[data-theme="light"] .text-purple-300,
+html[data-theme="light"] .text-violet-400,
+.light-mode .text-purple-400,
+.light-mode .text-purple-300,
+.light-mode .text-violet-400 {
+  color: #7c3aed !important;
+}
+
+html[data-theme="light"] .text-rose-400,
+html[data-theme="light"] .text-rose-300,
+.light-mode .text-rose-400,
+.light-mode .text-rose-300 {
+  color: #e11d48 !important;
+}
+
+/* Form Controls in Light Mode */
+html[data-theme="light"] input,
+html[data-theme="light"] select,
+html[data-theme="light"] textarea,
+.light-mode input,
+.light-mode select,
+.light-mode textarea {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  border-color: #cbd5e1 !important;
+}
+
+html[data-theme="light"] input::placeholder,
+html[data-theme="light"] textarea::placeholder,
+.light-mode input::placeholder,
+.light-mode textarea::placeholder {
+  color: #94a3b8 !important;
+}
+
+/* Modal and dialog background in Light Mode */
+html[data-theme="light"] #auth-modal,
+.light-mode #auth-modal {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  border-color: #e2e8f0 !important;
+  box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.15) !important;
+}
+
+/* Table styling in Light Mode */
+html[data-theme="light"] table thead tr,
+.light-mode table thead tr {
+  background-color: #f1f5f9 !important;
+  color: #334155 !important;
+}
+
+html[data-theme="light"] table tbody tr:hover,
+.light-mode table tbody tr:hover {
+  background-color: #f8fafc !important;
+}
+
+/* Continuous Marquee Scrolling Animations */
+/* Custom smooth horizontal and vertical scrollbar utilities */
+.custom-scrollbar::-webkit-scrollbar {
+  height: 6px;
+  width: 6px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.6);
+  border-radius: 9999px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(34, 211, 238, 0.4);
+  border-radius: 9999px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(34, 211, 238, 0.7);
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+@keyframes marquee-scroll {
+  0% {
+    transform: translateX(0%);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+.animate-marquee-infinite {
+  display: inline-flex;
+  white-space: nowrap;
+  animation: marquee-scroll 55s linear infinite;
+  will-change: transform;
+}
+
+.animate-marquee-infinite:hover,
+.animate-marquee-infinite:active {
+  animation-play-state: paused;
+}
+
+.animate-marquee-infinite-slow {
+  display: inline-flex;
+  white-space: nowrap;
+  animation: marquee-scroll 70s linear infinite;
+  will-change: transform;
+}
+
+.animate-marquee-infinite-slow:hover,
+.animate-marquee-infinite-slow:active {
+  animation-play-state: paused;
+}
+
