@@ -91,7 +91,11 @@ export default function StudentProfileModal({
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+          'Authorization': `Bearer ${token}`,
+          'x-auth-token': token,
+          'x-user-id': user?.id || '',
+          'x-user-email': user?.email || '',
+          'x-user-role': user?.role || 'student'
         },
         body: JSON.stringify({
           name: name.trim(),

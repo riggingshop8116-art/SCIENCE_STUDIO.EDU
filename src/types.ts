@@ -11,6 +11,7 @@ export interface User {
   phone?: string;
   role: UserRole;
   isApproved?: boolean;
+  course?: string;
   enrolledCourseTitles?: string[];
   enrolledCourseIds?: string[];
   transactionId?: string;

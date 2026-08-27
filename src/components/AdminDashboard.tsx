@@ -933,10 +933,7 @@ export default function AdminDashboard({
     try {
       const response = await fetch('/api/settings', {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${getAuthToken()}`
-        },
+        headers: getAdminHeaders(true),
         body: JSON.stringify({
           heroBanners: updatedList
         })
@@ -1259,10 +1256,7 @@ export default function AdminDashboard({
     try {
       const response = await fetch('/api/courses', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${getAuthToken()}`
-        },
+        headers: getAdminHeaders(true),
         body: JSON.stringify({
           title: courseTitle,
           subject: courseSubject,
@@ -1323,7 +1317,7 @@ export default function AdminDashboard({
     try {
       const response = await fetch(`/api/courses/${courseToDelete.id}`, {
         method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${getAuthToken()}` }
+        headers: getAdminHeaders(false)
       });
       if (response.ok) {
         setCoursesList(prev => prev.filter(c => c.id !== courseToDelete.id));
@@ -1427,11 +1421,10 @@ export default function AdminDashboard({
     const response = await fetch('/api/upload-file', {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
+        ...getAdminHeaders(true),
         'x-bucket': bucket,
         'x-filename': cleanFileName,
-        'x-content-type': file.type || (bucket === 'pdf-materials' ? 'application/pdf' : 'video/mp4'),
-        'Authorization': `Bearer ${getAuthToken()}`
+        'x-content-type': file.type || (bucket === 'pdf-materials' ? 'application/pdf' : 'video/mp4')
       },
       body: JSON.stringify({ data: dataUrl })
     });
@@ -1518,10 +1511,7 @@ export default function AdminDashboard({
     try {
       const response = await fetch('/api/classes', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${getAuthToken()}`
-        },
+        headers: getAdminHeaders(true),
         body: JSON.stringify({
           title: classTitle,
           subject: classSubject,
@@ -1581,10 +1571,7 @@ export default function AdminDashboard({
     try {
       const response = await fetch('/api/notes', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${getAuthToken()}`
-        },
+        headers: getAdminHeaders(true),
         body: JSON.stringify({
           title: noteTitle,
           subject: noteSubject,
@@ -1770,7 +1757,7 @@ export default function AdminDashboard({
     try {
       const response = await fetch(`/api/classes/${classToDelete.id}`, {
         method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${getAuthToken()}` }
+        headers: getAdminHeaders(false)
       });
 
       const data = await response.json();
@@ -1803,7 +1790,7 @@ export default function AdminDashboard({
     try {
       const response = await fetch(`/api/notes/${noteToDelete.id}`, {
         method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${getAuthToken()}` }
+        headers: getAdminHeaders(false)
       });
 
       const data = await response.json();

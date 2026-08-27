@@ -322,9 +322,12 @@ export async function upsertClassToSupabase(c: any) {
   try {
     const payload: any = {
       id: c.id,
-      title: c.title,
-      subject: c.subject,
-      video_url: c.videoUrl,
+      title: c.title || '',
+      subject: c.subject || '',
+      video_url: c.videoUrl || '',
+      thumbnail_url: c.thumbnailUrl || '',
+      course_id: c.courseId || '',
+      course_title: c.courseTitle || '',
       description: c.description || '',
       data: c,
       updated_at: new Date().toISOString()
@@ -361,9 +364,9 @@ export async function upsertNoteToSupabase(n: any) {
   try {
     const payload: any = {
       id: n.id,
-      title: n.title,
-      subject: n.subject,
-      pdf_url: n.pdfUrl,
+      title: n.title || '',
+      subject: n.subject || '',
+      pdf_url: n.pdfUrl || '',
       description: n.description || '',
       course_id: n.courseId || '',
       course_title: n.courseTitle || '',
@@ -402,10 +405,16 @@ export async function upsertCourseToSupabase(cr: any) {
   try {
     const payload: any = {
       id: cr.id,
-      title: cr.title,
-      subject: cr.subject,
+      title: cr.title || '',
+      subject: cr.subject || '',
+      class_level: cr.classLevel || '',
       price: Number(cr.price || 0),
+      original_price: Number(cr.originalPrice || 0),
       duration: cr.duration || '',
+      description: cr.description || '',
+      badge: cr.badge || '',
+      rating: Number(cr.rating || 5),
+      enrolled_count: Number(cr.enrolledCount || 0),
       features: Array.isArray(cr.features) ? cr.features : [],
       image_url: cr.imageUrl || '',
       data: cr,
