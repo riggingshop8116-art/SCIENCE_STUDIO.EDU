@@ -116,16 +116,20 @@ export default function App() {
         const contentType = response.headers.get('content-type');
         if (response.ok && contentType && contentType.includes('application/json')) {
           const data = await response.json();
-          setUser(data.user);
-          // Auto route to active area
-          if (data.user.role === 'admin') {
-            setCurrentTab('admin');
-          } else {
-            setCurrentTab('classroom');
+          if (data?.user) {
+            setUser(data.user);
+            localStorage.setItem('science_studio_user', JSON.stringify(data.user));
+            // Auto route to active area
+            if (data.user.role === 'admin') {
+              setCurrentTab('admin');
+            } else {
+              setCurrentTab('classroom');
+            }
           }
-        } else if (!response.ok) {
-          // Token expired or invalid
+        } else if (response.status === 401) {
+          // Token is explicitly expired or invalid
           localStorage.removeItem('science_studio_token');
+          localStorage.removeItem('science_studio_user');
         }
       } catch (err) {
         console.warn("Notice: session restoration retry pending", err);

@@ -109,6 +109,7 @@ interface DBStructure {
     labSectionBadge?: string;
     labSectionTitle?: string;
     labSectionSubtitle?: string;
+    heroClassroomBgUrl?: string;
     heroBanners?: any[];
   };
 }
@@ -261,7 +262,8 @@ const defaultDB: DBStructure = {
     helplineTime: "সকাল ৯:০০ - রাত ১০:০০ (প্রতিদিন)",
     labSectionBadge: "INTERACTIVE VIRTUAL LAB & PLAYGROUND",
     labSectionTitle: "সাকিব স্যারের ভার্চুয়াল সায়েন্স ল্যাব ও সিমুলেশন",
-    labSectionSubtitle: "পড়াশোনা হোক আনন্দের ও গবেষণাধর্মী! পদার্থ, রসায়ন, জীববিজ্ঞান ও গণিতের গুরুত্বপূর্ণ টপিকগুলো নিজে পরিবর্তন করে প্র্যাকটিক্যাল জ্ঞান অর্জন করুন।"
+    labSectionSubtitle: "পড়াশোনা হোক আনন্দের ও গবেষণাধর্মী! পদার্থ, রসায়ন, জীববিজ্ঞান ও গণিতের গুরুত্বপূর্ণ টপিকগুলো নিজে পরিবর্তন করে প্র্যাকটিক্যাল জ্ঞান অর্জন করুন।",
+    heroClassroomBgUrl: ""
   },
   courses: [
     {
@@ -805,24 +807,49 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
         return res.status(400).json({ error: "নাম, ইমেইল এবং পাসওয়ার্ড আবশ্যক।" });
       }
 
-      if (password.length < 6) {
+      const cleanPassword = String(password).trim();
+      if (cleanPassword.length < 6) {
         return res.status(400).json({ error: "পাসওয়ার্ড অবশ্যই কমপক্ষে ৬ অক্ষরের হতে হবে।" });
       }
 
-      // Mandatory 11-digit Bangladeshi phone validation
+      // Mandatory Bangladeshi phone validation (handles Bengali digits, +880, spaces)
       const banglaToEnglishDigits = (str: string) => str.replace(/[০-৯]/g, d => '০১২৩৪৫৬৭৮৯'.indexOf(d).toString());
-      const cleanPhone = phone ? banglaToEnglishDigits(String(phone).trim()).replace(/\D/g, '') : '';
+      let cleanPhone = phone ? banglaToEnglishDigits(String(phone).trim()).replace(/\D/g, '') : '';
+      if (cleanPhone.startsWith('8801') && cleanPhone.length === 13) {
+        cleanPhone = cleanPhone.substring(2);
+      }
+      
       const phoneRegex = /^01[3-9]\d{8}$/;
-
       if (!cleanPhone || !phoneRegex.test(cleanPhone)) {
         return res.status(400).json({ error: "মোবাইল নম্বরটি অবশ্যই ১১ ডিজিটের বৈধ বাংলাদেশী নম্বর হতে হবে (যেমন: 01712345678)।" });
       }
 
-      const cleanEmail = email.trim().toLowerCase();
+      const cleanEmail = String(email).trim().toLowerCase();
+      const cleanName = String(name).trim();
       const db = readDB();
-      const existing = db.users.find(u => u.email && u.email.toLowerCase() === cleanEmail);
+
+      // Check if user already exists in local DB
+      let existing = db.users.find(u => u && u.email && u.email.toLowerCase().trim() === cleanEmail);
+      
+      // Check if user already exists in Supabase
+      if (!existing && canAttemptSupabase()) {
+        try {
+          const { data: sbExisting } = await supabaseServer
+            .from('app_users')
+            .select('id, email, name, role')
+            .ilike('email', cleanEmail)
+            .limit(1);
+
+          if (Array.isArray(sbExisting) && sbExisting.length > 0) {
+            existing = sbExisting[0] as any;
+          }
+        } catch (e) {
+          console.warn("Supabase duplicate user check notice:", e);
+        }
+      }
+
       if (existing) {
-        return res.status(400).json({ error: "এই ইমেইল দিয়ে ইতোমধ্যেই একটি অ্যাকাউন্ট তৈরি করা আছে।" });
+        return res.status(400).json({ error: "এই ইমেইল দিয়ে ইতোমধ্যেই একটি অ্যাকাউন্ট তৈরি করা আছে। অনুগ্রহ করে 'লগইন' করুন।" });
       }
 
       let initialEnrolled: string[] = [];
@@ -832,27 +859,30 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
         initialEnrolled = [courseTitle];
       }
 
+      const userId = 'usr_' + Math.random().toString(36).substring(2, 9) + Date.now().toString(36);
       const token = createSessionToken({
-        id: 'usr_' + Math.random().toString(36).substring(2, 9),
+        id: userId,
         email: cleanEmail,
-        name: name.trim(),
+        name: cleanName,
         role: 'student',
-        isApproved: false
+        isApproved: false,
+        phone: cleanPhone,
+        enrolledCourseTitles: initialEnrolled
       });
 
       const newUser = {
-        id: 'usr_' + Math.random().toString(36).substring(2, 9),
-        name: name.trim(),
+        id: userId,
+        name: cleanName,
         email: cleanEmail,
         phone: cleanPhone,
-        password,
-        role: 'student', // default signup is always student
-        isApproved: false, // requires admin approval to unlock class resources
+        password: cleanPassword,
+        role: 'student' as const, // default signup is always student
+        isApproved: false, // requires admin approval for paid access
         token,
         enrolledCourseTitles: initialEnrolled,
-        transactionId: transactionId ? transactionId.trim() : "",
-        paymentMethod: paymentMethod ? paymentMethod.trim() : "",
-        senderPhone: senderPhone ? senderPhone.trim() : "",
+        transactionId: transactionId ? String(transactionId).trim() : "",
+        paymentMethod: paymentMethod ? String(paymentMethod).trim() : "",
+        senderPhone: senderPhone ? String(senderPhone).trim() : "",
         createdAt: new Date().toISOString()
       };
 
@@ -860,8 +890,8 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
       writeDB(db);
 
       // Register user in Supabase Authentication & app_users table asynchronously without blocking signup response
-      registerUserInSupabaseAuth(cleanEmail, password, name.trim(), cleanPhone, newUser).catch(e => {
-        console.log("Supabase Auth registration notice:", e);
+      registerUserInSupabaseAuth(cleanEmail, cleanPassword, cleanName, cleanPhone, newUser).catch(e => {
+        console.warn("Supabase Auth registration notice:", e);
       });
 
       // Exclude password and internal fields from response
@@ -908,7 +938,7 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
         } else if (cleanEmail === 'mdshakibhossen2050@gmail.com') {
           user = {
             id: "usr_super_admin",
-            name: "Super Admin",
+            name: "সাকিব হাসান (Super Admin)",
             email: "mdshakibhossen2050@gmail.com",
             password: "SHAKIB@2050#",
             role: "admin",
@@ -932,20 +962,102 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
         }
       }
 
+      // If user not in local DB, search Supabase app_users table
+      if (!user && canAttemptSupabase()) {
+        try {
+          const { data: dbUserRows } = await supabaseServer
+            .from('app_users')
+            .select('*')
+            .ilike('email', cleanEmail)
+            .limit(1);
+
+          if (Array.isArray(dbUserRows) && dbUserRows.length > 0) {
+            const r = dbUserRows[0];
+            const nested = (r.data && typeof r.data === 'object') ? r.data : {};
+            const storedPassword = nested.password || r.password || '';
+            user = {
+              ...nested,
+              id: r.id || 'usr_' + Math.random().toString(36).substring(2, 9),
+              name: r.name || nested.name || 'User',
+              email: r.email ? r.email.toLowerCase().trim() : (nested.email || cleanEmail),
+              phone: r.phone || nested.phone || '',
+              password: storedPassword,
+              role: r.role || nested.role || 'student',
+              isApproved: r.is_approved !== undefined ? Boolean(r.is_approved) : (nested.isApproved ?? false),
+              enrolledCourseTitles: r.enrolled_courses || nested.enrolledCourseTitles || [],
+              transactionId: r.transaction_id || nested.transactionId || '',
+              paymentMethod: r.payment_method || nested.paymentMethod || '',
+              senderPhone: r.sender_phone || nested.senderPhone || '',
+              createdAt: r.created_at || nested.createdAt || new Date().toISOString()
+            };
+            db.users.push(user);
+            writeDB(db);
+          }
+        } catch (sbErr) {
+          console.warn("Supabase user login lookup notice:", sbErr);
+        }
+      }
+
+      // If user still not found, try Supabase Auth direct login
+      if (!user && canAttemptSupabase()) {
+        try {
+          const { data: authData } = await supabaseServer.auth.signInWithPassword({
+            email: cleanEmail,
+            password: cleanPassword
+          });
+          if (authData?.user) {
+            const meta = authData.user.user_metadata || {};
+            user = {
+              id: authData.user.id || 'usr_' + Math.random().toString(36).substring(2, 9),
+              name: meta.name || 'শিক্ষার্থী',
+              email: cleanEmail,
+              phone: meta.phone || '',
+              password: cleanPassword,
+              role: (meta.role === 'admin' || cleanEmail.includes('admin')) ? 'admin' : 'student',
+              isApproved: (meta.role === 'admin' || cleanEmail.includes('admin')),
+              enrolledCourseTitles: [],
+              createdAt: authData.user.created_at || new Date().toISOString()
+            };
+            db.users.push(user);
+            writeDB(db);
+          }
+        } catch (sbAuthErr) {
+          console.warn("Supabase Auth signIn notice:", sbAuthErr);
+        }
+      }
+
       if (!user) {
-        return res.status(401).json({ error: "ইমেইল বা পাসওয়ার্ড ভুল অথবা অ্যাকাউন্ট খুঁজে পাওয়া যায়নি।" });
+        return res.status(401).json({ error: "এই ইমেইল দিয়ে কোনো অ্যাকাউন্ট খুঁজে পাওয়া যায়নি। অনুগ্রহ করে আগে রেজিস্ট্রেশন করুন।" });
       }
 
       // Verify Password (case-sensitive or trimmed match, plus fallback for default accounts)
-      const isPasswordValid = 
+      let isPasswordValid = 
         user.password === cleanPassword || 
         user.password === password ||
+        (user.data && (user.data.password === cleanPassword || user.data.password === password)) ||
         (cleanEmail === 'admin@sciencestudio.com' && (cleanPassword === 'admin123')) ||
         (cleanEmail === 'mdshakibhossen2050@gmail.com' && (cleanPassword === 'SHAKIB@2050#' || cleanPassword === 'admin123')) ||
         (cleanEmail === 'student@sciencestudio.com' && (cleanPassword === 'student123'));
 
+      // If password did not match local record, verify against Supabase Auth as secondary check
+      if (!isPasswordValid && canAttemptSupabase()) {
+        try {
+          const { data: authData, error: authErr } = await supabaseServer.auth.signInWithPassword({
+            email: cleanEmail,
+            password: cleanPassword
+          });
+          if (authData?.user && !authErr) {
+            isPasswordValid = true;
+            user.password = cleanPassword;
+            writeDB(db);
+          }
+        } catch (sbAuthErr) {
+          // invalid password in supabase auth
+        }
+      }
+
       if (!isPasswordValid) {
-        return res.status(401).json({ error: "পাসওয়ার্ড সঠিক নয়। অনুগ্রহ করে সঠিক পাসওয়ার্ড দিয়ে আবার চেষ্টা করুন।" });
+        return res.status(401).json({ error: "পাসওয়ার্ড সঠিক নয়। অনুগ্রহ করে সঠিক পাসওয়ার্ড প্রদান করুন।" });
       }
 
       // Check role constraints
@@ -954,7 +1066,7 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
       }
 
       if (expectedRole === 'student' && user.role === 'admin') {
-        return res.status(403).json({ error: "স্টুডেন্ট লগইন অপশন থেকে এডমিন অ্যাকাউন্টে লগইন করা যাবে না। অনুগ্রহ করে এডমিন পোর্টাল ব্যবহার করুন।" });
+        return res.status(403).json({ error: "এটি একটি এডমিন অ্যাকাউন্ট। অনুগ্রহ করে 'হেড অফিস এডমিন পোর্টাল' থেকে লগইন করুন।" });
       }
 
       // Generate fresh session token
@@ -964,7 +1076,7 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 
       // Async sync with Supabase Auth
       registerUserInSupabaseAuth(cleanEmail, cleanPassword, user.name, user.phone, user).catch(e => {
-        console.log("Supabase Auth login sync notice:", e);
+        console.warn("Supabase Auth login sync notice:", e);
       });
 
       const { password: _, token: __, ...userWithoutPassword } = user;
@@ -2042,6 +2154,7 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
         labSectionBadge,
         labSectionTitle,
         labSectionSubtitle,
+        heroClassroomBgUrl,
         heroBanners
       } = req.body || {};
 
@@ -2151,6 +2264,7 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
         labSectionBadge: labSectionBadge !== undefined ? String(labSectionBadge) : (db.settings?.labSectionBadge || "INTERACTIVE VIRTUAL LAB & PLAYGROUND"),
         labSectionTitle: labSectionTitle !== undefined ? String(labSectionTitle) : (db.settings?.labSectionTitle || ""),
         labSectionSubtitle: labSectionSubtitle !== undefined ? String(labSectionSubtitle) : (db.settings?.labSectionSubtitle || ""),
+        heroClassroomBgUrl: heroClassroomBgUrl !== undefined ? String(heroClassroomBgUrl) : (db.settings?.heroClassroomBgUrl || ""),
         heroBanners: Array.isArray(heroBanners) ? heroBanners : (db.settings?.heroBanners || [])
       };
 

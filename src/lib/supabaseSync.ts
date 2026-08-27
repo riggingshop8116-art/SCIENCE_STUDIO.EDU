@@ -276,25 +276,147 @@ export async function deleteFromSupabase(table: string, id: string) {
 export async function upsertUserToSupabase(u: any) {
   if (!canAttemptSupabase() || !u || !u.id) return;
   try {
+    const courses = Array.isArray(u.enrolledCourseTitles) 
+      ? u.enrolledCourseTitles 
+      : (Array.isArray(u.enrolled_courses) ? u.enrolled_courses : (u.course ? [u.course] : []));
+
     const payload: any = {
       id: u.id,
       name: u.name || '',
       email: u.email ? u.email.toLowerCase().trim() : '',
       role: u.role || 'student',
-      is_approved: u.isApproved ?? false,
+      is_approved: u.isApproved !== undefined ? Boolean(u.isApproved) : (u.is_approved !== undefined ? Boolean(u.is_approved) : false),
       phone: u.phone || '',
-      enrolled_courses: u.enrolledCourseTitles || [],
-      transaction_id: u.transactionId || '',
-      payment_method: u.paymentMethod || '',
-      sender_phone: u.senderPhone || '',
+      student_class: u.studentClass || u.student_class || '',
+      student_roll: u.studentRoll || u.student_roll || '',
+      photo_url: u.photoUrl || u.avatarUrl || u.photo_url || '',
+      avatar_url: u.avatarUrl || u.photoUrl || u.avatar_url || '',
+      course: u.course || (courses.length > 0 ? courses[0] : ''),
+      enrolled_courses: courses,
+      transaction_id: u.transactionId || u.transaction_id || '',
+      payment_method: u.paymentMethod || u.payment_method || '',
+      sender_phone: u.senderPhone || u.sender_phone || '',
+      payment_amount: Number(u.paymentAmount || u.amount || 0),
       data: u,
+      updated_at: new Date().toISOString()
+    };
+
+    let maxRetries = 12;
+    while (maxRetries > 0 && canAttemptSupabase()) {
+      maxRetries--;
+      const { error } = await supabaseServer.from('app_users').upsert(payload, { onConflict: 'id' });
+      if (!error) {
+        // Also record payment row if transaction ID exists
+        if (payload.transaction_id) {
+          recordPaymentToSupabase({
+            userId: payload.id,
+            userName: payload.name,
+            userEmail: payload.email,
+            userPhone: payload.phone,
+            courseTitle: payload.course || (courses.length > 0 ? courses.join(', ') : ''),
+            transactionId: payload.transaction_id,
+            paymentMethod: payload.payment_method,
+            senderPhone: payload.sender_phone,
+            amount: payload.payment_amount,
+            status: payload.is_approved ? 'approved' : 'pending'
+          }).catch(() => {});
+        }
+        return;
+      }
+      if (isNetworkError(error)) {
+        markSupabaseOffline(error);
+        return;
+      }
+      const missingCol = extractMissingColumn(error.message || '');
+      if (missingCol && missingCol in payload) {
+        delete payload[missingCol];
+      } else {
+        break;
+      }
+    }
+  } catch (e: any) {
+    if (isNetworkError(e)) {
+      markSupabaseOffline(e);
+    }
+  }
+}
+
+/**
+ * Record or update a payment transaction in Supabase
+ */
+export async function recordPaymentToSupabase(p: any) {
+  if (!canAttemptSupabase() || !p) return;
+  try {
+    const paymentId = p.id || `pay_${p.userId || 'usr'}_${(p.transactionId || p.transaction_id || Date.now()).toString().replace(/[^a-zA-Z0-9_]/g, '')}`;
+    const payload: any = {
+      id: paymentId,
+      user_id: p.userId || p.user_id || '',
+      user_name: p.userName || p.user_name || p.name || '',
+      user_email: p.userEmail || p.user_email || p.email || '',
+      user_phone: p.userPhone || p.user_phone || p.phone || '',
+      course_title: p.courseTitle || p.course_title || p.course || '',
+      course_id: p.courseId || p.course_id || '',
+      transaction_id: p.transactionId || p.transaction_id || '',
+      payment_method: p.paymentMethod || p.payment_method || '',
+      sender_phone: p.senderPhone || p.sender_phone || '',
+      amount: Number(p.amount || p.price || 0),
+      status: p.status || 'pending',
+      data: p,
       updated_at: new Date().toISOString()
     };
 
     let maxRetries = 10;
     while (maxRetries > 0 && canAttemptSupabase()) {
       maxRetries--;
-      const { error } = await supabaseServer.from('app_users').upsert(payload, { onConflict: 'id' });
+      const { error } = await supabaseServer.from('app_payments').upsert(payload, { onConflict: 'id' });
+      if (!error) return;
+      if (isNetworkError(error)) {
+        markSupabaseOffline(error);
+        return;
+      }
+      const missingCol = extractMissingColumn(error.message || '');
+      if (missingCol && missingCol in payload) {
+        delete payload[missingCol];
+      } else {
+        break;
+      }
+    }
+  } catch (e: any) {
+    if (isNetworkError(e)) {
+      markSupabaseOffline(e);
+    }
+  }
+}
+
+/**
+ * Targeted real-time upsert for a single hero banner in Supabase
+ */
+export async function upsertHeroBannerToSupabase(b: any) {
+  if (!canAttemptSupabase() || !b || !b.id) return;
+  try {
+    const payload: any = {
+      id: b.id,
+      title: b.title || '',
+      subtitle: b.subtitle || '',
+      badge: b.badge || '',
+      tag: b.tag || '',
+      image: b.image || '',
+      subject: b.subject || '',
+      accent_gradient: b.accentGradient || b.accent_gradient || '',
+      border_glow: b.borderGlow || b.border_glow || '',
+      glow_color: b.glowColor || b.glow_color || '',
+      action_button_text: b.actionButtonText || b.action_button_text || '',
+      action_button_link: b.actionButtonLink || b.action_button_link || '',
+      is_active: b.isActive ?? true,
+      banner_order: Number(b.order ?? 0),
+      data: b,
+      updated_at: new Date().toISOString()
+    };
+
+    let maxRetries = 10;
+    while (maxRetries > 0 && canAttemptSupabase()) {
+      maxRetries--;
+      const { error } = await supabaseServer.from('app_hero_banners').upsert(payload, { onConflict: 'id' });
       if (!error) return;
       if (isNetworkError(error)) {
         markSupabaseOffline(error);
@@ -511,16 +633,66 @@ function getValueForSettingColumn(col: string, s: any, targetRow: any, now: stri
     payment_instructions: s.paymentInstructions || '',
     class_levels: s.classLevels || [],
     course_durations: s.courseDurations || [],
-    default_course_features: s.defaultCourseFeatures || []
+    default_course_features: s.defaultCourseFeatures || [],
+    hero_banners: s.heroBanners || []
   };
 
   if (['config', 'data', 'settings', 'value', 'content', 'payload'].includes(c)) return fullConfig;
 
   if (['academyname', 'academytitle', 'sitename', 'sitetitle', 'title', 'academy'].includes(c)) return s.academyName ?? '';
   if (['announcement', 'announcementtext', 'notice', 'banner'].includes(c)) return s.announcement ?? '';
+  if (['announcementbadge', 'noticebadge'].includes(c)) return s.announcementBadge ?? '';
   if (['herotitle', 'heroheading', 'maintitle', 'heading'].includes(c)) return s.heroTitle ?? '';
   if (['herosubtitle', 'herosub', 'subtitle', 'subheading'].includes(c)) return s.heroSubtitle ?? '';
   if (['herosubenglish', 'herosubeng', 'subeng', 'englishsubtitle'].includes(c)) return s.heroSubEnglish ?? '';
+  if (['herobadgetext', 'herobadge'].includes(c)) return s.heroBadgeText ?? '';
+  if (['herojoinbuttontext', 'joinbuttontext'].includes(c)) return s.heroJoinButtonText ?? '';
+  if (['heroexplorebuttontext', 'explorebuttontext'].includes(c)) return s.heroExploreButtonText ?? '';
+  if (['heroclassroombgurl', 'classroombgurl'].includes(c)) return s.heroClassroomBgUrl ?? '';
+  if (['marqueenotice2', 'notice2'].includes(c)) return s.marqueeNotice2 ?? '';
+  if (['marqueenotice3', 'notice3'].includes(c)) return s.marqueeNotice3 ?? '';
+  if (['marqueenotice4', 'notice4'].includes(c)) return s.marqueeNotice4 ?? '';
+  if (['marqueenotice5', 'notice5'].includes(c)) return s.marqueeNotice5 ?? '';
+  if (['facebookurl', 'facebook', 'fb'].includes(c)) return s.facebookUrl ?? '';
+  if (['youtubeurl', 'youtube', 'yt'].includes(c)) return s.youtubeUrl ?? '';
+  if (['telegramurl', 'telegram', 'tg'].includes(c)) return s.telegramUrl ?? '';
+  if (['whatsappnumber', 'whatsapp', 'wa'].includes(c)) return s.whatsappNumber ?? '';
+  if (['helplinetime', 'helpline'].includes(c)) return s.helplineTime ?? '';
+  if (['orbitsectionbadge'].includes(c)) return s.orbitSectionBadge ?? '';
+  if (['orbitsectiontitle'].includes(c)) return s.orbitSectionTitle ?? '';
+  if (['orbitsectionsubtitle'].includes(c)) return s.orbitSectionSubtitle ?? '';
+  if (['orbitautorotate'].includes(c)) return s.orbitAutoRotate !== undefined ? Boolean(s.orbitAutoRotate) : true;
+  if (['orbitspeedseconds'].includes(c)) return Number(s.orbitSpeedSeconds || 6);
+  if (['insightstotalstudents'].includes(c)) return s.insightsTotalStudents ?? '';
+  if (['insightsactivepercent'].includes(c)) return s.insightsActivePercent ?? '';
+  if (['insightssuccessrate'].includes(c)) return s.insightsSuccessRate ?? '';
+  if (['insightssuccessratelabel'].includes(c)) return s.insightsSuccessRateLabel ?? '';
+  if (['insightstotalcourses'].includes(c)) return s.insightsTotalCourses ?? '';
+  if (['insightstotalnotes'].includes(c)) return s.insightsTotalNotes ?? '';
+  if (['insightsbullet1'].includes(c)) return s.insightsBullet1 ?? '';
+  if (['insightsbullet2'].includes(c)) return s.insightsBullet2 ?? '';
+  if (['insightsbullet3'].includes(c)) return s.insightsBullet3 ?? '';
+  if (['insightsregisterbuttontext'].includes(c)) return s.insightsRegisterButtonText ?? '';
+  if (['pillarssectionbadge'].includes(c)) return s.pillarsSectionBadge ?? '';
+  if (['pillarssectiontitle'].includes(c)) return s.pillarsSectionTitle ?? '';
+  if (['pillarssectionsubtitle'].includes(c)) return s.pillarsSectionSubtitle ?? '';
+  if (['pillar1title'].includes(c)) return s.pillar1Title ?? '';
+  if (['pillar1badge'].includes(c)) return s.pillar1Badge ?? '';
+  if (['pillar1description'].includes(c)) return s.pillar1Description ?? '';
+  if (['pillar2title'].includes(c)) return s.pillar2Title ?? '';
+  if (['pillar2badge'].includes(c)) return s.pillar2Badge ?? '';
+  if (['pillar2description'].includes(c)) return s.pillar2Description ?? '';
+  if (['pillar3title'].includes(c)) return s.pillar3Title ?? '';
+  if (['pillar3badge'].includes(c)) return s.pillar3Badge ?? '';
+  if (['pillar3description'].includes(c)) return s.pillar3Description ?? '';
+  if (['mentorexperience'].includes(c)) return s.mentorExperience ?? '';
+  if (['mentorguidance'].includes(c)) return s.mentorGuidance ?? '';
+  if (['labsectionbadge'].includes(c)) return s.labSectionBadge ?? '';
+  if (['labsectiontitle'].includes(c)) return s.labSectionTitle ?? '';
+  if (['labsectionsubtitle'].includes(c)) return s.labSectionSubtitle ?? '';
+  if (['herobanners', 'banners'].includes(c)) return s.heroBanners || [];
+  if (['academylogourl', 'logourl'].includes(c)) return s.academyLogoUrl || '';
+
   if (['contactphone', 'phone', 'mobile', 'phonenumber', 'mobilenumber', 'contactno', 'contactnum'].includes(c)) return s.contactPhone ?? '';
   if (['contactemail', 'email', 'mail', 'contactmail'].includes(c)) return s.contactEmail ?? '';
   if (['contactaddress', 'address', 'location', 'officeaddress'].includes(c)) return s.contactAddress ?? '';
@@ -573,9 +745,58 @@ async function syncSettingsToTable(table: string, s: any) {
 
       academy_name: s.academyName || '',
       announcement: s.announcement ?? '',
+      announcement_badge: s.announcementBadge ?? '',
       hero_title: s.heroTitle || '',
       hero_subtitle: s.heroSubtitle ?? '',
       hero_sub_english: s.heroSubEnglish ?? '',
+      hero_badge_text: s.heroBadgeText ?? '',
+      hero_join_button_text: s.heroJoinButtonText ?? '',
+      hero_explore_button_text: s.heroExploreButtonText ?? '',
+      hero_classroom_bg_url: s.heroClassroomBgUrl ?? '',
+      marquee_notice_2: s.marqueeNotice2 ?? '',
+      marquee_notice_3: s.marqueeNotice3 ?? '',
+      marquee_notice_4: s.marqueeNotice4 ?? '',
+      marquee_notice_5: s.marqueeNotice5 ?? '',
+      facebook_url: s.facebookUrl ?? '',
+      youtube_url: s.youtubeUrl ?? '',
+      telegram_url: s.telegramUrl ?? '',
+      whatsapp_number: s.whatsappNumber ?? '',
+      helpline_time: s.helplineTime ?? '',
+      orbit_section_badge: s.orbitSectionBadge ?? '',
+      orbit_section_title: s.orbitSectionTitle ?? '',
+      orbit_section_subtitle: s.orbitSectionSubtitle ?? '',
+      orbit_auto_rotate: s.orbitAutoRotate !== undefined ? Boolean(s.orbitAutoRotate) : true,
+      orbit_speed_seconds: Number(s.orbitSpeedSeconds || 6),
+      insights_total_students: s.insightsTotalStudents ?? '',
+      insights_active_percent: s.insightsActivePercent ?? '',
+      insights_success_rate: s.insightsSuccessRate ?? '',
+      insights_success_rate_label: s.insightsSuccessRateLabel ?? '',
+      insights_total_courses: s.insightsTotalCourses ?? '',
+      insights_total_notes: s.insightsTotalNotes ?? '',
+      insights_bullet_1: s.insightsBullet1 ?? '',
+      insights_bullet_2: s.insightsBullet2 ?? '',
+      insights_bullet_3: s.insightsBullet3 ?? '',
+      insights_register_button_text: s.insightsRegisterButtonText ?? '',
+      pillars_section_badge: s.pillarsSectionBadge ?? '',
+      pillars_section_title: s.pillarsSectionTitle ?? '',
+      pillars_section_subtitle: s.pillarsSectionSubtitle ?? '',
+      pillar_1_title: s.pillar1Title ?? '',
+      pillar_1_badge: s.pillar1Badge ?? '',
+      pillar_1_description: s.pillar1Description ?? '',
+      pillar_2_title: s.pillar2Title ?? '',
+      pillar_2_badge: s.pillar2Badge ?? '',
+      pillar_2_description: s.pillar2Description ?? '',
+      pillar_3_title: s.pillar3Title ?? '',
+      pillar_3_badge: s.pillar3Badge ?? '',
+      pillar_3_description: s.pillar3Description ?? '',
+      mentor_experience: s.mentorExperience ?? '',
+      mentor_guidance: s.mentorGuidance ?? '',
+      lab_section_badge: s.labSectionBadge ?? '',
+      lab_section_title: s.labSectionTitle ?? '',
+      lab_section_subtitle: s.labSectionSubtitle ?? '',
+      hero_banners: s.heroBanners || [],
+      academy_logo_url: s.academyLogoUrl || '',
+
       contact_phone: s.contactPhone ?? '',
       contact_email: s.contactEmail ?? '',
       contact_address: s.contactAddress ?? '',
@@ -621,6 +842,12 @@ async function syncSettingsToTable(table: string, s: any) {
       }
 
       if (!res.error) {
+        // Also sync hero banners to app_hero_banners if present
+        if (Array.isArray(s.heroBanners) && s.heroBanners.length > 0) {
+          for (const b of s.heroBanners) {
+            upsertHeroBannerToSupabase(b).catch(() => {});
+          }
+        }
         return;
       }
 
@@ -670,6 +897,22 @@ export async function syncToSupabase(data: any) {
           }
         })()
       );
+
+      // Also sync hero banners if available
+      if (Array.isArray(data.settings.heroBanners) && data.settings.heroBanners.length > 0) {
+        promises.push(
+          (async () => {
+            if (!canAttemptSupabase()) return;
+            try {
+              for (const banner of data.settings.heroBanners) {
+                await upsertHeroBannerToSupabase(banner);
+              }
+            } catch (e: any) {
+              if (isNetworkError(e)) markSupabaseOffline(e);
+            }
+          })()
+        );
+      }
     }
 
     // 2. Sync Users
@@ -680,24 +923,53 @@ export async function syncToSupabase(data: any) {
           try {
             const { error: upsertErr } = await supabaseServer
               .from('app_users')
-              .upsert(data.users.map((u: any) => ({
-                id: u.id,
-                name: u.name || '',
-                email: u.email ? u.email.toLowerCase().trim() : '',
-                role: u.role || 'student',
-                is_approved: u.isApproved ?? false,
-                phone: u.phone || '',
-                enrolled_courses: u.enrolledCourseTitles || [],
-                transaction_id: u.transactionId || '',
-                payment_method: u.paymentMethod || '',
-                sender_phone: u.senderPhone || '',
-                data: u,
-                updated_at: new Date().toISOString()
-              })), { onConflict: 'id' });
+              .upsert(data.users.map((u: any) => {
+                const courses = Array.isArray(u.enrolledCourseTitles) 
+                  ? u.enrolledCourseTitles 
+                  : (Array.isArray(u.enrolled_courses) ? u.enrolled_courses : (u.course ? [u.course] : []));
+                return {
+                  id: u.id,
+                  name: u.name || '',
+                  email: u.email ? u.email.toLowerCase().trim() : '',
+                  role: u.role || 'student',
+                  is_approved: u.isApproved !== undefined ? Boolean(u.isApproved) : (u.is_approved !== undefined ? Boolean(u.is_approved) : false),
+                  phone: u.phone || '',
+                  student_class: u.studentClass || u.student_class || '',
+                  student_roll: u.studentRoll || u.student_roll || '',
+                  photo_url: u.photoUrl || u.avatarUrl || u.photo_url || '',
+                  avatar_url: u.avatarUrl || u.photoUrl || u.avatar_url || '',
+                  course: u.course || (courses.length > 0 ? courses[0] : ''),
+                  enrolled_courses: courses,
+                  transaction_id: u.transactionId || u.transaction_id || '',
+                  payment_method: u.paymentMethod || u.payment_method || '',
+                  sender_phone: u.senderPhone || u.sender_phone || '',
+                  payment_amount: Number(u.paymentAmount || u.amount || 0),
+                  data: u,
+                  updated_at: new Date().toISOString()
+                };
+              }), { onConflict: 'id' });
 
             if (upsertErr && isNetworkError(upsertErr)) {
               markSupabaseOffline(upsertErr);
               return;
+            }
+
+            // Also record payments for any user with transactionId
+            for (const u of data.users) {
+              if (u.transactionId || u.transaction_id) {
+                recordPaymentToSupabase({
+                  userId: u.id,
+                  userName: u.name,
+                  userEmail: u.email,
+                  userPhone: u.phone,
+                  courseTitle: u.course || (Array.isArray(u.enrolledCourseTitles) ? u.enrolledCourseTitles.join(', ') : ''),
+                  transactionId: u.transactionId || u.transaction_id,
+                  paymentMethod: u.paymentMethod || u.payment_method,
+                  senderPhone: u.senderPhone || u.sender_phone,
+                  amount: u.paymentAmount || u.amount,
+                  status: u.isApproved ? 'approved' : 'pending'
+                }).catch(() => {});
+              }
             }
 
             const currentIds = data.users.map((u: any) => u.id).filter(Boolean);
@@ -989,6 +1261,8 @@ export async function loadFromSupabase(defaultData: any) {
         labSectionBadge: getVal(['labSectionBadge', 'lab_section_badge'], defaultData.settings?.labSectionBadge || "INTERACTIVE VIRTUAL LAB & PLAYGROUND"),
         labSectionTitle: getVal(['labSectionTitle', 'lab_section_title'], defaultData.settings?.labSectionTitle || ""),
         labSectionSubtitle: getVal(['labSectionSubtitle', 'lab_section_subtitle'], defaultData.settings?.labSectionSubtitle || "পড়াশোনা হোক আনন্দের ও গবেষণাধর্মী! পদার্থ, রসায়ন, জীববিজ্ঞান ও গণিতের গুরুত্বপূর্ণ টপিকগুলো নিজে পরিবর্তন করে প্র্যাকটিক্যাল জ্ঞান অর্জন করুন।"),
+        heroBanners: getArray(['heroBanners', 'hero_banners', 'banners'], defaultData.settings?.heroBanners || []),
+        academyLogoUrl: getVal(['academyLogoUrl', 'academy_logo_url', 'logoUrl', 'logo_url'], defaultData.settings?.academyLogoUrl || ''),
         subjects: getArray(['subjects', 'subjectList', 'subject_list', 'categories'], defaultData.settings?.subjects || []),
         classLevels: getArray(['classLevels', 'class_levels', 'classes', 'levels'], defaultData.settings?.classLevels || []),
         courseDurations: getArray(['courseDurations', 'course_durations', 'durations'], defaultData.settings?.courseDurations || []),
@@ -1013,6 +1287,36 @@ export async function loadFromSupabase(defaultData: any) {
 
     if (!canAttemptSupabase()) return hasLoadedAny ? loadedData : null;
 
+    // Load Hero Banners from app_hero_banners if table exists
+    try {
+      const { data: bannerRows, error: bannerErr } = await supabaseServer.from('app_hero_banners').select('*').order('banner_order', { ascending: true });
+      if (!bannerErr && Array.isArray(bannerRows) && bannerRows.length > 0) {
+        if (!loadedData.settings) loadedData.settings = {};
+        loadedData.settings.heroBanners = bannerRows.map(b => ({
+          id: b.id,
+          title: b.title,
+          subtitle: b.subtitle,
+          badge: b.badge || '',
+          tag: b.tag || '',
+          image: b.image || '',
+          subject: b.subject || '',
+          accentGradient: b.accent_gradient || b.accentGradient || '',
+          borderGlow: b.border_glow || b.borderGlow || '',
+          glowColor: b.glow_color || b.glowColor || '',
+          actionButtonText: b.action_button_text || b.actionButtonText || '',
+          actionButtonLink: b.action_button_link || b.actionButtonLink || '',
+          isActive: b.is_active ?? true,
+          order: Number(b.banner_order ?? 0),
+          ...(b.data || {})
+        }));
+        hasLoadedAny = true;
+      }
+    } catch (e: any) {
+      if (isNetworkError(e)) markSupabaseOffline(e);
+    }
+
+    if (!canAttemptSupabase()) return hasLoadedAny ? loadedData : null;
+
     // Load Users
     try {
       const { data: usersRows, error: userErr } = await supabaseServer.from('app_users').select('*');
@@ -1023,7 +1327,7 @@ export async function loadFromSupabase(defaultData: any) {
           const nested = (r.data && typeof r.data === 'object') ? r.data : {};
           const enrolledCourses = Array.isArray(r.enrolled_courses) && r.enrolled_courses.length > 0
             ? r.enrolled_courses
-            : (Array.isArray(nested.enrolledCourseTitles) ? nested.enrolledCourseTitles : (Array.isArray(r.enrolledCourseTitles) ? r.enrolledCourseTitles : []));
+            : (Array.isArray(nested.enrolledCourseTitles) ? nested.enrolledCourseTitles : (Array.isArray(r.enrolledCourseTitles) ? r.enrolledCourseTitles : (r.course ? [r.course] : [])));
 
           const isApproved = r.is_approved !== undefined && r.is_approved !== null
             ? Boolean(r.is_approved)
@@ -1038,12 +1342,15 @@ export async function loadFromSupabase(defaultData: any) {
             isApproved,
             phone: r.phone || nested.phone || '',
             studentClass: r.student_class || r.studentClass || nested.studentClass || '',
+            studentRoll: r.student_roll || r.studentRoll || nested.studentRoll || '',
             photoUrl: r.photo_url || r.photoUrl || nested.photoUrl || nested.avatarUrl || '',
-            avatarUrl: r.photo_url || r.photoUrl || nested.avatarUrl || nested.photoUrl || '',
+            avatarUrl: r.avatar_url || r.photo_url || r.photoUrl || nested.avatarUrl || nested.photoUrl || '',
+            course: r.course || nested.course || (enrolledCourses.length > 0 ? enrolledCourses[0] : ''),
             enrolledCourseTitles: enrolledCourses,
             transactionId: r.transaction_id || r.transactionId || nested.transactionId || '',
             paymentMethod: r.payment_method || r.paymentMethod || nested.paymentMethod || '',
             senderPhone: r.sender_phone || r.senderPhone || nested.senderPhone || '',
+            paymentAmount: Number(r.payment_amount || r.paymentAmount || nested.paymentAmount || nested.amount || 0),
             createdAt: r.created_at || nested.createdAt || new Date().toISOString()
           };
         });
