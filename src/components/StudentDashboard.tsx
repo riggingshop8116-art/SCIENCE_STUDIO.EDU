@@ -42,6 +42,7 @@ import {
   Key,
   Filter,
   ArrowDown,
+  ArrowRight,
   Layers,
   HelpCircle
 } from 'lucide-react';
@@ -256,31 +257,55 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
   }, [coursesList, selectedClassFilter]);
 
   // Active enrolled titles for this student
-  const rawEnrolledTitles = (user.enrolledCourseTitles && user.enrolledCourseTitles.length > 0)
-    ? user.enrolledCourseTitles
-    : enrolledCourses;
+  const rawEnrolledTitles = React.useMemo(() => {
+    const list: string[] = [];
+    if (user.enrolledCourseTitles && Array.isArray(user.enrolledCourseTitles)) {
+      user.enrolledCourseTitles.forEach(t => {
+        if (t && typeof t === 'string' && t.trim() && !list.includes(t.trim())) {
+          list.push(t.trim());
+        }
+      });
+    }
+    if (user.course && typeof user.course === 'string' && user.course.trim()) {
+      if (!list.includes(user.course.trim())) {
+        list.push(user.course.trim());
+      }
+    }
+    if (Array.isArray(enrolledCourses)) {
+      enrolledCourses.forEach(c => {
+        if (c && typeof c === 'string' && c.trim() && !list.includes(c.trim())) {
+          list.push(c.trim());
+        }
+      });
+    }
+    return list;
+  }, [user.enrolledCourseTitles, user.course, enrolledCourses]);
 
   // Filter against active courses in coursesList so deleted courses are auto-removed for student
   const userEnrolledTitles = React.useMemo(() => {
-    const activeCourseTitles = coursesList.map(c => c.title);
+    const activeCourseTitles = coursesList.map(c => c.title.trim().toLowerCase());
     return coursesList.length > 0
-      ? rawEnrolledTitles.filter(t => activeCourseTitles.includes(t))
+      ? rawEnrolledTitles.filter(t => activeCourseTitles.includes(t.trim().toLowerCase()))
       : rawEnrolledTitles;
   }, [coursesList, rawEnrolledTitles]);
 
   // Filter courses for dropdown: ONLY show courses that the student is enrolled in!
   const displayDropdownCourses = React.useMemo(() => {
-    return coursesList.filter(c => userEnrolledTitles.includes(c.title));
+    return coursesList.filter(c => 
+      userEnrolledTitles.some(t => t.trim().toLowerCase() === c.title.trim().toLowerCase())
+    );
   }, [coursesList, userEnrolledTitles]);
 
   // Filter video classes and notes: ONLY show content matching student's enrolled course(s) and class level if selected
   const filteredClasses = React.useMemo(() => {
     return classes.filter(cls => {
-      const belongsToEnrolledCourse = !cls.courseTitle || userEnrolledTitles.includes(cls.courseTitle);
+      const belongsToEnrolledCourse = userEnrolledTitles.length === 0 || 
+                                     !cls.courseTitle || 
+                                     userEnrolledTitles.some(t => t.trim().toLowerCase() === cls.courseTitle?.trim().toLowerCase());
       if (!belongsToEnrolledCourse) return false;
 
       if (selectedClassFilter !== 'All') {
-        const parentCourse = coursesList.find(c => c.title === cls.courseTitle);
+        const parentCourse = coursesList.find(c => c.title.trim().toLowerCase() === cls.courseTitle?.trim().toLowerCase());
         if (parentCourse && parentCourse.classLevel && parentCourse.classLevel.trim().toLowerCase() !== selectedClassFilter.trim().toLowerCase()) {
           return false;
         }
@@ -297,11 +322,13 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
 
   const filteredNotes = React.useMemo(() => {
     return notes.filter(note => {
-      const belongsToEnrolledCourse = !note.courseTitle || userEnrolledTitles.includes(note.courseTitle);
+      const belongsToEnrolledCourse = userEnrolledTitles.length === 0 || 
+                                     !note.courseTitle || 
+                                     userEnrolledTitles.some(t => t.trim().toLowerCase() === note.courseTitle?.trim().toLowerCase());
       if (!belongsToEnrolledCourse) return false;
 
       if (selectedClassFilter !== 'All') {
-        const parentCourse = coursesList.find(c => c.title === note.courseTitle);
+        const parentCourse = coursesList.find(c => c.title.trim().toLowerCase() === note.courseTitle?.trim().toLowerCase());
         if (parentCourse && parentCourse.classLevel && parentCourse.classLevel.trim().toLowerCase() !== selectedClassFilter.trim().toLowerCase()) {
           return false;
         }
@@ -497,114 +524,190 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
             </div>
           ) : null}
 
-          {/* Dedicated Unlock Classroom Process Guide Box */}
-          <div className="mb-8 p-6 sm:p-7 rounded-3xl bg-gradient-to-br from-[#061224]/95 via-[#0a1b38]/90 to-[#041021]/95 border-2 border-cyan-500/40 shadow-[0_0_40px_rgba(34,211,238,0.15)] relative overflow-hidden">
-            {/* Ambient glowing orbs */}
-            <div className="absolute -top-24 -right-24 w-72 h-72 bg-cyan-500/15 rounded-full blur-3xl pointer-events-none" />
-            <div className="absolute -bottom-24 -left-24 w-72 h-72 bg-emerald-500/15 rounded-full blur-3xl pointer-events-none" />
+          {/* Dedicated Unlock Classroom: Left Div (Your Classroom is Locked) + Right Div (3-Branch Vertical Line Tree) */}
+          {!user.isApproved && (
+            <div className="mb-8 p-6 sm:p-8 rounded-3xl bg-gradient-to-br from-[#061224]/95 via-[#0a1b38]/90 to-[#041021]/95 border-2 border-amber-500/30 hover:border-cyan-500/40 shadow-[0_0_50px_rgba(245,158,11,0.12)] relative overflow-hidden transition-all">
+              {/* Ambient glowing orbs */}
+              <div className="absolute -top-24 -right-24 w-80 h-80 bg-cyan-500/15 rounded-full blur-3xl pointer-events-none" />
+              <div className="absolute -bottom-24 -left-24 w-80 h-80 bg-amber-500/15 rounded-full blur-3xl pointer-events-none" />
 
-            {/* Header of the Unlock Classroom Box */}
-            <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-white/10 pb-5">
-              <div className="flex items-start sm:items-center gap-3.5">
-                <div className="p-3 rounded-2xl bg-gradient-to-br from-cyan-500/25 via-teal-500/20 to-emerald-500/25 border-2 border-cyan-400/50 text-cyan-300 shadow-[0_0_20px_rgba(34,211,238,0.3)] shrink-0">
-                  <Key className="w-6 h-6 animate-pulse" />
-                </div>
-                <div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h2 className="text-xl sm:text-2xl font-display font-extrabold text-white">
-                      আনলক ক্লাসরুম (Unlock Classroom Access)
-                    </h2>
-                    <span className="text-[11px] font-mono font-bold px-2.5 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-400/40">
-                      সহজ ৩টি ধাপ
-                    </span>
+              <div className="relative z-10 grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-stretch">
+                {/* Left Div: YOUR CLASSROOM IS LOCKED (Centered Large Lock Icon) & Directing Arrow */}
+                <div className="lg:col-span-5 bg-gradient-to-b from-amber-950/40 via-slate-900/90 to-slate-950/90 border-2 border-amber-500/40 rounded-2xl p-6 sm:p-7 flex flex-col justify-between items-center text-center shadow-2xl relative overflow-hidden group">
+                  {/* Glow corner */}
+                  <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/10 rounded-full blur-2xl pointer-events-none" />
+                  
+                  <div className="space-y-4 w-full flex flex-col items-center">
+                    {/* Centered Large Lock Icon with pulse & ping aura */}
+                    <div className="relative mx-auto mb-1">
+                      <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-3xl bg-gradient-to-br from-amber-500/30 via-orange-500/20 to-amber-500/10 border-2 border-amber-400/70 flex items-center justify-center text-amber-300 shadow-[0_0_35px_rgba(245,158,11,0.5)]">
+                        <Lock className="w-10 h-10 sm:w-12 sm:h-12 animate-pulse text-amber-300" />
+                      </div>
+                      <span className="absolute -top-1 -right-1 flex h-4 w-4">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-4 w-4 bg-amber-500"></span>
+                      </span>
+                    </div>
+
+                    <div className="flex flex-col items-center">
+                      <span className="text-[10px] font-mono font-extrabold uppercase px-3 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-400/40 inline-block tracking-wider mb-1.5">
+                        ACCESS RESTRICTED
+                      </span>
+                      <h2 className="text-xl sm:text-2xl font-display font-extrabold text-white leading-tight">
+                        ইউর ক্লাসরুম ইজ লক
+                      </h2>
+                      <p className="text-xs font-mono text-amber-400/90 font-bold mt-0.5">
+                        Your Classroom is Locked
+                      </p>
+                    </div>
+
+                    <p className="text-xs sm:text-sm text-slate-300 leading-relaxed font-sans max-w-sm mx-auto">
+                      প্রিয় শিক্ষার্থী, সায়েন্স স্টুডিওর প্রিমিয়াম ভিডিও লেকচার, এক্সক্লুসিভ রিভিশন পিডিএফ শিট ও লাইভ ক্লাস বর্তমানে লক রয়েছে। ক্লাসরুমের সম্পূর্ণ এক্সেস আনলক করতে অনুগ্রহ করে ডানের ৩টি সহজ ধাপ সম্পন্ন করুন।
+                    </p>
                   </div>
-                  <p className="text-xs sm:text-sm text-slate-300 mt-1">
-                    সায়েন্স কেয়ার ডিজিটাল ক্লাসরুমে সকল চ্যাপ্টার, লাইভ লেকচার ও এক্সক্লুসিভ পিডিএফ হ্যান্ডনোট আনলক করার সহজ নিয়মাবলী:
-                  </p>
-                </div>
-              </div>
 
-              <div className="flex items-center gap-2 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const el = document.getElementById('courses-section');
-                    if (el) el.scrollIntoView({ behavior: 'smooth' });
-                  }}
-                  className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500/20 to-teal-500/20 hover:from-cyan-500/30 hover:to-teal-500/30 text-cyan-300 border border-cyan-400/40 hover:border-cyan-400 font-bold text-xs flex items-center gap-2 transition-all cursor-pointer shadow-md group"
-                >
-                  <span>কোর্সসমূহ দেখুন</span>
-                  <ArrowDown className="w-4 h-4 text-cyan-400 group-hover:translate-y-0.5 transition-transform" />
-                </button>
+                  {/* Dynamic Arrow Indicator Pointing to the Right Steps */}
+                  <div className="pt-6 mt-4 border-t border-white/10 space-y-3 w-full">
+                    <div className="p-3 sm:p-3.5 rounded-xl bg-gradient-to-r from-amber-500/15 via-cyan-500/15 to-emerald-500/15 border border-amber-400/40 flex items-center justify-between gap-2 shadow-inner">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs sm:text-sm font-bold text-amber-200">
+                          👉 গাইডলাইন অনুসরণ করুন:
+                        </span>
+                        <span className="text-xs text-cyan-300 font-bold hidden sm:inline">
+                          ডানের ৩টি ধাপ সম্পন্ন করুন
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1 text-cyan-300 font-mono text-xs font-bold animate-pulse">
+                        <span className="hidden xs:inline">ধাপসমূহ</span>
+                        <ChevronRight className="w-4 h-4 text-cyan-300" />
+                        <ChevronRight className="w-4 h-4 text-cyan-300 -ml-2.5" />
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const el = document.getElementById('courses-section');
+                        if (el) el.scrollIntoView({ behavior: 'smooth' });
+                      }}
+                      className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-amber-400 via-orange-400 to-amber-500 hover:from-amber-300 hover:to-orange-300 text-slate-950 font-display font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(245,158,11,0.3)] transition-all cursor-pointer active:scale-95 group-hover:shadow-[0_0_25px_rgba(245,158,11,0.5)]"
+                    >
+                      <ShoppingBag className="w-4 h-4 text-slate-950" />
+                      <span>কোর্স তালিকা দেখুন ও এনরোল করুন (Step 1)</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Right Div: Vertical Dotted Spine Line connecting directly 1 to 2, and 2 to 3 */}
+                <div className="lg:col-span-7 bg-[#0c162c]/90 border border-cyan-500/30 rounded-2xl p-5 sm:p-7 shadow-xl flex flex-col justify-between">
+                  <div className="flex items-center justify-between border-b border-white/10 pb-4 mb-6">
+                    <div className="flex items-center gap-2.5">
+                      <div className="p-2 rounded-xl bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">
+                        <Key className="w-5 h-5 animate-pulse" />
+                      </div>
+                      <div>
+                        <h3 className="text-base sm:text-lg font-display font-extrabold text-white">
+                          আনলক ক্লাসরুম প্রক্রিয়া (Unlock Classroom)
+                        </h3>
+                        <p className="text-xs text-slate-400">
+                          নিচের ৩টি ধাপ ক্রমানুসারে সম্পন্ন করুন
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Vertical Timeline Tree with Centered Dotted Lines connecting 1 to 2, and 2 to 3 */}
+                  <div className="space-y-4">
+                    {/* Step 1 */}
+                    <div className="relative flex items-start gap-3 sm:gap-4 group">
+                      {/* Node column with centered vertical dotted line connecting 1 to 2 */}
+                      <div className="flex flex-col items-center shrink-0">
+                        {/* Node 1 */}
+                        <div className="relative z-10 w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-[#091326] border-2 border-cyan-400 text-cyan-300 font-mono font-bold text-sm sm:text-base flex items-center justify-center shadow-[0_0_15px_rgba(34,211,238,0.4)] group-hover:scale-105 transition-transform">
+                          ১
+                        </div>
+                        {/* Centered dotted line between 1 and 2 */}
+                        <div className="w-0 h-14 sm:h-12 border-l-2 border-dashed border-cyan-400/60 my-1" />
+                      </div>
+
+                      {/* Step Card 1 */}
+                      <div className="flex-1 p-3.5 sm:p-4 rounded-xl bg-white/[0.04] border border-white/10 hover:border-cyan-400/50 hover:bg-cyan-950/20 transition-all duration-300 space-y-1 shadow-md">
+                        <div className="flex items-center justify-between">
+                          <h4 className="text-sm sm:text-base font-bold text-white group-hover:text-cyan-300 transition-colors">
+                            শাখা ১ : কোর্স নির্বাচন করুন
+                          </h4>
+                          <span className="text-[10px] font-mono uppercase text-cyan-400 font-bold px-2 py-0.5 rounded bg-cyan-500/10 border border-cyan-500/20">
+                            Step 01
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-300 leading-relaxed">
+                          নিচের কোর্স তালিকা থেকে আপনার শ্রেণী ও বিষয় অনুযায়ী কাঙ্ক্ষিত কোর্সটি বেছে নিয়ে <strong>'এনরোল করুন'</strong> বাটনে চাপুন।
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Step 2 */}
+                    <div className="relative flex items-start gap-3 sm:gap-4 group">
+                      {/* Node column with centered vertical dotted line connecting 2 to 3 */}
+                      <div className="flex flex-col items-center shrink-0">
+                        {/* Node 2 */}
+                        <div className="relative z-10 w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-[#091326] border-2 border-pink-400 text-pink-300 font-mono font-bold text-sm sm:text-base flex items-center justify-center shadow-[0_0_15px_rgba(244,114,182,0.4)] group-hover:scale-105 transition-transform">
+                          ২
+                        </div>
+                        {/* Centered dotted line between 2 and 3 */}
+                        <div className="w-0 h-14 sm:h-12 border-l-2 border-dashed border-pink-400/60 my-1" />
+                      </div>
+
+                      {/* Step Card 2 */}
+                      <div className="flex-1 p-3.5 sm:p-4 rounded-xl bg-white/[0.04] border border-white/10 hover:border-pink-400/50 hover:bg-pink-950/20 transition-all duration-300 space-y-1 shadow-md">
+                        <div className="flex items-center justify-between">
+                          <h4 className="text-sm sm:text-base font-bold text-white group-hover:text-pink-300 transition-colors">
+                            শাখা ২ : পেমেন্ট ও TrxID সাবমিট
+                          </h4>
+                          <span className="text-[10px] font-mono uppercase text-pink-400 font-bold px-2 py-0.5 rounded bg-pink-500/10 border border-pink-500/20">
+                            Step 02
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-300 leading-relaxed">
+                          বিকাশ/নগদ/রকেটে কোর্স ফি Send Money করে আপনার প্রেরক নম্বর ও SMS-এ প্রাপ্ত <strong>Transaction ID (TrxID)</strong> সাবমিট করুন।
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Step 3 */}
+                    <div className="relative flex items-start gap-3 sm:gap-4 group">
+                      {/* Node column for Node 3 (Terminal node) */}
+                      <div className="flex flex-col items-center shrink-0">
+                        {/* Node 3 */}
+                        <div className="relative z-10 w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-[#091326] border-2 border-emerald-400 text-emerald-300 font-mono font-bold text-sm sm:text-base flex items-center justify-center shadow-[0_0_15px_rgba(16,185,129,0.4)] group-hover:scale-105 transition-transform">
+                          ৩
+                        </div>
+                      </div>
+
+                      {/* Step Card 3 */}
+                      <div className="flex-1 p-3.5 sm:p-4 rounded-xl bg-white/[0.04] border border-white/10 hover:border-emerald-400/50 hover:bg-emerald-950/20 transition-all duration-300 space-y-1 shadow-md">
+                        <div className="flex items-center justify-between">
+                          <h4 className="text-sm sm:text-base font-bold text-white group-hover:text-emerald-300 transition-colors">
+                            শাখা ৩ : ভেরিফিকেশন ও ক্লাসরুম আনলক
+                          </h4>
+                          <span className="text-[10px] font-mono uppercase text-emerald-400 font-bold px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20">
+                            Step 03
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-300 leading-relaxed">
+                          অ্যাডমিন কর্তৃক আপনার পেমেন্ট ভেরিফাই সম্পন্ন হওয়া মাত্রই আপনার সম্পূর্ণ ক্লাসরুম ও স্টাডি মেটেরিয়াল স্বয়ংক্রিয়ভাবে আনলক হয়ে যাবে!
+                        </p>
+                      </div>
+                    </div>
+
+                  </div>
+                </div>
               </div>
             </div>
+          )}
 
-            {/* 3 Step Visual Cards */}
-            <div className="relative z-10 grid grid-cols-1 md:grid-cols-3 gap-4 pt-6">
-              {/* Step 1 */}
-              <div className="p-4 sm:p-5 rounded-2xl bg-white/[0.04] border border-white/10 hover:border-cyan-400/50 hover:bg-cyan-950/20 transition-all duration-300 space-y-3 group">
-                <div className="flex items-center justify-between">
-                  <span className="w-8 h-8 rounded-xl bg-cyan-500/20 border border-cyan-400/50 text-cyan-300 font-mono font-bold text-sm flex items-center justify-center shadow-sm">
-                    ১
-                  </span>
-                  <span className="text-[10px] font-mono uppercase text-cyan-400 font-semibold px-2 py-0.5 rounded bg-cyan-500/10 border border-cyan-500/20">
-                    Step 01
-                  </span>
-                </div>
-                <div>
-                  <h3 className="text-sm sm:text-base font-bold text-white group-hover:text-cyan-300 transition-colors">
-                    কোর্স নির্বাচন করুন
-                  </h3>
-                  <p className="text-xs text-slate-300 mt-1.5 leading-relaxed">
-                    নিচের কোর্স তালিকা থেকে আপনার শ্রেণী (যেমন: ৬ষ্ঠ-১২শ) ও বিষয় অনুযায়ী কোর্সটি বেছে নিয়ে <strong>'এনরোল করুন'</strong> বাটনে ক্লিক করুন।
-                  </p>
-                </div>
-              </div>
-
-              {/* Step 2 */}
-              <div className="p-4 sm:p-5 rounded-2xl bg-white/[0.04] border border-white/10 hover:border-pink-400/50 hover:bg-pink-950/20 transition-all duration-300 space-y-3 group">
-                <div className="flex items-center justify-between">
-                  <span className="w-8 h-8 rounded-xl bg-pink-500/20 border border-pink-400/50 text-pink-300 font-mono font-bold text-sm flex items-center justify-center shadow-sm">
-                    ২
-                  </span>
-                  <span className="text-[10px] font-mono uppercase text-pink-400 font-semibold px-2 py-0.5 rounded bg-pink-500/10 border border-pink-500/20">
-                    Step 02
-                  </span>
-                </div>
-                <div>
-                  <h3 className="text-sm sm:text-base font-bold text-white group-hover:text-pink-300 transition-colors">
-                    পেমেন্ট ও TrxID সাবমিট
-                  </h3>
-                  <p className="text-xs text-slate-300 mt-1.5 leading-relaxed">
-                    বিকাশ, নগদ বা রকেটে কোর্স ফি Send Money করে আপনার প্রেরক নম্বর ও SMS-এ প্রাপ্ত <strong>Transaction ID (TrxID)</strong> সাবমিট করুন।
-                  </p>
-                </div>
-              </div>
-
-              {/* Step 3 */}
-              <div className="p-4 sm:p-5 rounded-2xl bg-white/[0.04] border border-white/10 hover:border-emerald-400/50 hover:bg-emerald-950/20 transition-all duration-300 space-y-3 group">
-                <div className="flex items-center justify-between">
-                  <span className="w-8 h-8 rounded-xl bg-emerald-500/20 border border-emerald-400/50 text-emerald-300 font-mono font-bold text-sm flex items-center justify-center shadow-sm">
-                    ৩
-                  </span>
-                  <span className="text-[10px] font-mono uppercase text-emerald-400 font-semibold px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20">
-                    Step 03
-                  </span>
-                </div>
-                <div>
-                  <h3 className="text-sm sm:text-base font-bold text-white group-hover:text-emerald-300 transition-colors">
-                    ভেরিফিকেশন ও ক্লাসরুম আনলক
-                  </h3>
-                  <p className="text-xs text-slate-300 mt-1.5 leading-relaxed">
-                    অ্যাডমিন আপনার পেমেন্ট ট্রানজেকশন যাচাই করে অনুমোদন দিলেই স্বয়ংক্রিয়ভাবে পূর্ণ ক্লাসরুম ও সকল স্টাডি মেটেরিয়াল আনলক হয়ে যাবে!
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Published Courses Section (কোর্সসমূহ) */}
-          {coursesList.length > 0 && (
+          {/* Published Courses Section (কোর্সসমূহ) - Only shown for unapproved students to enroll */}
+          {!user.isApproved && coursesList.length > 0 && (
             <div id="courses-section" className="mb-10 p-6 sm:p-7 rounded-3xl bg-[#081224]/80 backdrop-blur-xl border border-cyan-500/20 shadow-2xl space-y-6 scroll-mt-6">
               <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 border-b border-white/10 pb-5">
                 <div className="flex items-center gap-3.5">
@@ -804,59 +907,62 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
             </div>
           )}
 
-          {/* Control Panel: Search & Subject/Course Filters */}
-          <div className="bg-white/5 backdrop-blur-md rounded-xl border border-white/10 p-4 mb-8 space-y-3">
-            <div className="flex flex-col lg:flex-row gap-4 items-center justify-between">
-              {/* Search bar */}
-              <div className="relative w-full lg:w-80">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-slate-400" />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="সার্চ করুন (যেমন: Quantum, Carbon)..."
-                  className="w-full pl-10 pr-4 py-2 rounded-lg bg-white/5 border border-white/10 focus:border-cyan-400 text-slate-200 text-sm outline-none transition-colors"
-                />
-              </div>
-
-              {/* Course Display */}
-              <div className="flex items-center gap-3 w-full sm:w-auto shrink-0 flex-wrap">
-                {displayDropdownCourses.length > 0 && (
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-xs text-slate-300 font-mono flex items-center gap-1">
-                      <BookOpen className="w-3.5 h-3.5 text-emerald-400" />
-                      এনরোলকৃত কোর্স:
-                    </span>
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      {displayDropdownCourses.map(c => (
-                        <span key={c.id} className="px-3 py-1 rounded-lg bg-emerald-500/15 border border-emerald-500/35 text-emerald-300 text-xs font-bold font-sans flex items-center gap-1.5 shadow-sm">
-                          <span>📚</span>
-                          <span>{c.title}</span>
-                        </span>
-                      ))}
-                    </div>
+          {/* When user is approved: show Control Panel & Main Video Player Grid */}
+          {user.isApproved && (
+            <>
+              {/* Control Panel: Search & Subject/Course Filters */}
+              <div className="bg-white/5 backdrop-blur-md rounded-xl border border-white/10 p-4 mb-8 space-y-3">
+                <div className="flex flex-col lg:flex-row gap-4 items-center justify-between">
+                  {/* Search bar */}
+                  <div className="relative w-full lg:w-80">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-slate-400" />
+                    <input
+                      type="text"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      placeholder="সার্চ করুন (যেমন: Quantum, Carbon)..."
+                      className="w-full pl-10 pr-4 py-2 rounded-lg bg-white/5 border border-white/10 focus:border-cyan-400 text-slate-200 text-sm outline-none transition-colors"
+                    />
                   </div>
-                )}
-              </div>
 
-              {/* Subject Pills */}
-              <div className="flex flex-wrap gap-2 w-full lg:w-auto justify-start lg:justify-end overflow-x-auto pb-1 lg:pb-0">
-                {subjects.map(subj => (
-                  <button
-                    key={subj}
-                    onClick={() => setSelectedSubject(subj)}
-                    className={`px-3.5 py-1.5 rounded-full text-xs font-medium transition-all cursor-pointer ${
-                      selectedSubject === subj
-                        ? 'bg-cyan-500 text-slate-950 font-semibold shadow-[0_0_10px_rgba(34,211,238,0.4)]'
-                        : 'bg-white/5 text-slate-300 border border-white/10 hover:text-white hover:border-cyan-500/20'
-                    }`}
-                  >
-                    {subj === 'All' ? 'সব বিষয়' : subj}
-                  </button>
-                ))}
+                  {/* Course Display */}
+                  <div className="flex items-center gap-3 w-full sm:w-auto shrink-0 flex-wrap">
+                    {displayDropdownCourses.length > 0 && (
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs text-slate-300 font-mono flex items-center gap-1">
+                          <BookOpen className="w-3.5 h-3.5 text-emerald-400" />
+                          এনরোলকৃত কোর্স:
+                        </span>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          {displayDropdownCourses.map(c => (
+                            <span key={c.id} className="px-3 py-1 rounded-lg bg-emerald-500/15 border border-emerald-500/35 text-emerald-300 text-xs font-bold font-sans flex items-center gap-1.5 shadow-sm">
+                              <span>📚</span>
+                              <span>{c.title}</span>
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Subject Pills */}
+                  <div className="flex flex-wrap gap-2 w-full lg:w-auto justify-start lg:justify-end overflow-x-auto pb-1 lg:pb-0">
+                    {subjects.map(subj => (
+                      <button
+                        key={subj}
+                        onClick={() => setSelectedSubject(subj)}
+                        className={`px-3.5 py-1.5 rounded-full text-xs font-medium transition-all cursor-pointer ${
+                          selectedSubject === subj
+                            ? 'bg-cyan-500 text-slate-950 font-semibold shadow-[0_0_10px_rgba(34,211,238,0.4)]'
+                            : 'bg-white/5 text-slate-300 border border-white/10 hover:text-white hover:border-cyan-500/20'
+                        }`}
+                      >
+                        {subj === 'All' ? 'সব বিষয়' : subj}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
 
       {/* Main Grid: Interactive Video Player (with Horizontal PDFs below) & Video Master List (Large Banners on Right) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 mb-12 items-start">
@@ -1124,17 +1230,19 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
                 <button
                   type="button"
                   onClick={() => scrollNotes('left')}
-                  className="p-2 rounded-xl bg-white/5 hover:bg-cyan-500/20 border border-white/10 hover:border-cyan-400/50 text-slate-300 hover:text-cyan-300 transition-all cursor-pointer shadow-sm active:scale-95"
+                  className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-cyan-500/20 border border-white/10 hover:border-cyan-400/50 text-slate-300 hover:text-cyan-300 transition-all cursor-pointer shadow-sm active:scale-95 flex items-center gap-1 text-xs font-semibold"
                   title="বাম দিকে স্ক্রল করুন"
                 >
                   <ChevronLeft className="w-4 h-4" />
+                  <span>পূর্বে</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => scrollNotes('right')}
-                  className="p-2 rounded-xl bg-white/5 hover:bg-cyan-500/20 border border-white/10 hover:border-cyan-400/50 text-slate-300 hover:text-cyan-300 transition-all cursor-pointer shadow-sm active:scale-95"
+                  className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-cyan-500/20 border border-white/10 hover:border-cyan-400/50 text-slate-300 hover:text-cyan-300 transition-all cursor-pointer shadow-sm active:scale-95 flex items-center gap-1 text-xs font-semibold"
                   title="ডান দিকে স্ক্রল করুন"
                 >
+                  <span>পরবর্তী</span>
                   <ChevronRight className="w-4 h-4" />
                 </button>
               </div>
@@ -1217,29 +1325,57 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
         </div>
 
         {/* Right Column (4 of 12 cols on Desktop): UPLOADED CLASSES PLAYLIST WITH LARGE BANNERS (Top to Bottom) */}
-        <div className="lg:col-span-5 xl:col-span-4 space-y-4">
+        <div className="lg:col-span-5 xl:col-span-4 space-y-4 lg:sticky lg:top-20">
           
           {/* Playlist Header */}
-          <div className="p-4 rounded-2xl bg-white/5 border border-white/10 shadow-lg flex items-center justify-between gap-2">
-            <div>
-              <h3 className="font-display font-bold text-base sm:text-lg text-white flex items-center gap-2">
-                <span className="w-1.5 h-5 bg-cyan-400 rounded-full" />
-                আপলোড করা সকল ক্লাস ({filteredClasses.length})
-              </h3>
-              <p className="text-slate-400 text-[11px] mt-0.5 font-sans">
-                উপরে থেকে নিচে ক্রমানুসারে সাজানো (Class Playlist)
-              </p>
+          <div className="px-4.5 py-4 rounded-2xl bg-[#091326]/90 backdrop-blur-md border border-cyan-500/25 shadow-lg flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-cyan-500/15 border border-cyan-400/30 flex items-center justify-center text-cyan-400 shrink-0">
+                <Video className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-display font-bold text-sm sm:text-base text-white flex items-center gap-1.5">
+                  আপলোডকৃত ক্লাস তালিকা
+                </h3>
+                <p className="text-slate-400 text-[11px] font-sans">
+                  উপরে থেকে নিচে স্ক্রল করে ক্লাস নির্বাচন করুন
+                </p>
+              </div>
             </div>
-            <span className="px-2.5 py-1 rounded-lg bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 text-xs font-mono font-bold shrink-0">
+            <span className="px-3 py-1 rounded-full bg-cyan-500/15 text-cyan-300 border border-cyan-400/30 text-xs font-mono font-bold shrink-0 shadow-sm">
               {filteredClasses.length} Classes
             </span>
           </div>
 
-          {/* Top-to-Bottom Playlist with Large Banners */}
-          <div className="space-y-4 max-h-[920px] overflow-y-auto pr-1.5 custom-scrollbar">
+          {/* Top-to-Bottom Playlist with Large Banners and Dedicated Scroll Container */}
+          <div className="space-y-4 max-h-[640px] lg:max-h-[calc(100vh-190px)] overflow-y-auto pr-2 custom-scrollbar overscroll-contain rounded-2xl">
             {filteredClasses.length > 0 ? (
               filteredClasses.map((cls, idx) => {
                 const isActive = activeVideo?.id === cls.id;
+                
+                // Get the best banner URL: explicit cover banner -> youtube thumbnail -> parent course image -> gradient graphic
+                let bannerUrl = cls.thumbnailUrl?.trim() || '';
+                if (!bannerUrl && cls.videoUrl) {
+                  let ytId = '';
+                  if (cls.videoUrl.includes('youtube.com/watch')) {
+                    const match = cls.videoUrl.match(/[?&]v=([^&#]+)/);
+                    if (match && match[1]) ytId = match[1];
+                  } else if (cls.videoUrl.includes('youtu.be/')) {
+                    ytId = cls.videoUrl.split('youtu.be/')[1]?.split('?')[0]?.split('&')[0]?.split('#')[0] || '';
+                  } else if (cls.videoUrl.includes('youtube.com/embed/')) {
+                    ytId = cls.videoUrl.split('embed/')[1]?.split('?')[0]?.split('&')[0]?.split('#')[0] || '';
+                  }
+                  if (ytId) {
+                    bannerUrl = `https://img.youtube.com/vi/${ytId}/hqdefault.jpg`;
+                  }
+                }
+                if (!bannerUrl && cls.courseTitle) {
+                  const parentCourse = coursesList.find(c => c.title.trim().toLowerCase() === cls.courseTitle?.trim().toLowerCase());
+                  if (parentCourse?.imageUrl) {
+                    bannerUrl = parentCourse.imageUrl;
+                  }
+                }
+
                 return (
                   <div
                     key={cls.id}
@@ -1251,18 +1387,19 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
                         document.getElementById('active-video-player-container')?.scrollIntoView({ behavior: 'smooth' });
                       }
                     }}
-                    className={`rounded-2xl border transition-all duration-300 cursor-pointer overflow-hidden group ${
+                    className={`rounded-2xl border transition-all duration-300 cursor-pointer overflow-hidden group relative ${
                       isActive
-                        ? 'bg-gradient-to-br from-cyan-950/60 via-slate-900/90 to-slate-950 border-cyan-400 shadow-[0_0_25px_rgba(34,211,238,0.25)] ring-1 ring-cyan-400/60 scale-[1.01]'
-                        : 'bg-slate-900/80 hover:bg-slate-800/90 border-white/10 hover:border-cyan-500/40 hover:shadow-[0_0_20px_rgba(34,211,238,0.15)]'
+                        ? 'bg-gradient-to-br from-[#0c223d] via-[#09172c] to-[#061020] border-cyan-400 shadow-[0_0_25px_rgba(6,182,212,0.3)] ring-1 ring-cyan-400/70 scale-[1.01]'
+                        : 'bg-[#091326]/90 hover:bg-[#0d1d36]/90 border-white/10 hover:border-cyan-500/40 hover:shadow-[0_0_20px_rgba(6,182,212,0.15)]'
                     }`}
                   >
                     {/* 1. Large 16:9 Banner Image Header */}
-                    <div className="w-full aspect-video sm:h-44 rounded-t-2xl relative overflow-hidden bg-slate-950 border-b border-white/10 select-none">
-                      {cls.thumbnailUrl ? (
+                    <div className="w-full aspect-[16/9] relative overflow-hidden bg-slate-950 border-b border-white/10 select-none">
+                      {bannerUrl ? (
                         <img 
-                          src={cls.thumbnailUrl} 
+                          src={bannerUrl} 
                           alt={cls.title} 
+                          referrerPolicy="no-referrer"
                           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
                         />
                       ) : (
@@ -1278,24 +1415,24 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
                       {/* Top Overlay Badges */}
                       <div className="absolute top-2.5 left-2.5 right-2.5 flex items-center justify-between gap-1.5 pointer-events-none z-10">
                         <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="text-[10px] font-mono font-bold uppercase bg-slate-950/80 backdrop-blur-md text-cyan-300 border border-cyan-400/40 px-2 py-0.5 rounded-lg shadow-sm">
+                          <span className="text-[10px] font-mono font-bold uppercase bg-slate-950/85 backdrop-blur-md text-cyan-300 border border-cyan-400/40 px-2.5 py-0.5 rounded-lg shadow-sm">
                             {cls.subject}
                           </span>
                           {cls.courseTitle && (
-                            <span className="text-[10px] font-mono font-semibold bg-purple-950/85 backdrop-blur-md text-purple-300 border border-purple-400/40 px-2 py-0.5 rounded-lg truncate max-w-[150px] shadow-sm">
+                            <span className="text-[10px] font-mono font-semibold bg-purple-950/85 backdrop-blur-md text-purple-300 border border-purple-400/40 px-2.5 py-0.5 rounded-lg truncate max-w-[150px] shadow-sm">
                               📚 {cls.courseTitle}
                             </span>
                           )}
                         </div>
 
-                        {/* Bookmark Button (Allows click) */}
+                        {/* Bookmark Button */}
                         <button
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
                             toggleBookmark(cls.id);
                           }}
-                          className="pointer-events-auto p-1.5 rounded-lg bg-slate-950/80 backdrop-blur-md border border-white/15 text-slate-300 hover:text-cyan-300 transition-colors shadow cursor-pointer"
+                          className="pointer-events-auto p-1.5 rounded-lg bg-slate-950/85 backdrop-blur-md border border-white/15 text-slate-300 hover:text-cyan-300 hover:border-cyan-400/50 transition-all shadow cursor-pointer active:scale-95"
                           title="বুকমার্ক করুন"
                         >
                           <Bookmark className={`w-3.5 h-3.5 ${bookmarkedIds.includes(cls.id) ? 'fill-cyan-400 text-cyan-400' : ''}`} />
@@ -1303,14 +1440,14 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
                       </div>
 
                       {/* Center Play Overlay / Now Playing Status Indicator */}
-                      <div className="absolute inset-0 bg-slate-950/40 group-hover:bg-slate-950/20 transition-all flex items-center justify-center">
+                      <div className="absolute inset-0 bg-slate-950/35 group-hover:bg-slate-950/15 transition-all flex items-center justify-center">
                         {isActive ? (
                           <div className="px-3.5 py-1.5 rounded-full bg-cyan-500 text-slate-950 font-bold text-xs flex items-center gap-2 shadow-[0_0_20px_rgba(6,182,212,0.8)] border border-cyan-300 animate-pulse">
                             <span className="w-2 h-2 rounded-full bg-slate-950 animate-ping" />
                             <span>▶ চলমান ক্লাস (Playing)</span>
                           </div>
                         ) : (
-                          <div className="w-12 h-12 rounded-full bg-slate-950/80 backdrop-blur-md border border-white/30 text-white flex items-center justify-center shadow-xl group-hover:scale-110 group-hover:bg-cyan-500 group-hover:text-slate-950 group-hover:border-cyan-300 transition-all">
+                          <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-slate-950/85 backdrop-blur-md border border-white/30 text-white flex items-center justify-center shadow-xl group-hover:scale-110 group-hover:bg-cyan-500 group-hover:text-slate-950 group-hover:border-cyan-300 transition-all">
                             <Play className="w-5 h-5 ml-0.5 fill-current" />
                           </div>
                         )}
@@ -1318,7 +1455,7 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
 
                       {/* Bottom Banner Info Bar */}
                       <div className="absolute bottom-2 left-2.5 right-2.5 flex items-center justify-between text-[10px] font-mono text-slate-200 bg-slate-950/85 backdrop-blur-md px-2.5 py-1 rounded-lg border border-white/10">
-                        <span className="flex items-center gap-1">
+                        <span className="flex items-center gap-1 text-slate-300">
                           <Clock className="w-3 h-3 text-cyan-400" />
                           {new Date(cls.createdAt).toLocaleDateString()}
                         </span>
@@ -1326,9 +1463,9 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
                       </div>
                     </div>
 
-                    {/* 2. Card Content Body */}
-                    <div className="p-4 space-y-2.5">
-                      <h4 className={`font-display font-bold text-sm sm:text-base line-clamp-2 leading-snug transition-colors ${
+                    {/* 2. Card Content Body with Professional Spacing & Padding */}
+                    <div className="p-4 sm:p-4.5 space-y-2.5">
+                      <h4 className={`font-display font-bold text-sm sm:text-[15px] line-clamp-2 leading-snug transition-colors ${
                         isActive ? 'text-cyan-300' : 'text-white group-hover:text-cyan-300'
                       }`}>
                         {cls.title}
@@ -1341,14 +1478,14 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
                       )}
 
                       {/* Action & Status Row */}
-                      <div className="flex items-center justify-between pt-2.5 border-t border-white/10 text-xs">
-                        <span className={`font-semibold flex items-center gap-1 text-[11px] ${
+                      <div className="flex items-center justify-between pt-3 border-t border-white/10 text-xs">
+                        <span className={`font-medium flex items-center gap-1.5 text-[11px] ${
                           isActive ? 'text-cyan-400 font-bold' : 'text-slate-400'
                         }`}>
                           {isActive ? '✓ বর্তমানে চলছে' : 'প্লে করতে ক্লিক করুন'}
                         </span>
                         
-                        <div className={`px-3 py-1 rounded-lg text-xs font-bold flex items-center gap-1 transition-all ${
+                        <div className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all ${
                           isActive 
                             ? 'bg-cyan-500 text-slate-950 shadow-[0_0_12px_rgba(6,182,212,0.5)]'
                             : 'bg-white/5 group-hover:bg-cyan-500/20 text-cyan-400 border border-white/10 group-hover:border-cyan-400/50'
@@ -1371,6 +1508,8 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
         </div>
 
       </div>
+    </>
+  )}
 
       {/* PDF Viewer Simulation Modal Modal */}
       {activeNote && (

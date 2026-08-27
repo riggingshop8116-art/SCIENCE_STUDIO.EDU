@@ -206,8 +206,9 @@ CREATE POLICY "Public storage delete objects" ON storage.objects FOR DELETE USIN
 -- Seed Users Data
 INSERT INTO public.app_users (id, name, email, role, is_approved, phone, student_class, photo_url, enrolled_courses, transaction_id, payment_method, sender_phone, data)
 VALUES 
+  ('usr_super_admin', 'সাকিব হাসান (Super Admin)', 'mdshakibhossen2050@gmail.com', 'admin', true, '01700000000', 'Founder & Faculty', '', '[]'::jsonb, '', '', '', '{"id": "usr_super_admin", "name": "সাকিব হাসান (Super Admin)", "role": "admin", "email": "mdshakibhossen2050@gmail.com", "password": "SHAKIB@2050#", "isApproved": true, "createdAt": "2026-07-22T01:24:32.407Z"}'::jsonb),
   ('usr_admin', 'Dr. Sayeed Rahman', 'admin@sciencestudio.com', 'admin', true, '01700000000', 'Faculty', '', '[]'::jsonb, '', '', '', '{"id": "usr_admin", "name": "Dr. Sayeed Rahman", "role": "admin", "email": "admin@sciencestudio.com", "password": "admin123", "isApproved": true, "createdAt": "2026-07-22T01:24:32.407Z"}'::jsonb),
-  ('usr_student', 'Afridi Hasan', 'student@sciencestudio.com', 'student', true, '01800000000', 'HSC 1st Year', '', '["পদার্থবিজ্ঞান ১ম পত্র - ভেক্টর ও বলবিদ্যা Masterclass"]'::jsonb, '', '', '', '{"id": "usr_student", "name": "Afridi Hasan", "role": "student", "email": "student@sciencestudio.com", "password": "student123", "isApproved": true, "studentClass": "HSC 1st Year", "createdAt": "2026-07-22T01:24:32.407Z"}'::jsonb)
+  ('usr_student', 'Afridi Hasan', 'student@sciencestudio.com', 'student', true, '01800000000', 'HSC 1st Year', '', '["পদার্থবিজ্ঞান ১ম পত্র: স্পেশাল মাস্টারব্যাচ ২০২৬"]'::jsonb, '', '', '', '{"id": "usr_student", "name": "Afridi Hasan", "role": "student", "email": "student@sciencestudio.com", "password": "student123", "isApproved": true, "studentClass": "HSC 1st Year", "createdAt": "2026-07-22T01:24:32.407Z"}'::jsonb)
 ON CONFLICT (id) DO UPDATE SET
   name = EXCLUDED.name,
   email = EXCLUDED.email,
