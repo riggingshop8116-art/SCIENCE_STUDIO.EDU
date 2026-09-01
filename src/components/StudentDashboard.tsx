@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Class, Note, User, Settings, Course } from '../types';
 import { downloadPdfFile, openPdfInBrowser } from '../utils/pdfHelper';
-import { formatVideoEmbedUrl, isIframeVideoUrl } from '../utils/videoHelper';
+import { formatVideoEmbedUrl, isIframeVideoUrl, getVideoBannerUrl, getDefaultSubjectBanner } from '../utils/videoHelper';
 import StudentProfileModal from './StudentProfileModal';
 import PendingApprovalView from './PendingApprovalView';
 import { 
@@ -173,11 +173,7 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${tokenStr}`,
-            'x-auth-token': tokenStr,
-            'x-user-id': user?.id || '',
-            'x-user-email': user?.email || '',
-            'x-user-role': user?.role || 'student'
+            'Authorization': `Bearer ${tokenStr}`
           },
           body: JSON.stringify({ 
             courseTitle,
@@ -230,34 +226,93 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
   const [selectedCourseFilter, setSelectedCourseFilter] = useState('All');
   const [selectedClassFilter, setSelectedClassFilter] = useState('All');
 
+  // Helper to match a course with a class filter
+  const isCourseMatchingClass = (course: any, filterValue: string): boolean => {
+    if (!filterValue || filterValue === 'All') return true;
+    const filterKey = filterValue.trim().toLowerCase();
+    const courseClass = ((course.classLevel || course.batch || '') as string).trim().toLowerCase();
+    const courseTitle = ((course.title || '') as string).trim().toLowerCase();
+
+    // Direct match or substring containment
+    if (courseClass) {
+      if (courseClass === filterKey || courseClass.includes(filterKey) || filterKey.includes(courseClass)) {
+        return true;
+      }
+    }
+
+    // Semantic checks for HSC
+    if (filterKey.includes('hsc') || filterKey.includes('এইচএসসি')) {
+      if (courseClass.includes('hsc') || courseClass.includes('এইচএসসি') || courseTitle.includes('hsc') || courseTitle.includes('এইচএসসি') || courseTitle.includes('2026') || courseTitle.includes('2025')) {
+        return true;
+      }
+    }
+
+    // Semantic checks for Class 9 / SSC
+    if (filterKey.includes('9') || filterKey.includes('৯') || filterKey.includes('ssc') || filterKey.includes('এসএসসি')) {
+      if (courseClass.includes('9') || courseClass.includes('৯') || courseClass.includes('ssc') || courseTitle.includes('class 9') || courseTitle.includes('৯ম') || courseTitle.includes('ssc')) {
+        return true;
+      }
+    }
+
+    // Semantic checks for Class 10
+    if (filterKey.includes('10') || filterKey.includes('১০')) {
+      if (courseClass.includes('10') || courseClass.includes('১০') || courseClass.includes('ssc') || courseTitle.includes('class 10') || courseTitle.includes('১০ম')) {
+        return true;
+      }
+    }
+
+    // Semantic checks for Admission
+    if (filterKey.includes('admission') || filterKey.includes('ভর্তি') || filterKey.includes('মেডিকেল') || filterKey.includes('বুয়েট')) {
+      if (courseClass.includes('admission') || courseTitle.includes('admission') || courseTitle.includes('ভর্তি') || courseTitle.includes('medical') || courseTitle.includes('buet')) {
+        return true;
+      }
+    }
+
+    return false;
+  };
+
   // Dynamically extract unique class levels from settings and published courses
   const classOptions = React.useMemo(() => {
-    const setOfClasses = new Set<string>();
+    const setOfClasses = new Map<string, string>(); // lowercase key -> display label
+
+    // Defaults
+    const defaultClasses = ['HSC', 'Class 9', 'Class 10', 'Class 9-10 (SSC)', 'Admission Test'];
+    defaultClasses.forEach(cl => {
+      setOfClasses.set(cl.toLowerCase(), cl);
+    });
 
     // 1. Include class levels configured in admin settings
     if (settings?.classLevels && Array.isArray(settings.classLevels)) {
       settings.classLevels.forEach(cl => {
-        if (cl && cl.trim()) setOfClasses.add(cl.trim());
+        if (cl && typeof cl === 'string' && cl.trim()) {
+          const trimmed = cl.trim();
+          const key = trimmed.toLowerCase();
+          if (!setOfClasses.has(key)) {
+            setOfClasses.set(key, trimmed);
+          }
+        }
       });
     }
 
     // 2. Include class levels present in published courses list
     coursesList.forEach(course => {
-      if (course.classLevel && course.classLevel.trim()) {
-        setOfClasses.add(course.classLevel.trim());
+      const cClass = course.classLevel || (course as any).batch;
+      if (cClass && typeof cClass === 'string' && cClass.trim()) {
+        const trimmed = cClass.trim();
+        const key = trimmed.toLowerCase();
+        if (!setOfClasses.has(key)) {
+          setOfClasses.set(key, trimmed);
+        }
       }
     });
 
-    return Array.from(setOfClasses);
+    return Array.from(setOfClasses.values());
   }, [settings?.classLevels, coursesList]);
 
   // Filter published courses based on selected class filter dropdown
   const displayCoursesList = React.useMemo(() => {
     if (selectedClassFilter === 'All') return coursesList;
-    return coursesList.filter(course => {
-      if (!course.classLevel) return false;
-      return course.classLevel.trim().toLowerCase() === selectedClassFilter.trim().toLowerCase();
-    });
+    return coursesList.filter(course => isCourseMatchingClass(course, selectedClassFilter));
   }, [coursesList, selectedClassFilter]);
 
   // Active enrolled titles for this student
@@ -750,7 +805,7 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
                             সকল শ্রেণী ({coursesList.length} টি কোর্স)
                           </option>
                           {classOptions.map(clsName => {
-                            const count = coursesList.filter(c => c.classLevel?.trim().toLowerCase() === clsName.trim().toLowerCase()).length;
+                            const count = coursesList.filter(c => isCourseMatchingClass(c, clsName)).length;
                             return (
                               <option key={clsName} value={clsName} className="bg-slate-900 text-white">
                                 {clsName} ({count} টি কোর্স)
@@ -804,36 +859,38 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
                       >
                         {/* Top Badges & Image */}
                         <div className="space-y-3.5">
-                          {course.imageUrl ? (
-                            <div className="w-full h-36 rounded-xl overflow-hidden border border-white/10 relative group-hover:border-cyan-400/40 transition-colors bg-slate-950">
-                              <img
-                                src={course.imageUrl}
-                                alt={course.title}
-                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                              />
-                              <div className="absolute top-2 right-2 flex flex-col gap-1 items-end">
-                                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-slate-950/80 text-cyan-300 border border-cyan-400/40 backdrop-blur-md">
-                                  {course.subject}
-                                </span>
-                                {course.classLevel && (
-                                  <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-purple-950/80 text-purple-300 border border-purple-400/40 backdrop-blur-md">
-                                    {course.classLevel}
+                          {(() => {
+                            const bannerSrc = (course.imageUrl && course.imageUrl.trim()) 
+                              ? course.imageUrl 
+                              : getDefaultSubjectBanner(course.subject);
+
+                            return (
+                              <div className="w-full h-36 rounded-xl overflow-hidden border border-white/10 relative group-hover:border-cyan-400/40 transition-colors bg-slate-950">
+                                <img
+                                  src={bannerSrc}
+                                  alt={course.title}
+                                  onError={(e) => {
+                                    const target = e.currentTarget as HTMLImageElement;
+                                    const fallback = getDefaultSubjectBanner(course.subject);
+                                    if (target.src !== fallback) {
+                                      target.src = fallback;
+                                    }
+                                  }}
+                                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                                />
+                                <div className="absolute top-2 right-2 flex flex-col gap-1 items-end z-10">
+                                  <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-slate-950/85 text-cyan-300 border border-cyan-400/40 backdrop-blur-md">
+                                    {course.subject}
                                   </span>
-                                )}
+                                  {course.classLevel && (
+                                    <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-purple-950/85 text-purple-300 border border-purple-400/40 backdrop-blur-md">
+                                      {course.classLevel}
+                                    </span>
+                                  )}
+                                </div>
                               </div>
-                            </div>
-                          ) : (
-                            <div className="flex items-center justify-between gap-2">
-                              <span className="text-[10px] font-mono font-bold px-2.5 py-1 rounded-lg bg-cyan-500/10 text-cyan-300 border border-cyan-500/30">
-                                {course.subject}
-                              </span>
-                              {course.classLevel && (
-                                <span className="text-[10px] font-mono font-bold px-2.5 py-1 rounded-lg bg-purple-500/10 text-purple-300 border border-purple-500/30">
-                                  {course.classLevel}
-                                </span>
-                              )}
-                            </div>
-                          )}
+                            );
+                          })()}
 
                           <div>
                             <h3 className="text-base sm:text-lg font-display font-extrabold text-white group-hover:text-cyan-300 transition-colors line-clamp-2">
@@ -999,7 +1056,7 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
             {activeVideo ? (
               <div className="w-full bg-slate-950 border-b border-white/10 overflow-hidden shadow-2xl">
                 <div className="aspect-video w-full bg-black relative group overflow-hidden">
-                  {!isPlayingVideo && activeVideo.thumbnailUrl ? (
+                  {!isPlayingVideo ? (
                     <div 
                       onClick={() => {
                         setIsPlayingVideo(true);
@@ -1007,8 +1064,8 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
                           videoRef.current?.play().catch(() => {});
                         }, 50);
                       }}
-                      className="absolute inset-0 z-10 cursor-pointer flex items-center justify-center bg-cover bg-center transition-all duration-300 select-none"
-                      style={{ backgroundImage: `url(${activeVideo.thumbnailUrl})` }}
+                      className="absolute inset-0 z-10 cursor-pointer flex items-center justify-center bg-cover bg-center transition-all duration-300 select-none bg-slate-950"
+                      style={{ backgroundImage: `url(${getVideoBannerUrl(activeVideo, coursesList)})` }}
                     >
                       <div className="absolute inset-0 bg-slate-950/50 group-hover:bg-slate-950/30 transition-all" />
                       <div className="relative z-20 w-16 h-16 rounded-full bg-cyan-500/90 hover:bg-cyan-400 text-slate-950 flex items-center justify-center shadow-[0_0_30px_rgba(6,182,212,0.6)] transform group-hover:scale-110 transition-all border border-cyan-300">
@@ -1026,7 +1083,7 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
                     const isIframe = isIframeVideoUrl(activeVideo.videoUrl);
 
                     if (isIframe) {
-                      const finalSrc = embedUrl + (isPlayingVideo && activeVideo.thumbnailUrl ? (embedUrl.includes('?') ? '&autoplay=1' : '?autoplay=1') : '');
+                      const finalSrc = embedUrl + (isPlayingVideo ? (embedUrl.includes('?') ? '&autoplay=1' : '?autoplay=1') : '');
                       return (
                         <iframe
                           src={finalSrc}
@@ -1051,7 +1108,7 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
                       <video
                         ref={videoRef}
                         key={`${activeVideo.id}_${activeVideo.videoUrl}`}
-                        poster={activeVideo.thumbnailUrl}
+                        poster={getVideoBannerUrl(activeVideo, coursesList)}
                         controls
                         controlsList="nodownload"
                         disablePictureInPicture
@@ -1356,29 +1413,7 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
             {filteredClasses.length > 0 ? (
               filteredClasses.map((cls, idx) => {
                 const isActive = activeVideo?.id === cls.id;
-                
-                // Get the best banner URL: explicit cover banner -> youtube thumbnail -> parent course image -> gradient graphic
-                let bannerUrl = cls.thumbnailUrl?.trim() || '';
-                if (!bannerUrl && cls.videoUrl) {
-                  let ytId = '';
-                  if (cls.videoUrl.includes('youtube.com/watch')) {
-                    const match = cls.videoUrl.match(/[?&]v=([^&#]+)/);
-                    if (match && match[1]) ytId = match[1];
-                  } else if (cls.videoUrl.includes('youtu.be/')) {
-                    ytId = cls.videoUrl.split('youtu.be/')[1]?.split('?')[0]?.split('&')[0]?.split('#')[0] || '';
-                  } else if (cls.videoUrl.includes('youtube.com/embed/')) {
-                    ytId = cls.videoUrl.split('embed/')[1]?.split('?')[0]?.split('&')[0]?.split('#')[0] || '';
-                  }
-                  if (ytId) {
-                    bannerUrl = `https://img.youtube.com/vi/${ytId}/hqdefault.jpg`;
-                  }
-                }
-                if (!bannerUrl && cls.courseTitle) {
-                  const parentCourse = coursesList.find(c => c.title.trim().toLowerCase() === cls.courseTitle?.trim().toLowerCase());
-                  if (parentCourse?.imageUrl) {
-                    bannerUrl = parentCourse.imageUrl;
-                  }
-                }
+                const bannerUrl = getVideoBannerUrl(cls, coursesList);
 
                 return (
                   <div
@@ -1399,22 +1434,15 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
                   >
                     {/* 1. Large 16:9 Banner Image Header */}
                     <div className="w-full aspect-[16/9] relative overflow-hidden bg-slate-950 border-b border-white/10 select-none">
-                      {bannerUrl ? (
-                        <img 
-                          src={bannerUrl} 
-                          alt={cls.title} 
-                          referrerPolicy="no-referrer"
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
-                        />
-                      ) : (
-                        <div className="w-full h-full bg-gradient-to-br from-cyan-950 via-slate-900 to-blue-950 flex flex-col items-center justify-center p-4 text-center relative overflow-hidden">
-                          <div className="absolute -right-8 -bottom-8 w-32 h-32 bg-cyan-500/10 rounded-full blur-xl" />
-                          <div className="w-12 h-12 rounded-2xl bg-cyan-500/20 border border-cyan-400/40 flex items-center justify-center text-cyan-300 mb-2 shadow-lg group-hover:scale-110 transition-transform">
-                            <Video className="w-6 h-6" />
-                          </div>
-                          <span className="text-xs font-mono font-bold text-cyan-300 uppercase tracking-wider">{cls.subject} Masterclass</span>
-                        </div>
-                      )}
+                      <img 
+                        src={bannerUrl} 
+                        alt={cls.title} 
+                        referrerPolicy="no-referrer"
+                        onError={(e) => {
+                          e.currentTarget.src = getDefaultSubjectBanner(cls.subject);
+                        }}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
+                      />
 
                       {/* Top Overlay Badges */}
                       <div className="absolute top-2.5 left-2.5 right-2.5 flex items-center justify-between gap-1.5 pointer-events-none z-10">

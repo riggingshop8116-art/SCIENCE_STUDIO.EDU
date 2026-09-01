@@ -12,6 +12,7 @@ export interface User {
   role: UserRole;
   isApproved?: boolean;
   course?: string;
+  batch?: string;
   enrolledCourseTitles?: string[];
   enrolledCourseIds?: string[];
   transactionId?: string;

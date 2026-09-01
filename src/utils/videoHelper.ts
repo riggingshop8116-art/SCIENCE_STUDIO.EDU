@@ -1,3 +1,114 @@
+import physicsBanner from '../assets/images/hero_physics_quantum_lab_1787477039417.jpg';
+import chemistryBanner from '../assets/images/hero_chemistry_molecular_hub_1787477057681.jpg';
+import biologyBanner from '../assets/images/hero_biology_genetics_lab_1787477092542.jpg';
+import mathBanner from '../assets/images/hero_mathematics_calculus_studio_1787477075299.jpg';
+import generalScienceBanner from '../assets/images/science_3d_banner_1787479248876.jpg';
+
+/**
+ * Subject default banners mapping
+ */
+export const SUBJECT_FALLBACK_BANNERS: Record<string, string> = {
+  Physics: physicsBanner,
+  Chemistry: chemistryBanner,
+  Biology: biologyBanner,
+  Mathematics: mathBanner,
+  'General Science': generalScienceBanner,
+  'Higher Math': mathBanner,
+  'পদার্থবিজ্ঞান': physicsBanner,
+  'রসায়ন': chemistryBanner,
+  'রসায়ন': chemistryBanner,
+  'জীববিজ্ঞান': biologyBanner,
+  'উচ্চতর গণিত': mathBanner,
+  'গণিত': mathBanner,
+  'সাধারণ বিজ্ঞান': generalScienceBanner
+};
+
+/**
+ * Get default subject banner
+ */
+export function getDefaultSubjectBanner(subject?: string): string {
+  if (!subject) return generalScienceBanner;
+  const match = Object.keys(SUBJECT_FALLBACK_BANNERS).find(k => k.toLowerCase() === subject.trim().toLowerCase());
+  return match ? SUBJECT_FALLBACK_BANNERS[match] : generalScienceBanner;
+}
+
+/**
+ * Extract YouTube Video ID from any YouTube URL format
+ */
+export function extractYouTubeId(url?: string | null): string {
+  if (!url) return '';
+  const trimmed = url.trim();
+
+  if (trimmed.includes('youtube.com/watch')) {
+    const match = trimmed.match(/[?&]v=([^&#]+)/);
+    if (match && match[1]) return match[1];
+  }
+  if (trimmed.includes('youtu.be/')) {
+    const id = trimmed.split('youtu.be/')[1]?.split('?')[0]?.split('&')[0]?.split('#')[0];
+    if (id) return id;
+  }
+  if (trimmed.includes('youtube.com/embed/')) {
+    const id = trimmed.split('embed/')[1]?.split('?')[0]?.split('&')[0]?.split('#')[0];
+    if (id) return id;
+  }
+  if (trimmed.includes('youtube-nocookie.com/embed/')) {
+    const id = trimmed.split('embed/')[1]?.split('?')[0]?.split('&')[0]?.split('#')[0];
+    if (id) return id;
+  }
+  if (trimmed.includes('youtube.com/shorts/')) {
+    const id = trimmed.split('shorts/')[1]?.split('?')[0]?.split('&')[0]?.split('#')[0];
+    if (id) return id;
+  }
+  if (trimmed.includes('youtube.com/live/')) {
+    const id = trimmed.split('live/')[1]?.split('?')[0]?.split('&')[0]?.split('#')[0];
+    if (id) return id;
+  }
+  return '';
+}
+
+/**
+ * Get the best high-definition video banner URL for any class item
+ */
+export function getVideoBannerUrl(
+  cls?: {
+    thumbnailUrl?: string;
+    videoUrl?: string;
+    subject?: string;
+    courseTitle?: string;
+    courseId?: string;
+  } | null,
+  coursesList: Array<{ id: string; title: string; imageUrl?: string }> = []
+): string {
+  if (!cls) return generalScienceBanner;
+
+  // 1. Explicit custom banner/thumbnail provided by admin or creator
+  if (cls.thumbnailUrl && cls.thumbnailUrl.trim()) {
+    return cls.thumbnailUrl.trim();
+  }
+
+  // 2. YouTube HD thumbnail
+  if (cls.videoUrl) {
+    const ytId = extractYouTubeId(cls.videoUrl);
+    if (ytId) {
+      return `https://img.youtube.com/vi/${ytId}/hqdefault.jpg`;
+    }
+  }
+
+  // 3. Parent Course Image
+  if (cls.courseTitle || cls.courseId) {
+    const parentCourse = coursesList.find(c => 
+      (cls.courseId && c.id === cls.courseId) ||
+      (cls.courseTitle && c.title.trim().toLowerCase() === cls.courseTitle.trim().toLowerCase())
+    );
+    if (parentCourse?.imageUrl && parentCourse.imageUrl.trim()) {
+      return parentCourse.imageUrl.trim();
+    }
+  }
+
+  // 4. Subject Fallback Banner
+  return getDefaultSubjectBanner(cls.subject);
+}
+
 /**
  * Utility functions for video URL formatting and embed detection
  */

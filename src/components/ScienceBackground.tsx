@@ -291,12 +291,12 @@ export default function ScienceBackground() {
       <div className="absolute top-[40%] left-[55%] w-[32rem] h-[32rem] rounded-full bg-blue-600/[0.03] blur-[150px] pointer-events-none" />
       <div className="absolute bottom-[35%] left-[5%] w-[32rem] h-[32rem] rounded-full bg-amber-500/[0.06] blur-[130px] animate-pulse pointer-events-none" style={{ animationDuration: '16s' }} />
 
-      {/* 4. Floating Particles / Glowing Star Nodes */}
-      <div className="absolute inset-0 pointer-events-none">
-        <div className="absolute top-1/4 left-1/3 w-1.5 h-1.5 bg-cyan-300 rounded-full shadow-[0_0_10px_#22d3ee] animate-ping" style={{ animationDuration: '3s' }} />
-        <div className="absolute top-2/3 left-1/5 w-2 h-2 bg-emerald-300 rounded-full shadow-[0_0_12px_#34d399] animate-pulse" style={{ animationDuration: '4s' }} />
-        <div className="absolute top-1/2 right-1/4 w-1.5 h-1.5 bg-amber-300 rounded-full shadow-[0_0_10px_#fcd34d] animate-ping" style={{ animationDuration: '5s' }} />
-        <div className="absolute bottom-1/4 right-1/3 w-2 h-2 bg-indigo-400 rounded-full shadow-[0_0_12px_#818cf8] animate-pulse" style={{ animationDuration: '3.5s' }} />
+      {/* 4. Floating Particles / Glowing Star Nodes (Subtle, calm ambient) */}
+      <div className="absolute inset-0 pointer-events-none opacity-40">
+        <div className="absolute top-1/4 left-1/3 w-1 h-1 bg-cyan-400/40 rounded-full" />
+        <div className="absolute top-2/3 left-1/5 w-1.5 h-1.5 bg-emerald-400/30 rounded-full" />
+        <div className="absolute top-1/2 right-1/4 w-1 h-1 bg-amber-400/30 rounded-full" />
+        <div className="absolute bottom-1/4 right-1/3 w-1.5 h-1.5 bg-indigo-400/30 rounded-full" />
       </div>
 
       {/* 5. Randomized Interactive Floating Science Doodles & Formulas Layer */}

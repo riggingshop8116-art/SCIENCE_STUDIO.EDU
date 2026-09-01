@@ -88,7 +88,6 @@ export default function AuthModal({
     }
 
     setLoading(true);
-    setError('');
 
     const formattedPhone = banglaToEnglishDigits(phone.trim()).replace(/\D/g, '');
     const cleanEmail = email.trim().toLowerCase();
@@ -99,7 +98,7 @@ export default function AuthModal({
 
     try {
       let data: any = null;
-      let networkError = false;
+      let apiSuccess = false;
 
       try {
         const response = await fetch(endpoint, {
@@ -113,136 +112,135 @@ export default function AuthModal({
         const responseText = await response.text();
         try {
           data = JSON.parse(responseText);
-        } catch {
+        } catch (parseErr) {
           data = null;
         }
 
         if (response.ok && data && (data.user || data.token)) {
-          // Enforce role restrictions
-          if (activeAdminMode && data.user?.role !== 'admin') {
-            throw new Error('এই অ্যাকাউন্টের এডমিন অ্যাক্সেস নেই। এটি একটি স্টুডেন্ট অ্যাকাউন্ট।');
-          }
-          if (!activeAdminMode && data.user?.role === 'admin') {
-            throw new Error('এটি একটি এডমিন (প্রশাসক) অ্যাকাউন্ট। অনুগ্রহ করে এডমিন পোর্টাল মোডে সুইচ করে লগইন করুন।');
-          }
-
-          onSuccess(data);
-          onClose();
-          setName('');
-          setEmail('');
-          setPhone('');
-          setPassword('');
-          setFocusedField(null);
-          return;
+          apiSuccess = true;
         } else if (data && data.error) {
-          const errStr = typeof data.error === 'string' ? data.error : (data.error.message || 'অনুরোধটি সম্পন্ন হয়নি।');
+          let errStr = typeof data.error === 'string' ? data.error : (data.error.message || 'অনুরোধটি ব্যর্থ হয়েছে।');
           throw new Error(errStr);
-        } else {
-          throw new Error(isLogin ? 'লগইন করতে সমস্যা হয়েছে। ইমেইল ও পাসওয়ার্ড সঠিক আছে কিনা পরীক্ষা করুন।' : 'রেজিস্ট্রেশন করতে সমস্যা হয়েছে। আবার চেষ্টা করুন।');
         }
       } catch (fetchErr: any) {
-        // If it's a specific validation/auth error from server, display it directly
-        if (fetchErr.message && !fetchErr.message.includes('Failed to fetch') && !fetchErr.message.includes('NetworkError') && !fetchErr.message.includes('Load failed')) {
+        if (fetchErr.message && !fetchErr.message.includes('সার্ভার') && !fetchErr.message.includes('fetch') && !fetchErr.message.includes('network') && !fetchErr.message.includes('Failed')) {
           throw fetchErr;
         }
-        networkError = true;
       }
 
-      // RESILIENT CLIENT-SIDE FALLBACK (Only when backend server is completely unreachable)
-      if (networkError) {
-        if (!isLogin && !activeAdminMode) {
-          // Direct Student Registration
-          const userId = 'usr_' + Math.random().toString(36).substring(2, 9) + Date.now().toString(36);
-          const token = 'tok_' + Math.random().toString(36).substring(2, 12) + Date.now().toString(36);
-          const fallbackUser = {
-            id: userId,
-            name: name.trim(),
-            email: cleanEmail,
-            phone: formattedPhone,
-            role: 'student' as const,
-            isApproved: false,
-            token,
-            enrolledCourseTitles: [],
-            createdAt: new Date().toISOString()
-          };
-
-          if (canAttemptSupabase()) {
-            try {
-              await supabaseServer.auth.signUp({
-                email: cleanEmail,
-                password: password.trim(),
-                options: {
-                  data: { name: name.trim(), phone: formattedPhone, role: 'student' }
-                }
-              });
-            } catch (sbAuthErr) {
-              console.warn("Supabase Auth fallback notice:", sbAuthErr);
-            }
-
-            try {
-              await supabaseServer.from('app_users').upsert({
-                id: userId,
-                name: name.trim(),
-                email: cleanEmail,
-                phone: formattedPhone,
-                role: 'student',
-                is_approved: false,
-                enrolled_courses: [],
-                data: { ...fallbackUser, password: password.trim() },
-                updated_at: new Date().toISOString()
-              }, { onConflict: 'id' });
-            } catch (sbDbErr) {
-              console.warn("Supabase DB upsert notice:", sbDbErr);
-            }
-          }
-
-          const authPayload = { user: fallbackUser, token };
-          onSuccess(authPayload);
-          onClose();
-          setName('');
-          setEmail('');
-          setPhone('');
-          setPassword('');
-          setFocusedField(null);
-          return;
-        } else {
-          // Direct Student / Admin Login Fallback
-          if (!activeAdminMode && canAttemptSupabase()) {
-            try {
-              const { data: authData } = await supabaseServer.auth.signInWithPassword({
-                email: cleanEmail,
-                password: password.trim()
-              });
-
-              if (authData?.user) {
-                const { data: dbProfile } = await supabaseServer
-                  .from('app_users')
-                  .select('*')
-                  .eq('email', cleanEmail)
-                  .maybeSingle();
-
-                const fallbackStudent = {
-                  id: dbProfile?.id || authData.user.id,
-                  name: dbProfile?.name || authData.user.user_metadata?.name || 'শিক্ষার্থী',
-                  email: cleanEmail,
-                  phone: dbProfile?.phone || authData.user.user_metadata?.phone || '',
-                  role: 'student' as const,
-                  isApproved: dbProfile?.is_approved ?? false,
-                  enrolledCourseTitles: dbProfile?.enrolled_courses || [],
-                  createdAt: dbProfile?.created_at || new Date().toISOString()
-                };
-                const token = 'tok_' + Math.random().toString(36).substring(2, 12);
-                onSuccess({ user: fallbackStudent, token });
-                onClose();
-                return;
-              }
-            } catch (sbLoginErr) {
-              console.warn("Supabase signIn fallback notice:", sbLoginErr);
-            }
-          }
-
-          throw new Error('লগইন করতে সমস্যা হচ্ছে। অনুগ্রহ করে আপনার ইমেইল ও পাসওয়ার্ড সঠিক আছে কিনা পরীক্ষা করুন।');
+      // If backend API responded successfully
+      if (apiSuccess && data) {
+        // Enforce role restrictions
+        if (activeAdminMode && data.user?.role !== 'admin') {
+          throw new Error('এই অ্যাকাউন্টের এডমিন অ্যাক্সেস নেই। এটি একটি স্টুডেন্ট অ্যাকাউন্ট।');
         }
+        if (!activeAdminMode && data.user?.role === 'admin') {
+          throw new Error('এটি একটি এডমিন (প্রশাসক) অ্যাকাউন্ট। অনুগ্রহ করে এডমিন পোর্টাল মোডে সুইচ করে লগইন করুন।');
+        }
+
+        onSuccess(data);
+        onClose();
+        setName('');
+        setEmail('');
+        setPhone('');
+        setPassword('');
+        setFocusedField(null);
+        return;
+      }
+
+      // RESILIENT CLIENT-SIDE FALLBACK (Using Supabase directly)
+      if (!isLogin && !activeAdminMode) {
+        // Direct Student Registration
+        const userId = 'usr_' + Math.random().toString(36).substring(2, 9);
+        const token = 'tok_' + Math.random().toString(36).substring(2, 12) + Date.now().toString(36);
+        const fallbackUser = {
+          id: userId,
+          name: name.trim(),
+          email: cleanEmail,
+          phone: formattedPhone,
+          role: 'student' as const,
+          isApproved: false,
+          token,
+          enrolledCourseTitles: [],
+          createdAt: new Date().toISOString()
+        };
+
+        if (canAttemptSupabase()) {
+          try {
+            await supabaseServer.auth.signUp({
+              email: cleanEmail,
+              password: password.trim(),
+              options: {
+                data: { name: name.trim(), phone: formattedPhone, role: 'student' }
+              }
+            });
+          } catch (sbAuthErr) {
+            console.warn("Supabase Auth fallback notice:", sbAuthErr);
+          }
+
+          try {
+            await supabaseServer.from('app_users').upsert({
+              id: userId,
+              name: name.trim(),
+              email: cleanEmail,
+              phone: formattedPhone,
+              role: 'student',
+              is_approved: false,
+              enrolled_courses: [],
+              data: { ...fallbackUser, password: password.trim() },
+              updated_at: new Date().toISOString()
+            }, { onConflict: 'id' });
+          } catch (sbDbErr) {
+            console.warn("Supabase DB upsert notice:", sbDbErr);
+          }
+        }
+
+        const authPayload = { user: fallbackUser, token };
+        onSuccess(authPayload);
+        onClose();
+        setName('');
+        setEmail('');
+        setPhone('');
+        setPassword('');
+        setFocusedField(null);
+        return;
+      } else {
+        // Direct Student / Admin Login Fallback
+        if (!activeAdminMode && canAttemptSupabase()) {
+          try {
+            const { data: authData } = await supabaseServer.auth.signInWithPassword({
+              email: cleanEmail,
+              password: password.trim()
+            });
+
+            if (authData?.user) {
+              const { data: dbProfile } = await supabaseServer
+                .from('app_users')
+                .select('*')
+                .eq('email', cleanEmail)
+                .maybeSingle();
+
+              const fallbackStudent = {
+                id: dbProfile?.id || authData.user.id,
+                name: dbProfile?.name || authData.user.user_metadata?.name || 'শিক্ষার্থী',
+                email: cleanEmail,
+                phone: dbProfile?.phone || authData.user.user_metadata?.phone || '',
+                role: 'student' as const,
+                isApproved: dbProfile?.is_approved ?? false,
+                enrolledCourseTitles: dbProfile?.enrolled_courses || [],
+                createdAt: dbProfile?.created_at || new Date().toISOString()
+              };
+              const token = 'tok_' + Math.random().toString(36).substring(2, 12);
+              onSuccess({ user: fallbackStudent, token });
+              onClose();
+              return;
+            }
+          } catch (sbLoginErr) {
+            console.warn("Supabase signIn fallback notice:", sbLoginErr);
+          }
+        }
+
+        throw new Error('লগইন করতে সমস্যা হচ্ছে। অনুগ্রহ করে আপনার ইমেইল ও পাসওয়ার্ড সঠিক আছে কিনা পরীক্ষা করুন।');
       }
     } catch (err: any) {
       let rawMsg = err?.message || 'অনুরোধ প্রক্রিয়াকরণে একটি ত্রুটি ঘটেছে।';

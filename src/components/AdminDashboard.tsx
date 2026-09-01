@@ -933,7 +933,10 @@ export default function AdminDashboard({
     try {
       const response = await fetch('/api/settings', {
         method: 'PUT',
-        headers: getAdminHeaders(true),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${getAuthToken()}`
+        },
         body: JSON.stringify({
           heroBanners: updatedList
         })
@@ -1256,7 +1259,10 @@ export default function AdminDashboard({
     try {
       const response = await fetch('/api/courses', {
         method: 'POST',
-        headers: getAdminHeaders(true),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${getAuthToken()}`
+        },
         body: JSON.stringify({
           title: courseTitle,
           subject: courseSubject,
@@ -1317,7 +1323,7 @@ export default function AdminDashboard({
     try {
       const response = await fetch(`/api/courses/${courseToDelete.id}`, {
         method: 'DELETE',
-        headers: getAdminHeaders(false)
+        headers: { 'Authorization': `Bearer ${getAuthToken()}` }
       });
       if (response.ok) {
         setCoursesList(prev => prev.filter(c => c.id !== courseToDelete.id));
@@ -1375,17 +1381,19 @@ export default function AdminDashboard({
     bucket: string, 
     onProgress?: (progress: number) => void
   ): Promise<string> => {
-    const fileExt = file.name.split('.').pop() || (bucket === 'pdf-materials' ? 'pdf' : 'mp4');
-    const cleanFileName = `${bucket.slice(0, 4)}_${Date.now()}_${Math.random().toString(36).substring(2, 7)}.${fileExt}`;
+    const isPdf = bucket === 'handnotes-pdf' || bucket === 'pdf-materials' || file.name.endsWith('.pdf');
+    const targetBucket = isPdf ? 'handnotes-pdf' : bucket;
+    const fileExt = file.name.split('.').pop() || (isPdf ? 'pdf' : 'mp4');
+    const cleanFileName = `${targetBucket.slice(0, 4)}_${Date.now()}_${Math.random().toString(36).substring(2, 7)}.${fileExt}`;
 
     if (onProgress) onProgress(20);
 
     // 1. Direct Client Upload to Supabase Storage
     try {
       const { data, error } = await supabase.storage
-        .from(bucket)
+        .from(targetBucket)
         .upload(cleanFileName, file, {
-          contentType: file.type || (bucket === 'pdf-materials' ? 'application/pdf' : 'video/mp4'),
+          contentType: file.type || (isPdf ? 'application/pdf' : 'video/mp4'),
           upsert: true
         });
 
@@ -1393,7 +1401,7 @@ export default function AdminDashboard({
 
       if (!error && data) {
         const { data: publicUrlData } = supabase.storage
-          .from(bucket)
+          .from(targetBucket)
           .getPublicUrl(cleanFileName);
 
         if (publicUrlData?.publicUrl) {
@@ -1421,10 +1429,11 @@ export default function AdminDashboard({
     const response = await fetch('/api/upload-file', {
       method: 'POST',
       headers: {
-        ...getAdminHeaders(true),
-        'x-bucket': bucket,
+        'Content-Type': 'application/json',
+        'x-bucket': targetBucket,
         'x-filename': cleanFileName,
-        'x-content-type': file.type || (bucket === 'pdf-materials' ? 'application/pdf' : 'video/mp4')
+        'x-content-type': file.type || (isPdf ? 'application/pdf' : 'video/mp4'),
+        'Authorization': `Bearer ${getAuthToken()}`
       },
       body: JSON.stringify({ data: dataUrl })
     });
@@ -1465,7 +1474,7 @@ export default function AdminDashboard({
     setNoteUploadProgress(10);
     
     try {
-      const uploadedUrl = await uploadMediaFile(file, 'pdf-materials', (p) => setNoteUploadProgress(p));
+      const uploadedUrl = await uploadMediaFile(file, 'handnotes-pdf', (p) => setNoteUploadProgress(p));
       setNotePdfUrl(uploadedUrl);
       setNoteSuccess('পিডিএফ লেকচার শিট সফলভাবে আপলোড হয়েছে!');
       setActionError('');
@@ -1511,7 +1520,10 @@ export default function AdminDashboard({
     try {
       const response = await fetch('/api/classes', {
         method: 'POST',
-        headers: getAdminHeaders(true),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${getAuthToken()}`
+        },
         body: JSON.stringify({
           title: classTitle,
           subject: classSubject,
@@ -1547,7 +1559,7 @@ export default function AdminDashboard({
       if (noteFile) {
         try {
           setNoteLoading(true);
-          const uploadedUrl = await uploadMediaFile(noteFile, 'pdf-materials', setNoteUploadProgress);
+          const uploadedUrl = await uploadMediaFile(noteFile, 'handnotes-pdf', setNoteUploadProgress);
           setNotePdfUrl(uploadedUrl);
         } catch (err: any) {
           setActionError(err.message || 'পিডিএফ লেকচার শিট আপলোড করা যায়নি।');
@@ -1571,7 +1583,10 @@ export default function AdminDashboard({
     try {
       const response = await fetch('/api/notes', {
         method: 'POST',
-        headers: getAdminHeaders(true),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${getAuthToken()}`
+        },
         body: JSON.stringify({
           title: noteTitle,
           subject: noteSubject,
@@ -1757,7 +1772,7 @@ export default function AdminDashboard({
     try {
       const response = await fetch(`/api/classes/${classToDelete.id}`, {
         method: 'DELETE',
-        headers: getAdminHeaders(false)
+        headers: { 'Authorization': `Bearer ${getAuthToken()}` }
       });
 
       const data = await response.json();
@@ -1790,7 +1805,7 @@ export default function AdminDashboard({
     try {
       const response = await fetch(`/api/notes/${noteToDelete.id}`, {
         method: 'DELETE',
-        headers: getAdminHeaders(false)
+        headers: { 'Authorization': `Bearer ${getAuthToken()}` }
       });
 
       const data = await response.json();
@@ -1929,7 +1944,7 @@ export default function AdminDashboard({
                   : 'text-slate-200 hover:text-white hover:bg-gradient-to-r hover:from-amber-500/15 hover:to-orange-500/15 border border-white/10 hover:border-amber-400/60 hover:shadow-[0_0_15px_rgba(245,158,11,0.2)] hover:translate-x-1.5'
               }`}
             >
-              <SettingsIcon className="w-5 h-5 sm:w-5.5 sm:h-5.5 text-amber-400 animate-spin-slow group-hover:scale-115 transition-transform duration-300 shrink-0" />
+              <SettingsIcon className="w-5 h-5 sm:w-5.5 sm:h-5.5 text-amber-400 group-hover:scale-110 transition-transform duration-300 shrink-0" />
               <span className="truncate">সেটিংস</span>
             </button>
 
@@ -3937,13 +3952,13 @@ export default function AdminDashboard({
       {activeTab === 'dashboard' && dashSubTab === 'settings' && (
         <div className="p-6 sm:p-8 rounded-3xl bg-white/5 backdrop-blur-md border border-white/10 shadow-2xl w-full animate-fade-in">
           <div className="flex items-center gap-2 text-amber-400 mb-6 pb-2 border-b border-white/10">
-            <SettingsIcon className="w-5 h-5 text-amber-400 animate-spin-slow" />
+            <SettingsIcon className="w-5 h-5 text-amber-400" />
             <h3 className="font-display font-bold text-lg text-white">ওয়েবসাইটের স্ট্যাটিক সেটিংস পরিবর্তন (Settings)</h3>
           </div>
 
           {settingsSuccess && (
             <div className="flex items-center gap-2 p-3.5 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs rounded-lg mb-6">
-              <CheckCircle className="w-4 h-4 shrink-0 animate-bounce" />
+              <CheckCircle className="w-4 h-4 shrink-0 text-emerald-400" />
               <span>{settingsSuccess}</span>
             </div>
           )}

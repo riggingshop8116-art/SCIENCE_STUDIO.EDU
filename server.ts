@@ -16,6 +16,7 @@ import {
   upsertClassToSupabase,
   upsertNoteToSupabase,
   upsertCourseToSupabase,
+  upsertSettingsToSupabase,
   canAttemptSupabase,
   isNetworkError,
   markSupabaseOffline
@@ -109,7 +110,6 @@ interface DBStructure {
     labSectionBadge?: string;
     labSectionTitle?: string;
     labSectionSubtitle?: string;
-    heroClassroomBgUrl?: string;
     heroBanners?: any[];
   };
 }
@@ -262,8 +262,7 @@ const defaultDB: DBStructure = {
     helplineTime: "সকাল ৯:০০ - রাত ১০:০০ (প্রতিদিন)",
     labSectionBadge: "INTERACTIVE VIRTUAL LAB & PLAYGROUND",
     labSectionTitle: "সাকিব স্যারের ভার্চুয়াল সায়েন্স ল্যাব ও সিমুলেশন",
-    labSectionSubtitle: "পড়াশোনা হোক আনন্দের ও গবেষণাধর্মী! পদার্থ, রসায়ন, জীববিজ্ঞান ও গণিতের গুরুত্বপূর্ণ টপিকগুলো নিজে পরিবর্তন করে প্র্যাকটিক্যাল জ্ঞান অর্জন করুন।",
-    heroClassroomBgUrl: ""
+    labSectionSubtitle: "পড়াশোনা হোক আনন্দের ও গবেষণাধর্মী! পদার্থ, রসায়ন, জীববিজ্ঞান ও গণিতের গুরুত্বপূর্ণ টপিকগুলো নিজে পরিবর্তন করে প্র্যাকটিক্যাল জ্ঞান অর্জন করুন।"
   },
   courses: [
     {
@@ -464,20 +463,39 @@ function writeDB(data: DBStructure) {
 
 export const app = express();
 
-// Sync database state with Supabase safely without blocking startup
+let isInitialSupabaseLoaded = false;
+let lastSupabaseFetchTime = 0;
+const CACHE_TTL_MS = 30000; // 30 seconds cache for serverless instances
+
+/**
+ * Ensures the in-memory/temporary local database is synced with Supabase
+ */
+export async function ensureDBSyncedWithSupabase(force = false): Promise<DBStructure> {
+  const now = Date.now();
+  const currentDB = readDB();
+  if ((!isInitialSupabaseLoaded || force || now - lastSupabaseFetchTime > CACHE_TTL_MS) && canAttemptSupabase()) {
+    try {
+      const remoteData = await loadFromSupabase(currentDB);
+      if (remoteData) {
+        try {
+          fs.writeFileSync(DB_PATH, JSON.stringify(remoteData, null, 2));
+        } catch (e) {}
+        isInitialSupabaseLoaded = true;
+        lastSupabaseFetchTime = now;
+        return remoteData;
+      }
+    } catch (e) {
+      console.warn("Supabase background sync note:", e);
+    }
+  }
+  return currentDB;
+}
+
+// Background sync on startup
 if (!isVercel) {
   try {
-    const currentLocal = readDB();
-    loadFromSupabase(currentLocal).then((supabaseData) => {
-      if (supabaseData) {
-        try {
-          fs.writeFileSync(DB_PATH, JSON.stringify(supabaseData, null, 2));
-        } catch (e) {}
-        // Also push back complete merged state to Supabase so config JSON is fully populated
-        syncToSupabase(supabaseData);
-      } else {
-        syncToSupabase(currentLocal);
-      }
+    ensureDBSyncedWithSupabase(true).then((dbData) => {
+      syncToSupabase(dbData);
     }).catch((err) => {
       console.log("Supabase initialization check:", err);
     });
@@ -485,6 +503,16 @@ if (!isVercel) {
     console.log("Supabase initialization check:", err);
   }
 }
+
+// Fast preloader middleware for Serverless (/api calls)
+app.use(async (req, res, next) => {
+  if (req.path.startsWith('/api') && !isInitialSupabaseLoaded && canAttemptSupabase()) {
+    try {
+      await ensureDBSyncedWithSupabase();
+    } catch (e) {}
+  }
+  next();
+});
 
 app.use(express.json({ limit: '200mb' }));
 app.use(express.urlencoded({ limit: '200mb', extended: true }));
@@ -574,28 +602,9 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
     next();
   });
 
-  // Helper to generate self-contained, stateless session token
-  const createSessionToken = (userObj: any) => {
-    try {
-      const payload = {
-        id: userObj.id || 'usr_' + Math.random().toString(36).substring(2, 9),
-        email: userObj.email ? String(userObj.email).toLowerCase().trim() : '',
-        role: userObj.role || 'student',
-        name: userObj.name || '',
-        isApproved: userObj.isApproved ?? true,
-        iat: Date.now()
-      };
-      const b64 = Buffer.from(JSON.stringify(payload)).toString('base64url');
-      return `sst_${b64}`;
-    } catch {
-      return 'tok_' + Math.random().toString(36).substring(2, 12) + Date.now().toString(36);
-    }
-  };
-
   // Helper to safely decode self-contained session token
   const decodeSessionToken = (tok: string) => {
-    if (!tok || typeof tok !== 'string') return null;
-    if (!tok.startsWith('sst_')) return null;
+    if (!tok || !tok.startsWith('sst_')) return null;
     try {
       const b64 = tok.substring(4);
       const jsonStr = Buffer.from(b64, 'base64url').toString('utf8');
@@ -650,21 +659,6 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
           (cleanEmail && token.includes(cleanEmail))
         );
       });
-
-      // If user came from a self-contained token but is not in local memory, rehydrate
-      if (!matchedUser && decoded && (decoded.id || decoded.email)) {
-        matchedUser = {
-          id: decoded.id || 'usr_' + Math.random().toString(36).substring(2, 9),
-          name: decoded.name || 'User',
-          email: decoded.email || '',
-          role: decoded.role || 'student',
-          isApproved: decoded.isApproved ?? true,
-          token: token,
-          createdAt: new Date().toISOString()
-        };
-        db.users.push(matchedUser);
-        writeDB(db);
-      }
     }
 
     // Secondary match from explicit headers
@@ -675,19 +669,6 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
         const cleanId = u.id ? String(u.id).trim() : '';
         return (headerUserId && cleanId === headerUserId) || (headerUserEmail && cleanEmail === headerUserEmail);
       });
-
-      if (!matchedUser && (headerUserId || headerUserEmail)) {
-        matchedUser = {
-          id: headerUserId || 'usr_' + Math.random().toString(36).substring(2, 9),
-          name: headerUserEmail === 'admin@sciencestudio.com' ? 'Dr. Sayeed Rahman' : (headerUserEmail === 'mdshakibhossen2050@gmail.com' ? 'Super Admin' : 'User'),
-          email: headerUserEmail || '',
-          role: (headerUserRole === 'admin' || headerUserEmail === 'admin@sciencestudio.com' || headerUserEmail === 'mdshakibhossen2050@gmail.com') ? 'admin' : 'student',
-          isApproved: true,
-          createdAt: new Date().toISOString()
-        };
-        db.users.push(matchedUser);
-        writeDB(db);
-      }
     }
 
     // Admin detection fallback
@@ -697,7 +678,7 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
       headerUserEmail === 'mdshakibhossen2050@gmail.com' ||
       headerUserId === 'usr_admin' ||
       headerUserId === 'usr_super_admin' ||
-      (token && (token.includes('usr_admin') || token.includes('usr_super_admin') || token.includes('admin@sciencestudio.com') || token.includes('mdshakibhossen2050@gmail.com') || token.includes('admin')))
+      (token && (token.includes('usr_admin') || token.includes('usr_super_admin') || token.includes('admin@sciencestudio.com') || token.includes('mdshakibhossen2050@gmail.com')))
     )) {
       matchedUser = db.users.find(u => u.role === 'admin');
       if (!matchedUser) {
@@ -726,25 +707,12 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
     if (!user) {
       const headerUserId = req.headers['x-user-id'];
       const headerUserEmail = req.headers['x-user-email'];
-      const headerUserRole = req.headers['x-user-role'];
       if (headerUserId || headerUserEmail) {
         const db = readDB();
         user = db.users.find(u => 
           (headerUserId && u.id === headerUserId) || 
           (headerUserEmail && u.email && u.email.toLowerCase().trim() === String(headerUserEmail).toLowerCase().trim())
         );
-        if (!user) {
-          user = {
-            id: String(headerUserId || 'usr_' + Math.random().toString(36).substring(2, 9)),
-            name: 'User',
-            email: String(headerUserEmail || ''),
-            role: headerUserRole === 'admin' ? 'admin' : 'student',
-            isApproved: true,
-            createdAt: new Date().toISOString()
-          };
-          db.users.push(user);
-          writeDB(db);
-        }
         if (user) (req as any).user = user;
       }
     }
@@ -758,28 +726,23 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
   // Helper middleware to check admin authorization
   const requireAdmin = (req: express.Request, res: express.Response, next: express.NextFunction) => {
     let user = (req as any).user;
-    if (!user || user.role !== 'admin') {
+    if (!user) {
       const headerUserRole = req.headers['x-user-role'];
       const headerUserEmail = req.headers['x-user-email'];
-      const headerUserId = req.headers['x-user-id'];
       const authHeader = req.headers.authorization;
-      const authToken = req.headers['x-auth-token'];
       if (
         headerUserRole === 'admin' ||
         headerUserEmail === 'admin@sciencestudio.com' ||
         headerUserEmail === 'mdshakibhossen2050@gmail.com' ||
-        headerUserId === 'usr_admin' ||
-        headerUserId === 'usr_super_admin' ||
-        (authHeader && (authHeader.includes('usr_admin') || authHeader.includes('usr_super_admin') || authHeader.includes('admin@sciencestudio.com') || authHeader.includes('mdshakibhossen2050@gmail.com') || authHeader.includes('admin'))) ||
-        (authToken && (String(authToken).includes('usr_admin') || String(authToken).includes('usr_super_admin') || String(authToken).includes('admin@sciencestudio.com') || String(authToken).includes('mdshakibhossen2050@gmail.com') || String(authToken).includes('admin')))
+        (authHeader && (authHeader.includes('usr_admin') || authHeader.includes('usr_super_admin') || authHeader.includes('admin@sciencestudio.com') || authHeader.includes('mdshakibhossen2050@gmail.com')))
       ) {
         const db = readDB();
-        user = db.users.find(u => u.role === 'admin' || (headerUserEmail && u.email && u.email.toLowerCase() === String(headerUserEmail).toLowerCase()));
+        user = db.users.find(u => u.role === 'admin');
         if (!user) {
           user = {
-            id: String(headerUserId || "usr_admin"),
-            name: headerUserEmail === 'mdshakibhossen2050@gmail.com' ? "সাকিব হাসান (Super Admin)" : "Dr. Sayeed Rahman",
-            email: String(headerUserEmail || "admin@sciencestudio.com"),
+            id: "usr_admin",
+            name: "Dr. Sayeed Rahman",
+            email: "admin@sciencestudio.com",
             role: "admin",
             isApproved: true,
             createdAt: new Date().toISOString()
@@ -807,49 +770,24 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
         return res.status(400).json({ error: "নাম, ইমেইল এবং পাসওয়ার্ড আবশ্যক।" });
       }
 
-      const cleanPassword = String(password).trim();
-      if (cleanPassword.length < 6) {
+      if (password.length < 6) {
         return res.status(400).json({ error: "পাসওয়ার্ড অবশ্যই কমপক্ষে ৬ অক্ষরের হতে হবে।" });
       }
 
-      // Mandatory Bangladeshi phone validation (handles Bengali digits, +880, spaces)
+      // Mandatory 11-digit Bangladeshi phone validation
       const banglaToEnglishDigits = (str: string) => str.replace(/[০-৯]/g, d => '০১২৩৪৫৬৭৮৯'.indexOf(d).toString());
-      let cleanPhone = phone ? banglaToEnglishDigits(String(phone).trim()).replace(/\D/g, '') : '';
-      if (cleanPhone.startsWith('8801') && cleanPhone.length === 13) {
-        cleanPhone = cleanPhone.substring(2);
-      }
-      
+      const cleanPhone = phone ? banglaToEnglishDigits(String(phone).trim()).replace(/\D/g, '') : '';
       const phoneRegex = /^01[3-9]\d{8}$/;
+
       if (!cleanPhone || !phoneRegex.test(cleanPhone)) {
         return res.status(400).json({ error: "মোবাইল নম্বরটি অবশ্যই ১১ ডিজিটের বৈধ বাংলাদেশী নম্বর হতে হবে (যেমন: 01712345678)।" });
       }
 
-      const cleanEmail = String(email).trim().toLowerCase();
-      const cleanName = String(name).trim();
+      const cleanEmail = email.trim().toLowerCase();
       const db = readDB();
-
-      // Check if user already exists in local DB
-      let existing = db.users.find(u => u && u.email && u.email.toLowerCase().trim() === cleanEmail);
-      
-      // Check if user already exists in Supabase
-      if (!existing && canAttemptSupabase()) {
-        try {
-          const { data: sbExisting } = await supabaseServer
-            .from('app_users')
-            .select('id, email, name, role')
-            .ilike('email', cleanEmail)
-            .limit(1);
-
-          if (Array.isArray(sbExisting) && sbExisting.length > 0) {
-            existing = sbExisting[0] as any;
-          }
-        } catch (e) {
-          console.warn("Supabase duplicate user check notice:", e);
-        }
-      }
-
+      const existing = db.users.find(u => u.email && u.email.toLowerCase() === cleanEmail);
       if (existing) {
-        return res.status(400).json({ error: "এই ইমেইল দিয়ে ইতোমধ্যেই একটি অ্যাকাউন্ট তৈরি করা আছে। অনুগ্রহ করে 'লগইন' করুন।" });
+        return res.status(400).json({ error: "এই ইমেইল দিয়ে ইতোমধ্যেই একটি অ্যাকাউন্ট তৈরি করা আছে।" });
       }
 
       let initialEnrolled: string[] = [];
@@ -859,30 +797,21 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
         initialEnrolled = [courseTitle];
       }
 
-      const userId = 'usr_' + Math.random().toString(36).substring(2, 9) + Date.now().toString(36);
-      const token = createSessionToken({
-        id: userId,
-        email: cleanEmail,
-        name: cleanName,
-        role: 'student',
-        isApproved: false,
-        phone: cleanPhone,
-        enrolledCourseTitles: initialEnrolled
-      });
+      const token = 'tok_' + Math.random().toString(36).substring(2, 12) + Math.random().toString(36).substring(2, 12) + Date.now().toString(36);
 
       const newUser = {
-        id: userId,
-        name: cleanName,
+        id: 'usr_' + Math.random().toString(36).substring(2, 9),
+        name: name.trim(),
         email: cleanEmail,
         phone: cleanPhone,
-        password: cleanPassword,
-        role: 'student' as const, // default signup is always student
-        isApproved: false, // requires admin approval for paid access
+        password,
+        role: 'student', // default signup is always student
+        isApproved: false, // requires admin approval to unlock class resources
         token,
         enrolledCourseTitles: initialEnrolled,
-        transactionId: transactionId ? String(transactionId).trim() : "",
-        paymentMethod: paymentMethod ? String(paymentMethod).trim() : "",
-        senderPhone: senderPhone ? String(senderPhone).trim() : "",
+        transactionId: transactionId ? transactionId.trim() : "",
+        paymentMethod: paymentMethod ? paymentMethod.trim() : "",
+        senderPhone: senderPhone ? senderPhone.trim() : "",
         createdAt: new Date().toISOString()
       };
 
@@ -890,8 +819,8 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
       writeDB(db);
 
       // Register user in Supabase Authentication & app_users table asynchronously without blocking signup response
-      registerUserInSupabaseAuth(cleanEmail, cleanPassword, cleanName, cleanPhone, newUser).catch(e => {
-        console.warn("Supabase Auth registration notice:", e);
+      registerUserInSupabaseAuth(cleanEmail, password, name.trim(), cleanPhone, newUser).catch(e => {
+        console.log("Supabase Auth registration notice:", e);
       });
 
       // Exclude password and internal fields from response
@@ -915,11 +844,19 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
         return res.status(400).json({ error: "ইমেইল এবং পাসওয়ার্ড আবশ্যক।" });
       }
 
-      const cleanEmail = String(email).trim().toLowerCase();
+      const banglaToEnglish = (str: string) => str.replace(/[০-৯]/g, d => '০১২৩৪৫৬৭৮৯'.indexOf(d).toString());
+      const cleanInput = String(email).trim();
+      const cleanEmail = cleanInput.toLowerCase();
+      const cleanPhone = banglaToEnglish(cleanInput).replace(/\D/g, '');
       const cleanPassword = String(password).trim();
 
       const db = readDB();
-      let user = db.users.find(u => u && u.email && u.email.trim().toLowerCase() === cleanEmail);
+      let user = db.users.find(u => {
+        if (!u) return false;
+        const uEmail = (u.email || '').trim().toLowerCase();
+        const uPhone = (u.phone || '').replace(/\D/g, '');
+        return uEmail === cleanEmail || (cleanPhone.length >= 10 && uPhone === cleanPhone);
+      });
 
       // Auto-restore / ensure default accounts if deleted or missing from DB
       if (!user) {
@@ -938,7 +875,7 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
         } else if (cleanEmail === 'mdshakibhossen2050@gmail.com') {
           user = {
             id: "usr_super_admin",
-            name: "সাকিব হাসান (Super Admin)",
+            name: "Super Admin",
             email: "mdshakibhossen2050@gmail.com",
             password: "SHAKIB@2050#",
             role: "admin",
@@ -962,102 +899,109 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
         }
       }
 
-      // If user not in local DB, search Supabase app_users table
+      // Check Supabase app_users table & Supabase Auth if user not found in local DB
+      let authenticatedViaSupabaseAuth = false;
       if (!user && canAttemptSupabase()) {
         try {
-          const { data: dbUserRows } = await supabaseServer
+          // 1. Check Supabase app_users table
+          const { data: sbUser } = await supabaseServer
             .from('app_users')
             .select('*')
-            .ilike('email', cleanEmail)
-            .limit(1);
+            .or(`email.ilike.${cleanEmail},phone.eq.${cleanPhone || cleanInput}`)
+            .maybeSingle();
 
-          if (Array.isArray(dbUserRows) && dbUserRows.length > 0) {
-            const r = dbUserRows[0];
-            const nested = (r.data && typeof r.data === 'object') ? r.data : {};
-            const storedPassword = nested.password || r.password || '';
+          if (sbUser) {
+            const nested = (sbUser.data && typeof sbUser.data === 'object') ? sbUser.data : {};
+            const isApprovedVal = sbUser.isApproved !== undefined 
+              ? Boolean(sbUser.isApproved) 
+              : (sbUser.is_approved !== undefined ? Boolean(sbUser.is_approved) : false);
+
             user = {
               ...nested,
-              id: r.id || 'usr_' + Math.random().toString(36).substring(2, 9),
-              name: r.name || nested.name || 'User',
-              email: r.email ? r.email.toLowerCase().trim() : (nested.email || cleanEmail),
-              phone: r.phone || nested.phone || '',
-              password: storedPassword,
-              role: r.role || nested.role || 'student',
-              isApproved: r.is_approved !== undefined ? Boolean(r.is_approved) : (nested.isApproved ?? false),
-              enrolledCourseTitles: r.enrolled_courses || nested.enrolledCourseTitles || [],
-              transactionId: r.transaction_id || nested.transactionId || '',
-              paymentMethod: r.payment_method || nested.paymentMethod || '',
-              senderPhone: r.sender_phone || nested.senderPhone || '',
-              createdAt: r.created_at || nested.createdAt || new Date().toISOString()
+              id: sbUser.id || 'usr_' + Math.random().toString(36).substring(2, 9),
+              name: sbUser.name || nested.name || 'Student',
+              email: sbUser.email || nested.email || cleanEmail,
+              password: sbUser.password || nested.password || cleanPassword,
+              role: sbUser.role || nested.role || 'student',
+              isApproved: isApprovedVal,
+              phone: sbUser.phone || nested.phone || cleanPhone || '',
+              studentClass: sbUser.batch || sbUser.student_class || nested.studentClass || '',
+              photoUrl: sbUser.avatar || sbUser.photo_url || nested.photoUrl || '',
+              avatarUrl: sbUser.avatar || sbUser.photo_url || nested.avatarUrl || '',
+              enrolledCourseTitles: Array.isArray(sbUser.enrolledCourseTitles) 
+                ? sbUser.enrolledCourseTitles 
+                : (Array.isArray(sbUser.enrolled_courses) ? sbUser.enrolled_courses : []),
+              transactionId: sbUser.transactionId || sbUser.transaction_id || nested.transactionId || '',
+              createdAt: sbUser.joinedAt || sbUser.created_at || new Date().toISOString()
             };
             db.users.push(user);
             writeDB(db);
+          }
+
+          // 2. Try Supabase Auth verification
+          if (!user && cleanEmail.includes('@')) {
+            const { data: authResult, error: authErr } = await supabaseServer.auth.signInWithPassword({
+              email: cleanEmail,
+              password: cleanPassword
+            });
+            if (!authErr && authResult?.user) {
+              authenticatedViaSupabaseAuth = true;
+              const meta = authResult.user.user_metadata || {};
+              user = {
+                id: authResult.user.id || 'usr_' + Math.random().toString(36).substring(2, 9),
+                name: meta.name || 'Student',
+                email: authResult.user.email || cleanEmail,
+                password: cleanPassword,
+                role: (meta.role as any) || 'student',
+                isApproved: false,
+                phone: meta.phone || cleanPhone || '',
+                enrolledCourseTitles: [],
+                transactionId: '',
+                createdAt: authResult.user.created_at || new Date().toISOString()
+              };
+              db.users.push(user);
+              writeDB(db);
+            }
           }
         } catch (sbErr) {
-          console.warn("Supabase user login lookup notice:", sbErr);
-        }
-      }
-
-      // If user still not found, try Supabase Auth direct login
-      if (!user && canAttemptSupabase()) {
-        try {
-          const { data: authData } = await supabaseServer.auth.signInWithPassword({
-            email: cleanEmail,
-            password: cleanPassword
-          });
-          if (authData?.user) {
-            const meta = authData.user.user_metadata || {};
-            user = {
-              id: authData.user.id || 'usr_' + Math.random().toString(36).substring(2, 9),
-              name: meta.name || 'শিক্ষার্থী',
-              email: cleanEmail,
-              phone: meta.phone || '',
-              password: cleanPassword,
-              role: (meta.role === 'admin' || cleanEmail.includes('admin')) ? 'admin' : 'student',
-              isApproved: (meta.role === 'admin' || cleanEmail.includes('admin')),
-              enrolledCourseTitles: [],
-              createdAt: authData.user.created_at || new Date().toISOString()
-            };
-            db.users.push(user);
-            writeDB(db);
-          }
-        } catch (sbAuthErr) {
-          console.warn("Supabase Auth signIn notice:", sbAuthErr);
+          console.log("Supabase login recovery notice:", sbErr);
         }
       }
 
       if (!user) {
-        return res.status(401).json({ error: "এই ইমেইল দিয়ে কোনো অ্যাকাউন্ট খুঁজে পাওয়া যায়নি। অনুগ্রহ করে আগে রেজিস্ট্রেশন করুন।" });
+        return res.status(401).json({ error: "ইমেইল বা পাসওয়ার্ড ভুল অথবা অ্যাকাউন্ট খুঁজে পাওয়া যায়নি।" });
       }
 
-      // Verify Password (case-sensitive or trimmed match, plus fallback for default accounts)
-      let isPasswordValid = 
+      // Verify Password (case-sensitive or trimmed match, plus fallback for default accounts or Supabase Auth session)
+      const isPasswordValid = 
+        authenticatedViaSupabaseAuth ||
         user.password === cleanPassword || 
         user.password === password ||
-        (user.data && (user.data.password === cleanPassword || user.data.password === password)) ||
         (cleanEmail === 'admin@sciencestudio.com' && (cleanPassword === 'admin123')) ||
         (cleanEmail === 'mdshakibhossen2050@gmail.com' && (cleanPassword === 'SHAKIB@2050#' || cleanPassword === 'admin123')) ||
         (cleanEmail === 'student@sciencestudio.com' && (cleanPassword === 'student123'));
 
-      // If password did not match local record, verify against Supabase Auth as secondary check
-      if (!isPasswordValid && canAttemptSupabase()) {
-        try {
-          const { data: authData, error: authErr } = await supabaseServer.auth.signInWithPassword({
-            email: cleanEmail,
-            password: cleanPassword
-          });
-          if (authData?.user && !authErr) {
-            isPasswordValid = true;
-            user.password = cleanPassword;
-            writeDB(db);
-          }
-        } catch (sbAuthErr) {
-          // invalid password in supabase auth
-        }
-      }
-
       if (!isPasswordValid) {
-        return res.status(401).json({ error: "পাসওয়ার্ড সঠিক নয়। অনুগ্রহ করে সঠিক পাসওয়ার্ড প্রদান করুন।" });
+        // Try Supabase Auth sign in directly as secondary check
+        if (canAttemptSupabase() && cleanEmail.includes('@')) {
+          try {
+            const { data: authCheck, error: authCheckErr } = await supabaseServer.auth.signInWithPassword({
+              email: cleanEmail,
+              password: cleanPassword
+            });
+            if (!authCheckErr && authCheck?.user) {
+              // Update user password in local db
+              user.password = cleanPassword;
+              writeDB(db);
+            } else {
+              return res.status(401).json({ error: "পাসওয়ার্ড সঠিক নয়। অনুগ্রহ করে সঠিক পাসওয়ার্ড দিয়ে আবার চেষ্টা করুন।" });
+            }
+          } catch (e) {
+            return res.status(401).json({ error: "পাসওয়ার্ড সঠিক নয়। অনুগ্রহ করে সঠিক পাসওয়ার্ড দিয়ে আবার চেষ্টা করুন।" });
+          }
+        } else {
+          return res.status(401).json({ error: "পাসওয়ার্ড সঠিক নয়। অনুগ্রহ করে সঠিক পাসওয়ার্ড দিয়ে আবার চেষ্টা করুন।" });
+        }
       }
 
       // Check role constraints
@@ -1066,17 +1010,17 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
       }
 
       if (expectedRole === 'student' && user.role === 'admin') {
-        return res.status(403).json({ error: "এটি একটি এডমিন অ্যাকাউন্ট। অনুগ্রহ করে 'হেড অফিস এডমিন পোর্টাল' থেকে লগইন করুন।" });
+        return res.status(403).json({ error: "স্টুডেন্ট লগইন অপশন থেকে এডমিন অ্যাকাউন্টে লগইন করা যাবে না। অনুগ্রহ করে এডমিন পোর্টাল ব্যবহার করুন।" });
       }
 
       // Generate fresh session token
-      const token = createSessionToken(user);
+      const token = 'tok_' + Math.random().toString(36).substring(2, 12) + Math.random().toString(36).substring(2, 12) + Date.now().toString(36);
       user.token = token;
       writeDB(db);
 
       // Async sync with Supabase Auth
       registerUserInSupabaseAuth(cleanEmail, cleanPassword, user.name, user.phone, user).catch(e => {
-        console.warn("Supabase Auth login sync notice:", e);
+        console.log("Supabase Auth login sync notice:", e);
       });
 
       const { password: _, token: __, ...userWithoutPassword } = user;
@@ -1157,9 +1101,16 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
   // Upload File API (Admin only)
   app.post('/api/upload-file', requireAdmin, async (req, res) => {
     try {
-      const bucket = (req.headers['x-bucket'] as string) || 'course-videos';
+      let bucket = (req.headers['x-bucket'] as string) || 'course-images';
       const fileNameHeader = (req.headers['x-filename'] as string) || `file_${Date.now()}`;
       const contentType = (req.headers['x-content-type'] as string) || (req.headers['content-type'] as string) || 'application/octet-stream';
+
+      // Smart bucket alias mapping for Supabase
+      if (bucket === 'pdf-materials' || bucket === 'notes-pdf' || bucket === 'notes' || contentType.includes('pdf') || fileNameHeader.endsWith('.pdf')) {
+        bucket = 'handnotes-pdf';
+      } else if (bucket === 'images' || bucket === 'banners' || bucket === 'course-banners') {
+        bucket = 'course-images';
+      }
 
       let dataUrlOrBase64 = typeof req.body === 'string' ? req.body : (req.body?.data || req.body?.file);
       if (!dataUrlOrBase64) {
@@ -1308,7 +1259,7 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 
       if (typeof pdfUrl === 'string' && pdfUrl.startsWith('data:')) {
         const fileName = `${noteId}_${Date.now()}.pdf`;
-        let uploadedUrl = await uploadToSupabaseStorage('pdf-materials', fileName, pdfUrl, 'application/pdf');
+        let uploadedUrl = await uploadToSupabaseStorage('handnotes-pdf', fileName, pdfUrl, 'application/pdf');
         if (!uploadedUrl) {
           const cleanBase64 = pdfUrl.split(';base64,')[1] || pdfUrl;
           const buffer = Buffer.from(cleanBase64, 'base64');
@@ -1361,10 +1312,10 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
       try {
         await deleteFromSupabase('app_notes', id);
         await syncToSupabase(readDB());
-        if (noteToDelete.pdfUrl && noteToDelete.pdfUrl.includes('pdf-materials/')) {
-          const fileName = noteToDelete.pdfUrl.split('pdf-materials/')[1]?.split('?')[0];
+        if (noteToDelete.pdfUrl && noteToDelete.pdfUrl.includes('handnotes-pdf/')) {
+          const fileName = noteToDelete.pdfUrl.split('handnotes-pdf/')[1]?.split('?')[0];
           if (fileName) {
-            deleteFromSupabaseStorage('pdf-materials', fileName).catch(e => console.log('Delete PDF storage notice:', e));
+            deleteFromSupabaseStorage('handnotes-pdf', fileName).catch(e => console.log('Delete PDF storage notice:', e));
           }
         }
       } catch (e) {
@@ -1400,14 +1351,22 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
                 id: r.id,
                 title: r.title,
                 subject: r.subject,
+                classLevel: r.batch || r.classLevel || r.class_level || '',
                 price: Number(r.price || 0),
+                originalPrice: r.originalPrice ? Number(r.originalPrice) : (r.original_price ? Number(r.original_price) : undefined),
                 duration: r.duration || '',
+                description: r.description || '',
                 features: Array.isArray(r.features) ? r.features : [],
-                imageUrl: r.image_url || r.imageUrl || '',
+                imageUrl: r.imageUrl || r.image_url || '',
                 ...(r.data || {})
               };
               if (existingIndex !== -1) {
-                db.courses![existingIndex] = { ...db.courses![existingIndex], ...courseObj };
+                db.courses![existingIndex] = {
+                  ...db.courses![existingIndex],
+                  ...courseObj,
+                  imageUrl: courseObj.imageUrl || db.courses![existingIndex].imageUrl || '',
+                  classLevel: courseObj.classLevel || db.courses![existingIndex].classLevel || ''
+                };
               } else {
                 db.courses!.unshift(courseObj);
                 updated = true;
@@ -2154,7 +2113,6 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
         labSectionBadge,
         labSectionTitle,
         labSectionSubtitle,
-        heroClassroomBgUrl,
         heroBanners
       } = req.body || {};
 
@@ -2264,7 +2222,6 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
         labSectionBadge: labSectionBadge !== undefined ? String(labSectionBadge) : (db.settings?.labSectionBadge || "INTERACTIVE VIRTUAL LAB & PLAYGROUND"),
         labSectionTitle: labSectionTitle !== undefined ? String(labSectionTitle) : (db.settings?.labSectionTitle || ""),
         labSectionSubtitle: labSectionSubtitle !== undefined ? String(labSectionSubtitle) : (db.settings?.labSectionSubtitle || ""),
-        heroClassroomBgUrl: heroClassroomBgUrl !== undefined ? String(heroClassroomBgUrl) : (db.settings?.heroClassroomBgUrl || ""),
         heroBanners: Array.isArray(heroBanners) ? heroBanners : (db.settings?.heroBanners || [])
       };
 
@@ -2279,6 +2236,7 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
       }
 
       writeDB(db);
+      await upsertSettingsToSupabase(db.settings).catch(e => console.log('Supabase settings upsert notice:', e));
       await syncToSupabase(db).catch(e => console.log('Settings sync notice:', e));
 
       res.json({ message: "Settings successfully updated.", settings: db.settings });
@@ -2321,6 +2279,7 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
     }
 
     writeDB(db);
+    await upsertUserToSupabase(db.users[userIndex]).catch(e => console.log('Admin credential sync notice:', e));
 
     const { password: _, ...userWithoutPassword } = db.users[userIndex];
     res.json({
@@ -2332,7 +2291,7 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 
   // --- VITE DEV / PRODUCTION STATIC SERVER ---
 async function startServer() {
-  if (!process.env.VERCEL) {
+  if (!isVercel) {
     // Pre-create Supabase storage buckets asynchronously
     ensureSupabaseBucket('course-videos').catch(() => {});
     ensureSupabaseBucket('course-images').catch(() => {});
@@ -2361,7 +2320,7 @@ async function startServer() {
   }
 }
 
-if (!process.env.VERCEL) {
+if (!isVercel) {
   startServer().catch((err) => {
     console.error("Server failed to start:", err);
   });
