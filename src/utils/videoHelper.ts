@@ -110,6 +110,40 @@ export function getVideoBannerUrl(
 }
 
 /**
+ * Get the best high-definition banner URL for any note/PDF item
+ */
+export function getNoteBannerUrl(
+  note?: {
+    subject?: string;
+    courseTitle?: string;
+    courseId?: string;
+    thumbnailUrl?: string;
+  } | null,
+  coursesList: Array<{ id: string; title: string; imageUrl?: string }> = []
+): string {
+  if (!note) return generalScienceBanner;
+
+  // 1. Explicit thumbnail
+  if (note.thumbnailUrl && note.thumbnailUrl.trim()) {
+    return note.thumbnailUrl.trim();
+  }
+
+  // 2. Parent Course Image
+  if (note.courseTitle || note.courseId) {
+    const parentCourse = coursesList.find(c => 
+      (note.courseId && c.id === note.courseId) ||
+      (note.courseTitle && c.title.trim().toLowerCase() === note.courseTitle.trim().toLowerCase())
+    );
+    if (parentCourse?.imageUrl && parentCourse.imageUrl.trim()) {
+      return parentCourse.imageUrl.trim();
+    }
+  }
+
+  // 3. Subject Fallback Banner
+  return getDefaultSubjectBanner(note.subject);
+}
+
+/**
  * Utility functions for video URL formatting and embed detection
  */
 

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Class, Note, User, Settings, Course } from '../types';
 import { downloadPdfFile, openPdfInBrowser } from '../utils/pdfHelper';
-import { formatVideoEmbedUrl, isIframeVideoUrl, getVideoBannerUrl, getDefaultSubjectBanner } from '../utils/videoHelper';
+import { formatVideoEmbedUrl, isIframeVideoUrl, getVideoBannerUrl, getDefaultSubjectBanner, getNoteBannerUrl } from '../utils/videoHelper';
 import StudentProfileModal from './StudentProfileModal';
 import PendingApprovalView from './PendingApprovalView';
 import { 
@@ -46,7 +46,10 @@ import {
   Layers,
   HelpCircle,
   RotateCcw,
-  RotateCw
+  RotateCw,
+  Share2,
+  GraduationCap,
+  Info
 } from 'lucide-react';
 
 interface StudentDashboardProps {
@@ -155,6 +158,16 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
     setIsPlayingVideo(false);
     setShowPlayerSettings(false);
   }, [activeVideo?.id]);
+
+  const [copiedClassLink, setCopiedClassLink] = useState<boolean>(false);
+
+  const handleShareClass = () => {
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(window.location.href);
+      setCopiedClassLink(true);
+      setTimeout(() => setCopiedClassLink(false), 2000);
+    }
+  };
 
   const getTargetPaymentNumber = () => {
     if (paymentMethod === 'bkash') return settings?.bkashNumber || '01700-000000';
@@ -1091,10 +1104,10 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
               </div>
 
       {/* Main Grid: Interactive Video Player (with Horizontal PDFs below) & Video Master List (Large Banners on Right) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 mb-12 items-start">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 mb-12 items-stretch">
         
         {/* Left Column (8 of 12 cols on Desktop): Active Class Video Player & Horizontal PDF Notes Directly Below It */}
-        <div className="lg:col-span-7 xl:col-span-8 space-y-8" id="active-video-player-container">
+        <div className="lg:col-span-7 xl:col-span-8 space-y-6 flex flex-col justify-start" id="active-video-player-container">
           
           {/* 1. Active Lecture Video Player Card */}
           <div className="border border-white/10 rounded-2xl bg-white/5 overflow-hidden shadow-2xl">
@@ -1353,100 +1366,235 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
               </div>
             )}
 
-            {/* Video description */}
-            {activeVideo && (
-              <div className="p-5 sm:p-6 bg-white/5">
-                <div className="flex justify-between items-start gap-4 mb-3">
-                  <h2 className="text-xl md:text-2xl font-display font-bold text-white leading-tight">
-                    {activeVideo.title}
-                  </h2>
-                  <button 
-                    onClick={() => toggleBookmark(activeVideo.id)}
-                    className="p-2 rounded-lg bg-white/5 border border-white/10 text-slate-400 hover:text-cyan-400 transition-colors cursor-pointer shrink-0"
-                    title="Bookmark Class"
-                  >
-                    <Bookmark className={`w-5 h-5 ${bookmarkedIds.includes(activeVideo.id) ? 'fill-cyan-400 text-cyan-400' : ''}`} />
-                  </button>
-                </div>
-                
-                <p className="text-slate-300 text-sm leading-relaxed whitespace-pre-line border-t border-white/10 pt-4 font-sans">
-                  {activeVideo.description}
-                </p>
+            {/* Video Player Footer / Detailed Class Information Bar */}
+            {activeVideo && (() => {
+              const activeClassIndex = filteredClasses.findIndex(c => c.id === activeVideo.id);
+              const hasPrevClass = activeClassIndex > 0;
+              const hasNextClass = activeClassIndex >= 0 && activeClassIndex < filteredClasses.length - 1;
+              const prevClassObj = hasPrevClass ? filteredClasses[activeClassIndex - 1] : null;
+              const nextClassObj = hasNextClass ? filteredClasses[activeClassIndex + 1] : null;
+              const relatedNotes = filteredNotes.filter(n =>
+                (activeVideo.courseId && n.courseId === activeVideo.courseId) ||
+                (activeVideo.subject && n.subject?.trim().toLowerCase() === activeVideo.subject?.trim().toLowerCase())
+              );
 
-                <div className="flex items-center gap-4 text-xs font-mono text-slate-400 mt-4 pt-4 border-t border-white/10 flex-wrap">
-                  <span className="flex items-center gap-1">
-                    <Clock className="w-3.5 h-3.5 text-cyan-400" />
-                    আপলোড: {new Date(activeVideo.createdAt).toLocaleDateString()}
-                  </span>
-                  <span>•</span>
-                  <span>Science Studio Digital Classroom</span>
+              return (
+                <div className="p-5 sm:p-6 bg-gradient-to-b from-[#091326]/95 to-[#060c1a]/95 border-t border-white/10 space-y-4">
+                  {/* Top Header & Navigation Toolbar */}
+                  <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-white/10">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {/* Active Class Index Tag */}
+                      <span className="px-3 py-1 rounded-lg bg-cyan-500/15 border border-cyan-400/30 text-cyan-300 font-mono font-bold text-xs flex items-center gap-1.5 shadow-sm">
+                        <Video className="w-3.5 h-3.5 text-cyan-400" />
+                        {activeClassIndex >= 0 ? `ক্লাস #${activeClassIndex + 1} / ${filteredClasses.length}` : 'লাইভ ক্লাস'}
+                      </span>
+
+                      {/* Subject Tag */}
+                      <span className="px-2.5 py-1 rounded-lg bg-white/5 border border-white/10 text-slate-200 font-mono text-xs font-semibold">
+                        🔬 {activeVideo.subject}
+                      </span>
+
+                      {/* Parent Course Tag */}
+                      {activeVideo.courseTitle && (
+                        <span className="px-2.5 py-1 rounded-lg bg-purple-500/15 border border-purple-400/30 text-purple-300 font-mono text-xs font-semibold flex items-center gap-1">
+                          <GraduationCap className="w-3.5 h-3.5" />
+                          {activeVideo.courseTitle}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Navigation & Action Controls */}
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {/* Previous Class Button */}
+                      <button
+                        type="button"
+                        disabled={!hasPrevClass}
+                        onClick={() => prevClassObj && setActiveVideo(prevClassObj)}
+                        className={`px-2.5 py-1.5 rounded-lg border text-xs font-semibold flex items-center gap-1 transition-all cursor-pointer ${
+                          hasPrevClass
+                            ? 'bg-white/5 hover:bg-white/10 text-slate-200 border-white/10 active:scale-95'
+                            : 'opacity-40 cursor-not-allowed bg-transparent text-slate-500 border-white/5'
+                        }`}
+                        title={prevClassObj ? `পূর্ববর্তী ক্লাস: ${prevClassObj.title}` : 'কোনো পূর্ববর্তী ক্লাস নেই'}
+                      >
+                        <ChevronLeft className="w-3.5 h-3.5" />
+                        <span className="hidden sm:inline">পূর্বে</span>
+                      </button>
+
+                      {/* Next Class Button */}
+                      <button
+                        type="button"
+                        disabled={!hasNextClass}
+                        onClick={() => nextClassObj && setActiveVideo(nextClassObj)}
+                        className={`px-2.5 py-1.5 rounded-lg border text-xs font-semibold flex items-center gap-1 transition-all cursor-pointer ${
+                          hasNextClass
+                            ? 'bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border-cyan-400/40 active:scale-95 shadow-sm'
+                            : 'opacity-40 cursor-not-allowed bg-transparent text-slate-500 border-white/5'
+                        }`}
+                        title={nextClassObj ? `পরবর্তী ক্লাস: ${nextClassObj.title}` : 'কোনো পরবর্তী ক্লাস নেই'}
+                      >
+                        <span className="hidden sm:inline">পরবর্তী ক্লাস</span>
+                        <ChevronRight className="w-3.5 h-3.5" />
+                      </button>
+
+                      {/* Share Class Link Button */}
+                      <button
+                        type="button"
+                        onClick={handleShareClass}
+                        className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-cyan-300 transition-all cursor-pointer relative active:scale-95"
+                        title="ক্লাসের লিংক কপি করুন"
+                      >
+                        {copiedClassLink ? <Check className="w-4 h-4 text-emerald-400" /> : <Share2 className="w-4 h-4" />}
+                        {copiedClassLink && (
+                          <span className="absolute -top-8 right-0 bg-emerald-500 text-slate-950 text-[10px] font-bold px-2 py-0.5 rounded shadow whitespace-nowrap animate-fade-in">
+                            কপি হয়েছে!
+                          </span>
+                        )}
+                      </button>
+
+                      {/* Bookmark Toggle Button */}
+                      <button
+                        type="button"
+                        onClick={() => toggleBookmark(activeVideo.id)}
+                        className={`p-1.5 rounded-lg border transition-all cursor-pointer active:scale-95 ${
+                          bookmarkedIds.includes(activeVideo.id)
+                            ? 'bg-cyan-500/20 border-cyan-400/50 text-cyan-400 shadow-sm'
+                            : 'bg-white/5 hover:bg-white/10 border-white/10 text-slate-300 hover:text-cyan-300'
+                        }`}
+                        title={bookmarkedIds.includes(activeVideo.id) ? 'বুকমার্ক সরানো হয়েছে' : 'বুকমার্ক করুন'}
+                      >
+                        <Bookmark className={`w-4 h-4 ${bookmarkedIds.includes(activeVideo.id) ? 'fill-cyan-400' : ''}`} />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Active Class Title */}
+                  <div>
+                    <h2 className="text-lg sm:text-xl md:text-2xl font-display font-bold text-white leading-tight">
+                      {activeVideo.title}
+                    </h2>
+                  </div>
+
+                  {/* Active Class Description / Overview */}
+                  {activeVideo.description && (
+                    <div className="p-3.5 rounded-xl bg-white/[0.03] border border-white/5">
+                      <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-300 mb-1.5">
+                        <Info className="w-3.5 h-3.5 text-cyan-400" />
+                        <span>লেকচার ওভারভিউ ও বিবরণ:</span>
+                      </div>
+                      <p className="text-slate-300 text-xs sm:text-sm leading-relaxed whitespace-pre-line font-sans">
+                        {activeVideo.description}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Bottom Meta & Status Details Bar */}
+                  <div className="pt-3 border-t border-white/10 flex items-center justify-between gap-3 flex-wrap text-xs text-slate-400 font-mono">
+                    <div className="flex items-center gap-3 sm:gap-4 flex-wrap">
+                      <span className="flex items-center gap-1.5 text-slate-300">
+                        <Clock className="w-3.5 h-3.5 text-cyan-400" />
+                        আপলোড: {new Date(activeVideo.createdAt).toLocaleDateString()}
+                      </span>
+
+                      <span className="flex items-center gap-1 text-emerald-400">
+                        <ShieldCheck className="w-3.5 h-3.5" />
+                        ভেরিফাইড লেকচার
+                      </span>
+
+                      {relatedNotes.length > 0 && (
+                        <span 
+                          onClick={() => notesScrollRef.current?.scrollIntoView({ behavior: 'smooth' })}
+                          className="flex items-center gap-1 text-rose-300 bg-rose-500/10 border border-rose-400/20 px-2 py-0.5 rounded cursor-pointer hover:bg-rose-500/20 transition-colors"
+                          title="পিডিএফ নোটস সেকশনে যান"
+                        >
+                          <FileText className="w-3 h-3 text-rose-400" />
+                          {relatedNotes.length}টি লেকচার শিট সংযুক্ত
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="text-[11px] text-slate-400">
+                      Science Studio Digital Classroom
+                    </div>
+                  </div>
                 </div>
-              </div>
-            )}
+              );
+            })()}
           </div>
 
           {/* 2. PDF Lecture Notes Section (DISPLAYED HORIZONTALLY BELOW THE PLAYER FROM LEFT TO RIGHT) */}
-          <div className="border border-white/10 rounded-2xl bg-white/5 p-4 sm:p-6 shadow-xl space-y-4">
-            <div className="flex items-center justify-between gap-3 flex-wrap">
-              <div>
-                <h3 className="font-display font-bold text-lg sm:text-xl text-white flex items-center gap-2">
-                  <span className="w-1.5 h-6 bg-rose-500 rounded-full" />
-                  <FileText className="w-5 h-5 text-rose-400" />
-                  লেকচার শিট ও পিডিএফ নোটস ({filteredNotes.length})
-                </h3>
-                <p className="text-slate-400 text-xs mt-1 font-sans">
-                  👈 বাম থেকে ডানে স্লাইড করে সব পিডিএফ নোটস ভিডিওর মতোই সুন্দরভাবে পড়ুন ও ডাউনলোড করুন 👉
-                </p>
+          <div className="space-y-3.5">
+            {/* PDF Section Header matching Right-Side Playlist Header */}
+            <div className="px-4.5 py-4 rounded-2xl bg-[#091326]/90 backdrop-blur-md border border-rose-500/25 shadow-lg flex items-center justify-between gap-3 flex-wrap">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-rose-500/15 border border-rose-400/30 flex items-center justify-center text-rose-400 shrink-0">
+                  <FileText className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-display font-bold text-sm sm:text-base text-white flex items-center gap-1.5">
+                    আপলোডকৃত পিডিএফ ও লেকচার শিট তালিকা
+                  </h3>
+                  <p className="text-slate-400 text-[11px] font-sans">
+                    বাম থেকে ডানে স্ক্রল করে লেকচার শিট পড়ুন ও ডাউনলোড করুন
+                  </p>
+                </div>
               </div>
 
-              {/* Left/Right Horizontal Slider Navigation Buttons */}
+              {/* Counter and Navigation Arrows */}
               <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => scrollNotes('left')}
-                  className={`px-3 py-1.5 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shadow-sm active:scale-95 ${
-                    canScrollNotesLeft
-                      ? 'bg-cyan-500/20 text-cyan-300 border-cyan-400/60 hover:bg-cyan-500/30'
-                      : 'bg-white/5 text-slate-400 border-white/10 hover:bg-white/10 hover:text-slate-200'
-                  }`}
-                  title="বাম দিকে স্ক্রল করুন (Previous)"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                  <span>পূর্বে</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => scrollNotes('right')}
-                  className={`px-3 py-1.5 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shadow-sm active:scale-95 ${
-                    canScrollNotesRight
-                      ? 'bg-cyan-500/20 text-cyan-300 border-cyan-400/60 hover:bg-cyan-500/30'
-                      : 'bg-white/5 text-slate-400 border-white/10 hover:bg-white/10 hover:text-slate-200'
-                  }`}
-                  title="ডান দিকে স্ক্রল করুন (Next)"
-                >
-                  <span>পরবর্তী</span>
-                  <ChevronRight className="w-4 h-4" />
-                </button>
+                <span className="px-3 py-1 rounded-full bg-rose-500/15 text-rose-300 border border-rose-400/30 text-xs font-mono font-bold shrink-0 shadow-sm">
+                  {filteredNotes.length} PDFs
+                </span>
+
+                <div className="flex items-center gap-1.5 ml-1">
+                  <button
+                    type="button"
+                    onClick={() => scrollNotes('left')}
+                    className={`p-2 rounded-xl border text-xs font-semibold flex items-center justify-center transition-all cursor-pointer shadow-sm active:scale-95 ${
+                      canScrollNotesLeft
+                        ? 'bg-rose-500/20 text-rose-300 border-rose-400/60 hover:bg-rose-500/30'
+                        : 'bg-white/5 text-slate-400 border-white/10 hover:bg-white/10 hover:text-slate-200'
+                    }`}
+                    title="বাম দিকে স্ক্রল করুন (Previous)"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => scrollNotes('right')}
+                    className={`p-2 rounded-xl border text-xs font-semibold flex items-center justify-center transition-all cursor-pointer shadow-sm active:scale-95 ${
+                      canScrollNotesRight
+                        ? 'bg-rose-500/20 text-rose-300 border-rose-400/60 hover:bg-rose-500/30'
+                        : 'bg-white/5 text-slate-400 border-white/10 hover:bg-white/10 hover:text-slate-200'
+                    }`}
+                    title="ডান দিকে স্ক্রল করুন (Next)"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
             </div>
 
-            {/* Horizontal Scrollable Slider of PDFs (Left to Right, strict horizontal overflow, no screen stretching) */}
+            {/* Horizontal Scrollable Slider of PDFs (Left to Right) */}
             <div 
               ref={notesScrollRef}
-              className="flex gap-4.5 overflow-x-auto pb-4 pt-1 custom-scrollbar snap-x scroll-smooth overscroll-x-contain"
+              className="flex gap-4 overflow-x-auto pb-4 pt-1 custom-scrollbar snap-x scroll-smooth overscroll-x-contain"
               style={{ scrollSnapType: 'x mandatory' }}
             >
               {filteredNotes.length > 0 ? (
-                filteredNotes.map((note) => {
-                  const bannerUrl = getDefaultSubjectBanner(note.subject);
+                filteredNotes.map((note, idx) => {
+                  const bannerUrl = getNoteBannerUrl(note, coursesList);
 
                   return (
                     <div 
                       key={note.id} 
-                      className="w-[280px] sm:w-[320px] shrink-0 snap-start rounded-2xl bg-slate-900/95 border border-white/10 hover:border-cyan-400/60 hover:shadow-[0_0_25px_rgba(6,182,212,0.2)] transition-all duration-300 flex flex-col justify-between overflow-hidden group"
+                      className="w-[280px] sm:w-[320px] shrink-0 snap-start rounded-2xl border transition-all duration-300 overflow-hidden group relative bg-[#091326]/90 hover:bg-[#0d1d36]/90 border-white/10 hover:border-rose-500/40 hover:shadow-[0_0_20px_rgba(244,63,94,0.15)] flex flex-col justify-between"
                     >
-                      {/* 1. Visual Banner Image Header (Video-like Visual Preview) */}
-                      <div className="w-full aspect-[16/9] relative overflow-hidden bg-slate-950 border-b border-white/10 select-none">
+                      {/* 1. Large 16:9 Banner Image Header (Identical to Right-Side Playlist Cards) */}
+                      <div 
+                        onClick={() => handleOpenPDF(note)}
+                        className="w-full aspect-[16/9] relative overflow-hidden bg-slate-950 border-b border-white/10 select-none cursor-pointer"
+                      >
                         <img 
                           src={bannerUrl} 
                           alt={note.title} 
@@ -1454,79 +1602,100 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
                           onError={(e) => {
                             e.currentTarget.src = getDefaultSubjectBanner(note.subject);
                           }}
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 opacity-80 group-hover:opacity-100" 
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
                         />
 
-                        {/* Top Gradient Overlay */}
-                        <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/40 to-transparent" />
-
                         {/* Top Overlay Badges */}
-                        <div className="absolute top-2.5 left-2.5 right-2.5 flex items-center justify-between gap-1.5 z-10">
+                        <div className="absolute top-2.5 left-2.5 right-2.5 flex items-center justify-between gap-1.5 pointer-events-none z-10">
                           <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className="text-[10px] font-mono font-bold uppercase bg-slate-950/85 backdrop-blur-md text-cyan-300 border border-cyan-400/40 px-2 py-0.5 rounded-lg shadow-sm">
+                            <span className="text-[10px] font-mono font-bold uppercase bg-slate-950/85 backdrop-blur-md text-cyan-300 border border-cyan-400/40 px-2.5 py-0.5 rounded-lg shadow-sm">
                               {note.subject}
                             </span>
                             {note.courseTitle && (
-                              <span className="text-[10px] font-mono font-semibold bg-purple-950/85 backdrop-blur-md text-purple-300 border border-purple-400/40 px-2 py-0.5 rounded-lg truncate max-w-[120px] shadow-sm">
+                              <span className="text-[10px] font-mono font-semibold bg-purple-950/85 backdrop-blur-md text-purple-300 border border-purple-400/40 px-2.5 py-0.5 rounded-lg truncate max-w-[140px] shadow-sm">
                                 📚 {note.courseTitle}
                               </span>
                             )}
                           </div>
 
-                          <span className="text-[10px] font-bold text-rose-300 bg-rose-950/85 backdrop-blur-md border border-rose-400/40 px-2 py-0.5 rounded-lg flex items-center gap-1 shrink-0 shadow-sm">
-                            <FileText className="w-3 h-3 text-rose-400" /> PDF
-                          </span>
+                          {/* Bookmark / PDF Button */}
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleBookmark(note.id);
+                            }}
+                            className="pointer-events-auto p-1.5 rounded-lg bg-slate-950/85 backdrop-blur-md border border-white/15 text-slate-300 hover:text-cyan-300 hover:border-cyan-400/50 transition-all shadow cursor-pointer active:scale-95"
+                            title="বুকমার্ক করুন"
+                          >
+                            <Bookmark className={`w-3.5 h-3.5 ${bookmarkedIds.includes(note.id) ? 'fill-cyan-400 text-cyan-400' : ''}`} />
+                          </button>
                         </div>
 
-                        {/* Center Interactive Read Indicator Icon */}
-                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                          <div className="w-10 h-10 rounded-full bg-slate-950/70 border border-cyan-400/40 backdrop-blur-sm flex items-center justify-center text-cyan-300 group-hover:scale-110 group-hover:bg-cyan-500 group-hover:text-slate-950 transition-all duration-300 shadow-lg">
-                            <BookOpen className="w-5 h-5" />
+                        {/* Center Read Indicator / Hover Overlay */}
+                        <div className="absolute inset-0 bg-slate-950/35 group-hover:bg-slate-950/15 transition-all flex items-center justify-center">
+                          <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-slate-950/85 backdrop-blur-md border border-white/30 text-white flex items-center justify-center shadow-xl group-hover:scale-110 group-hover:bg-rose-500 group-hover:text-white group-hover:border-rose-300 transition-all">
+                            <BookOpen className="w-5 h-5 ml-0.5 fill-current" />
                           </div>
                         </div>
 
-                        {/* Bottom Timestamp */}
-                        <div className="absolute bottom-2 left-2.5 right-2.5 flex items-center justify-between text-[10px] font-mono text-slate-300 z-10">
-                          <span className="flex items-center gap-1 bg-slate-950/80 backdrop-blur-sm px-2 py-0.5 rounded border border-white/10">
-                            <Clock className="w-3 h-3 text-cyan-400" />
+                        {/* Bottom Banner Info Bar */}
+                        <div className="absolute bottom-2 left-2.5 right-2.5 flex items-center justify-between text-[10px] font-mono text-slate-200 bg-slate-950/85 backdrop-blur-md px-2.5 py-1 rounded-lg border border-white/10">
+                          <span className="flex items-center gap-1 text-slate-300">
+                            <Clock className="w-3 h-3 text-rose-400" />
                             {new Date(note.createdAt).toLocaleDateString()}
                           </span>
+                          <span className="font-bold text-rose-300">পিডিএফ #{idx + 1}</span>
                         </div>
                       </div>
 
-                      {/* 2. PDF Content Body Info */}
-                      <div className="p-4 flex-1 flex flex-col justify-between space-y-3">
+                      {/* 2. Card Content Body */}
+                      <div className="p-4 sm:p-4.5 space-y-2.5 flex-1 flex flex-col justify-between">
                         <div>
-                          <h4 className="font-display font-bold text-sm sm:text-base text-white group-hover:text-cyan-300 transition-colors line-clamp-2 leading-snug mb-1.5">
+                          <h4 
+                            onClick={() => handleOpenPDF(note)}
+                            className="font-display font-bold text-sm sm:text-[15px] line-clamp-2 leading-snug text-white group-hover:text-rose-300 transition-colors cursor-pointer"
+                          >
                             {note.title}
                           </h4>
-                          <p className="text-slate-300 text-xs line-clamp-2 leading-relaxed font-sans">
-                            {note.description || 'রিভিশন ও বোর্ড পরীক্ষার অনুশীলনের জন্য লেকচার শিট।'}
-                          </p>
+
+                          {note.description && (
+                            <p className="text-slate-300 text-xs line-clamp-2 font-sans leading-relaxed mt-1">
+                              {note.description}
+                            </p>
+                          )}
                         </div>
 
-                        {/* Bottom Actions Toolbar */}
-                        <div className="pt-3 border-t border-white/10 flex items-center justify-between gap-2">
+                        {/* Action & Status Row */}
+                        <div className="flex items-center justify-between pt-3 border-t border-white/10 text-xs gap-2">
                           <button
                             type="button"
                             onClick={() => handleOpenPDF(note)}
-                            className="flex-1 py-2 px-3 rounded-xl bg-gradient-to-r from-cyan-500/20 to-teal-500/20 border border-cyan-400/40 hover:from-cyan-500 hover:to-teal-500 hover:text-slate-950 text-cyan-300 text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm active:scale-95"
+                            className="flex-1 py-2 px-3 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 bg-rose-500/15 group-hover:bg-rose-500 text-rose-300 group-hover:text-white border border-rose-400/30 transition-all cursor-pointer shadow-sm active:scale-95"
                           >
                             <BookOpen className="w-3.5 h-3.5" />
                             <span>নোট পড়ুন (Read)</span>
                           </button>
+
                           <button
                             type="button"
-                            onClick={() => handleDownloadPDF(note)}
-                            className="p-2 rounded-xl bg-white/5 border border-white/10 hover:border-cyan-400 hover:bg-cyan-500/20 text-slate-300 hover:text-cyan-300 transition-all cursor-pointer shrink-0 active:scale-95"
-                            title="ডাউনলোড করুন"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDownloadPDF(note);
+                            }}
+                            className="p-2 rounded-lg bg-white/5 hover:bg-emerald-500/20 text-slate-300 hover:text-emerald-300 border border-white/10 hover:border-emerald-400/40 transition-all cursor-pointer shrink-0 active:scale-95"
+                            title="সরাসরি ডাউনলোড করুন"
                           >
                             <Download className="w-4 h-4" />
                           </button>
+
                           <button
                             type="button"
-                            onClick={() => openPdfInBrowser(note.pdfUrl)}
-                            className="p-2 rounded-xl bg-white/5 border border-white/10 hover:border-purple-400 hover:bg-purple-500/20 text-slate-300 hover:text-purple-300 transition-all cursor-pointer shrink-0 active:scale-95"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openPdfInBrowser(note.pdfUrl);
+                            }}
+                            className="p-2 rounded-lg bg-white/5 hover:bg-purple-500/20 text-slate-300 hover:text-purple-300 border border-white/10 hover:border-purple-400/40 transition-all cursor-pointer shrink-0 active:scale-95"
                             title="ব্রাউজারে নতুন ট্যাবে খুলুন"
                           >
                             <ExternalLink className="w-4 h-4" />
@@ -1546,11 +1715,12 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
 
         </div>
 
-        {/* Right Column (4 of 12 cols on Desktop): UPLOADED CLASSES PLAYLIST WITH LARGE BANNERS (Top to Bottom) */}
-        <div className="lg:col-span-5 xl:col-span-4 space-y-4 lg:sticky lg:top-20">
+        {/* Right Column (4 of 12 cols on Desktop): UPLOADED CLASSES PLAYLIST WITH LARGE BANNERS (Strictly matches left column PDF section bottom) */}
+        <div className="lg:col-span-5 xl:col-span-4 lg:relative flex flex-col">
+          <div className="lg:absolute lg:inset-0 flex flex-col space-y-3.5">
           
           {/* Playlist Header */}
-          <div className="px-4.5 py-4 rounded-2xl bg-[#091326]/90 backdrop-blur-md border border-cyan-500/25 shadow-lg flex items-center justify-between gap-3">
+          <div className="px-4.5 py-4 rounded-2xl bg-[#091326]/90 backdrop-blur-md border border-cyan-500/25 shadow-lg flex items-center justify-between gap-3 shrink-0">
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-xl bg-cyan-500/15 border border-cyan-400/30 flex items-center justify-center text-cyan-400 shrink-0">
                 <Video className="w-5 h-5" />
@@ -1569,8 +1739,8 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
             </span>
           </div>
 
-          {/* Top-to-Bottom Playlist with Large Banners and Dedicated Scroll Container */}
-          <div className="space-y-4 max-h-[640px] lg:max-h-[calc(100vh-190px)] overflow-y-auto pr-2 custom-scrollbar overscroll-contain rounded-2xl">
+          {/* Top-to-Bottom Playlist with Large Banners - Perfectly constrained to the left section height */}
+          <div className="space-y-4 flex-1 min-h-0 max-h-[580px] lg:max-h-none overflow-y-auto pr-1.5 custom-scrollbar overscroll-contain rounded-2xl">
             {filteredClasses.length > 0 ? (
               filteredClasses.map((cls, idx) => {
                 const isActive = activeVideo?.id === cls.id;
@@ -1698,6 +1868,7 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
             )}
           </div>
 
+          </div>
         </div>
 
       </div>
