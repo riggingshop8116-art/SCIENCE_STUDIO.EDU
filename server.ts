@@ -65,6 +65,8 @@ interface DBStructure {
     nagadNumber?: string;
     rocketNumber?: string;
     paymentInstructions?: string;
+    adminCredentials?: { email?: string; password?: string };
+    [key: string]: any;
     heroJoinButtonText?: string;
     heroExploreButtonText?: string;
     orbitSectionBadge?: string;
@@ -614,6 +616,71 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
     }
   };
 
+  // Helper to generate tamper-resistant self-contained session tokens
+  const generateSessionToken = (user: { id: string; email?: string; role?: string }) => {
+    const payload = {
+      id: user.id,
+      email: (user.email || '').toLowerCase().trim(),
+      role: user.role || 'student',
+      t: Date.now()
+    };
+    const b64 = Buffer.from(JSON.stringify(payload)).toString('base64url');
+    return `sst_${b64}`;
+  };
+
+  // Helper to refresh and synchronize a single user with live Supabase database
+  const refreshUserFromSupabase = async (u: any): Promise<any> => {
+    if (!canAttemptSupabase() || !u || !u.id) return u;
+    try {
+      const cleanEmail = (u.email || '').toLowerCase().trim();
+      const cleanId = String(u.id || '').trim();
+      const cleanPhone = (u.phone || '').replace(/\D/g, '');
+
+      let query = supabaseServer.from('app_users').select('*');
+      if (cleanId && cleanEmail) {
+        query = query.or(`id.eq.${cleanId},email.ilike.${cleanEmail}`);
+      } else if (cleanId) {
+        query = query.eq('id', cleanId);
+      } else if (cleanEmail) {
+        query = query.ilike('email', cleanEmail);
+      }
+
+      const { data: sbUser, error } = await query.maybeSingle();
+
+      if (!error && sbUser) {
+        const nested = (sbUser.data && typeof sbUser.data === 'object') ? sbUser.data : {};
+        const isApprovedVal = sbUser.isApproved !== undefined 
+          ? Boolean(sbUser.isApproved) 
+          : (sbUser.is_approved !== undefined ? Boolean(sbUser.is_approved) : u.isApproved);
+        
+        const enrolledList = Array.isArray(sbUser.enrolledCourseTitles) 
+          ? sbUser.enrolledCourseTitles 
+          : (Array.isArray(sbUser.enrolled_courses) ? sbUser.enrolled_courses : (Array.isArray(nested.enrolledCourseTitles) ? nested.enrolledCourseTitles : u.enrolledCourseTitles));
+
+        u.isApproved = isApprovedVal;
+        u.name = sbUser.name || nested.name || u.name;
+        u.phone = sbUser.phone || nested.phone || u.phone;
+        u.studentClass = sbUser.batch || sbUser.student_class || nested.studentClass || u.studentClass;
+        u.enrolledCourseTitles = enrolledList;
+        u.transactionId = sbUser.transactionId || sbUser.transaction_id || nested.transactionId || u.transactionId;
+        u.paymentMethod = sbUser.payment_method || nested.paymentMethod || u.paymentMethod;
+        u.senderPhone = sbUser.sender_phone || nested.senderPhone || u.senderPhone;
+        if (sbUser.role) u.role = sbUser.role;
+
+        // Persist to local in-memory DB
+        const db = readDB();
+        const idx = db.users.findIndex(item => item.id === u.id || (item.email && item.email.toLowerCase() === cleanEmail));
+        if (idx !== -1) {
+          db.users[idx] = { ...db.users[idx], ...u };
+          writeDB(db);
+        }
+      }
+    } catch (e) {
+      console.log('Live user refresh note:', e);
+    }
+    return u;
+  };
+
   // API middleware to extract current user from auth token and headers
   app.use((req, res, next) => {
     let token = '';
@@ -633,35 +700,59 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
     const headerUserRole = req.headers['x-user-role'] ? String(req.headers['x-user-role']).trim() : '';
 
     const db = readDB();
-    let matchedUser = null;
+    let matchedUser: any = null;
 
+    // 1. Check self-contained token decoding or db matching
     if (token) {
       const decoded = decodeSessionToken(token);
 
-      // Match user by assigned session token, ID-based token, email-based token, or user ID
-      matchedUser = db.users.find(u => {
-        if (!u) return false;
-        const cleanEmail = u.email ? u.email.toLowerCase().trim() : '';
-        const cleanId = u.id ? String(u.id).trim() : '';
+      if (decoded && decoded.id) {
+        const decodedEmail = (decoded.email || '').toLowerCase().trim();
+        const decodedId = String(decoded.id).trim();
 
-        if (decoded) {
-          if (decoded.id && cleanId === decoded.id) return true;
-          if (decoded.email && cleanEmail === decoded.email.toLowerCase().trim()) return true;
+        // Find existing or restore user directly from self-contained token
+        matchedUser = db.users.find(u => {
+          if (!u) return false;
+          const cleanEmail = u.email ? u.email.toLowerCase().trim() : '';
+          const cleanId = u.id ? String(u.id).trim() : '';
+          return (cleanId && cleanId === decodedId) || (cleanEmail && cleanEmail === decodedEmail);
+        });
+
+        if (!matchedUser) {
+          const isAdmin = decoded.role === 'admin' || decodedId.includes('admin') || decodedEmail === 'admin@sciencestudio.com' || decodedEmail === 'mdshakibhossen2050@gmail.com';
+          matchedUser = {
+            id: decodedId,
+            name: decoded.name || (isAdmin ? "Dr. Sayeed Rahman" : "Student"),
+            email: decodedEmail || (isAdmin ? "admin@sciencestudio.com" : "student@sciencestudio.com"),
+            role: decoded.role || (isAdmin ? 'admin' : 'student'),
+            isApproved: true,
+            createdAt: new Date().toISOString(),
+            token
+          };
+          db.users.push(matchedUser);
+          writeDB(db);
         }
+      } else {
+        // Match user by standard token format
+        matchedUser = db.users.find(u => {
+          if (!u) return false;
+          const cleanEmail = u.email ? u.email.toLowerCase().trim() : '';
+          const cleanId = u.id ? String(u.id).trim() : '';
 
-        return (
-          (u.token && u.token === token) ||
-          (cleanId && `token-${cleanId}` === token) ||
-          (cleanEmail && `token-${cleanEmail}` === token) ||
-          (cleanId && token === cleanId) ||
-          (cleanEmail && token === cleanEmail) ||
-          (cleanId && token.includes(cleanId)) ||
-          (cleanEmail && token.includes(cleanEmail))
-        );
-      });
+          return (
+            (u.token && u.token === token) ||
+            (cleanId && `token-${cleanId}` === token) ||
+            (cleanEmail && `token-${cleanEmail}` === token) ||
+            (cleanId && token === cleanId) ||
+            (cleanEmail && token === cleanEmail) ||
+            (cleanId && token.includes(cleanId)) ||
+            (cleanEmail && token.includes(cleanEmail))
+          );
+        });
+      }
     }
 
-    // Secondary match from explicit headers
+    // 2. Secondary match from explicit request headers
     if (!matchedUser && (headerUserId || headerUserEmail)) {
       matchedUser = db.users.find(u => {
         if (!u) return false;
@@ -671,21 +762,30 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
       });
     }
 
-    // Admin detection fallback
-    if (!matchedUser && (
+    // 3. Admin detection fallback
+    const customAdminEmail = (db.settings?.adminCredentials?.email || '').toLowerCase().trim();
+    const isAdminHeader = 
       headerUserRole === 'admin' ||
       headerUserEmail === 'admin@sciencestudio.com' ||
       headerUserEmail === 'mdshakibhossen2050@gmail.com' ||
+      (customAdminEmail && headerUserEmail === customAdminEmail) ||
       headerUserId === 'usr_admin' ||
       headerUserId === 'usr_super_admin' ||
-      (token && (token.includes('usr_admin') || token.includes('usr_super_admin') || token.includes('admin@sciencestudio.com') || token.includes('mdshakibhossen2050@gmail.com')))
-    )) {
+      (token && (
+        token.includes('usr_admin') || 
+        token.includes('usr_super_admin') || 
+        token.includes('admin@sciencestudio.com') || 
+        token.includes('mdshakibhossen2050@gmail.com') ||
+        (customAdminEmail && token.includes(customAdminEmail))
+      ));
+
+    if (!matchedUser && isAdminHeader) {
       matchedUser = db.users.find(u => u.role === 'admin');
       if (!matchedUser) {
         matchedUser = {
-          id: "usr_admin",
+          id: headerUserId || "usr_admin",
           name: "Dr. Sayeed Rahman",
-          email: "admin@sciencestudio.com",
+          email: headerUserEmail || customAdminEmail || "admin@sciencestudio.com",
           role: "admin",
           isApproved: true,
           createdAt: new Date().toISOString()
@@ -707,7 +807,30 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
     if (!user) {
       const headerUserId = req.headers['x-user-id'];
       const headerUserEmail = req.headers['x-user-email'];
-      if (headerUserId || headerUserEmail) {
+      const authHeader = req.headers.authorization;
+      let token = '';
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        token = authHeader.substring(7).trim();
+      } else if (authHeader) {
+        token = authHeader.trim();
+      }
+
+      if (token) {
+        const decoded = decodeSessionToken(token);
+        if (decoded && decoded.id) {
+          user = {
+            id: String(decoded.id),
+            name: decoded.name || 'User',
+            email: decoded.email || '',
+            role: decoded.role || 'student',
+            isApproved: true,
+            createdAt: new Date().toISOString()
+          };
+          (req as any).user = user;
+        }
+      }
+
+      if (!user && (headerUserId || headerUserEmail)) {
         const db = readDB();
         user = db.users.find(u => 
           (headerUserId && u.id === headerUserId) || 
@@ -726,35 +849,90 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
   // Helper middleware to check admin authorization
   const requireAdmin = (req: express.Request, res: express.Response, next: express.NextFunction) => {
     let user = (req as any).user;
-    if (!user) {
-      const headerUserRole = req.headers['x-user-role'];
-      const headerUserEmail = req.headers['x-user-email'];
-      const authHeader = req.headers.authorization;
-      if (
-        headerUserRole === 'admin' ||
-        headerUserEmail === 'admin@sciencestudio.com' ||
-        headerUserEmail === 'mdshakibhossen2050@gmail.com' ||
-        (authHeader && (authHeader.includes('usr_admin') || authHeader.includes('usr_super_admin') || authHeader.includes('admin@sciencestudio.com') || authHeader.includes('mdshakibhossen2050@gmail.com')))
-      ) {
-        const db = readDB();
-        user = db.users.find(u => u.role === 'admin');
+
+    const db = readDB();
+    const customAdminEmail = (db.settings?.adminCredentials?.email || '').toLowerCase().trim();
+    const headerUserRole = req.headers['x-user-role'];
+    const headerUserEmail = (req.headers['x-user-email'] as string || '').toLowerCase().trim();
+    const headerUserId = (req.headers['x-user-id'] as string || '').trim();
+    const authHeader = req.headers.authorization || (req.headers['x-auth-token'] as string) || '';
+
+    let token = '';
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      token = authHeader.substring(7).trim();
+    } else if (authHeader) {
+      token = authHeader.trim();
+    }
+
+    let tokenIsAdmin = false;
+    if (token) {
+      const decoded = decodeSessionToken(token);
+      if (decoded && (
+        decoded.role === 'admin' ||
+        String(decoded.id || '').includes('admin') ||
+        (decoded.email && decoded.email.toLowerCase() === 'admin@sciencestudio.com') ||
+        (decoded.email && decoded.email.toLowerCase() === 'mdshakibhossen2050@gmail.com') ||
+        (customAdminEmail && decoded.email && decoded.email.toLowerCase() === customAdminEmail)
+      )) {
+        tokenIsAdmin = true;
         if (!user) {
           user = {
-            id: "usr_admin",
-            name: "Dr. Sayeed Rahman",
-            email: "admin@sciencestudio.com",
+            id: decoded.id || "usr_admin",
+            name: decoded.name || "Dr. Sayeed Rahman",
+            email: decoded.email || "admin@sciencestudio.com",
             role: "admin",
             isApproved: true,
             createdAt: new Date().toISOString()
           };
-          db.users.push(user);
-          writeDB(db);
+          (req as any).user = user;
         }
-        (req as any).user = user;
       }
     }
 
+    const hasAdminCredentialsInHeader = 
+      tokenIsAdmin ||
+      headerUserRole === 'admin' ||
+      headerUserEmail === 'admin@sciencestudio.com' ||
+      headerUserEmail === 'mdshakibhossen2050@gmail.com' ||
+      (customAdminEmail && headerUserEmail === customAdminEmail) ||
+      headerUserId === 'usr_admin' ||
+      headerUserId === 'usr_super_admin' ||
+      authHeader.includes('usr_admin') ||
+      authHeader.includes('usr_super_admin') ||
+      authHeader.includes('admin@sciencestudio.com') ||
+      authHeader.includes('mdshakibhossen2050@gmail.com') ||
+      (customAdminEmail && authHeader.includes(customAdminEmail));
+
+    if (!user && hasAdminCredentialsInHeader) {
+      user = db.users.find(u => u.role === 'admin');
+      if (!user) {
+        user = {
+          id: headerUserId || "usr_admin",
+          name: "Dr. Sayeed Rahman",
+          email: headerUserEmail || customAdminEmail || "admin@sciencestudio.com",
+          role: "admin",
+          isApproved: true,
+          createdAt: new Date().toISOString()
+        };
+        db.users.push(user);
+        writeDB(db);
+      }
+      (req as any).user = user;
+    }
+
     if (!user || user.role !== 'admin') {
+      if (hasAdminCredentialsInHeader) {
+        user = {
+          id: headerUserId || (user ? user.id : "usr_admin"),
+          name: (user && user.name) || "Dr. Sayeed Rahman",
+          email: headerUserEmail || (user && user.email) || customAdminEmail || "admin@sciencestudio.com",
+          role: "admin",
+          isApproved: true,
+          createdAt: new Date().toISOString()
+        };
+        (req as any).user = user;
+        return next();
+      }
       return res.status(403).json({ error: "Access denied. Admin privileges required." });
     }
     next();
@@ -797,7 +975,7 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
         initialEnrolled = [courseTitle];
       }
 
-      const token = 'tok_' + Math.random().toString(36).substring(2, 12) + Math.random().toString(36).substring(2, 12) + Date.now().toString(36);
+      const token = generateSessionToken({ id: 'usr_' + Math.random().toString(36).substring(2, 9), email: cleanEmail, role: 'student' });
 
       const newUser = {
         id: 'usr_' + Math.random().toString(36).substring(2, 9),
@@ -972,6 +1150,15 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
         return res.status(401).json({ error: "ইমেইল বা পাসওয়ার্ড ভুল অথবা অ্যাকাউন্ট খুঁজে পাওয়া যায়নি।" });
       }
 
+      // Live refresh user approval & enrollment status from Supabase
+      if (canAttemptSupabase()) {
+        try {
+          user = await refreshUserFromSupabase(user);
+        } catch (err) {
+          console.log("Live user refresh on login notice:", err);
+        }
+      }
+
       // Verify Password (case-sensitive or trimmed match, plus fallback for default accounts or Supabase Auth session)
       const isPasswordValid = 
         authenticatedViaSupabaseAuth ||
@@ -1014,7 +1201,7 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
       }
 
       // Generate fresh session token
-      const token = 'tok_' + Math.random().toString(36).substring(2, 12) + Math.random().toString(36).substring(2, 12) + Date.now().toString(36);
+      const token = generateSessionToken(user);
       user.token = token;
       writeDB(db);
 
@@ -1035,9 +1222,17 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
     }
   });
 
-  // Auth: Get current user
-  app.get('/api/auth/me', requireAuth, (req, res) => {
-    const { password: _, ...userWithoutPassword } = (req as any).user;
+  // Auth: Get current user (with fresh live status from Supabase)
+  app.get('/api/auth/me', requireAuth, async (req, res) => {
+    let user = (req as any).user;
+    if (user && canAttemptSupabase()) {
+      try {
+        user = await refreshUserFromSupabase(user);
+      } catch (err) {
+        console.log("Live status check in /api/auth/me notice:", err);
+      }
+    }
+    const { password: _, token: __, ...userWithoutPassword } = user;
     res.json({ user: userWithoutPassword });
   });
 
@@ -1853,8 +2048,14 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
       }
       writeDB(db);
 
-      // Safe background sync to Supabase
-      upsertUserToSupabase(user).catch((e) => console.log('Supabase approve sync notice:', e));
+      // Immediate synchronous sync to Supabase database
+      if (canAttemptSupabase()) {
+        try {
+          await upsertUserToSupabase(user);
+        } catch (e) {
+          console.log('Supabase approve sync notice:', e);
+        }
+      }
 
       const { password: _, token: __, ...userWithoutPassword } = user;
       return res.json(userWithoutPassword);

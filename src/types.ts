@@ -10,6 +10,7 @@ export interface User {
   email: string;
   phone?: string;
   role: UserRole;
+  token?: string;
   isApproved?: boolean;
   course?: string;
   batch?: string;
@@ -118,6 +119,7 @@ export interface Settings {
   nagadNumber?: string;
   rocketNumber?: string;
   paymentInstructions?: string;
+  adminCredentials?: { email?: string; password?: string };
 
   // Orbit & Ecosystem Section Settings
   orbitSectionBadge?: string;
