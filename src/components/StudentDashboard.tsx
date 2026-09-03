@@ -517,11 +517,11 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
   return (
     <div className="w-full max-w-[1800px] mx-auto px-2 sm:px-6 lg:px-10 xl:px-12 py-6 sm:py-8">
       {/* Student Welcome Header Banner */}
-      <div className="p-6 rounded-2xl bg-white/5 backdrop-blur-xl border border-white/10 mb-8 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
-        <div className="flex items-center gap-4">
+      <div className="p-4 sm:p-5 rounded-2xl bg-white/5 backdrop-blur-xl border border-white/10 mb-3.5 sm:mb-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 sm:gap-6">
+        <div className="flex items-center gap-3.5 sm:gap-4">
           <div 
             onClick={() => setShowProfileModal(true)}
-            className="relative w-16 h-16 rounded-2xl bg-cyan-500/10 border-2 border-cyan-400/60 overflow-hidden flex items-center justify-center shrink-0 cursor-pointer group shadow-[0_0_15px_rgba(34,211,238,0.2)]"
+            className="relative w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-cyan-500/10 border-2 border-cyan-400/60 overflow-hidden flex items-center justify-center shrink-0 cursor-pointer group shadow-[0_0_15px_rgba(34,211,238,0.2)]"
             title="প্রোফাইল পরিবর্তন করতে ক্লিক করুন"
           >
             {user.photoUrl || user.avatarUrl ? (
@@ -531,7 +531,7 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
                 className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
               />
             ) : (
-              <UserIcon className="w-8 h-8 text-cyan-400" />
+              <UserIcon className="w-7 h-7 sm:w-8 sm:h-8 text-cyan-400" />
             )}
             <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
               <Camera className="w-5 h-5 text-cyan-300" />
@@ -540,7 +540,7 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
 
           <div>
             <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-2xl font-display font-bold text-white">স্বাগতম, {user.name}!</h1>
+              <h1 className="text-xl sm:text-2xl font-display font-bold text-white">স্বাগতম, {user.name}!</h1>
               <span className={`text-[10px] font-mono uppercase px-2 py-0.5 rounded-full font-bold ${
                 user.isApproved 
                   ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30' 
@@ -552,7 +552,7 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
               </span>
             </div>
 
-            <div className="flex flex-wrap items-center gap-3 mt-1">
+            <div className="flex flex-wrap items-center gap-2 sm:gap-3 mt-1">
               {user.studentClass && (
                 <span className="text-xs font-mono font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-2.5 py-0.5 rounded-md flex items-center gap-1">
                   <BookOpen className="w-3.5 h-3.5" />
@@ -566,7 +566,7 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
               )}
             </div>
 
-            <p className="text-slate-300 text-xs mt-1.5 font-sans">
+            <p className="text-slate-300 text-xs mt-1 font-sans">
               {user.isApproved 
                 ? 'আজকের ক্লাস এবং স্টাডি মেটেরিয়ালসমূহ নিচে দেওয়া হলো। আপনার বিজ্ঞান চর্চাকে আরও বেগবান করুন।'
                 : isPendingApproval
@@ -577,11 +577,11 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
         </div>
         
         {/* Profile Controls & Stats Panel */}
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 w-full md:w-auto shrink-0">
+        <div className="flex flex-row flex-wrap sm:flex-nowrap items-center gap-2 w-full md:w-auto shrink-0 mt-1 md:mt-0">
           <button
             type="button"
             onClick={() => setShowProfileModal(true)}
-            className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500/20 via-teal-500/20 to-emerald-500/20 hover:from-cyan-500/30 hover:to-emerald-500/30 border border-cyan-400/50 text-cyan-300 font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md btn-shine group"
+            className="flex-1 sm:flex-initial px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-xl bg-gradient-to-r from-cyan-500/20 via-teal-500/20 to-emerald-500/20 hover:from-cyan-500/30 hover:to-emerald-500/30 border border-cyan-400/50 text-cyan-300 font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md btn-shine group active:scale-95"
           >
             <Edit3 className="w-4 h-4 text-cyan-400 group-hover:rotate-12 transition-transform" />
             <span>প্রোফাইল এডিট</span>
@@ -591,15 +591,15 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
             <button
               type="button"
               onClick={onLogout}
-              className="px-3.5 py-2.5 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/40 text-rose-300 font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-md active:scale-95 group"
+              className="flex-1 sm:flex-initial px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/40 text-rose-300 font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-md active:scale-95 group"
               title="অ্যাকাউন্ট থেকে লগআউট করুন"
             >
               <LogOut className="w-4 h-4 text-rose-400 group-hover:-translate-x-0.5 transition-transform" />
-              <span>লগআউট (Logout)</span>
+              <span>লগআউট</span>
             </button>
           )}
 
-          <div className="hidden xl:flex items-center gap-4 bg-white/5 p-2.5 rounded-xl border border-white/10 shrink-0 font-mono text-[11px] text-slate-300">
+          <div className="hidden xl:flex items-center gap-4 bg-white/5 p-2 rounded-xl border border-white/10 shrink-0 font-mono text-[11px] text-slate-300">
             <div className="space-y-0.5">
               <div><span className="text-cyan-400">EMAIL:</span> {user.email}</div>
               <div><span className="text-cyan-400">STUDENT ID:</span> {user.id}</div>
@@ -639,13 +639,13 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
         <>
           {/* Eligibility / Status Banner */}
           {user.isApproved ? (
-            <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-950/80 via-slate-900/90 to-cyan-950/80 border border-emerald-500/40 text-emerald-300 text-xs font-semibold flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xl mb-6">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 shrink-0">
-                  <CheckCircle className="w-5 h-5" />
+            <div className="p-3 sm:p-3.5 rounded-xl bg-gradient-to-r from-emerald-950/80 via-slate-900/90 to-cyan-950/80 border border-emerald-500/40 text-emerald-300 text-xs font-semibold flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 shadow-xl mb-3.5 sm:mb-4">
+              <div className="flex items-center gap-2.5 sm:gap-3">
+                <div className="p-1.5 sm:p-2 rounded-lg bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 shrink-0">
+                  <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5" />
                 </div>
                 <div>
-                  <span className="text-[11px] text-emerald-400 font-mono uppercase tracking-wider block font-bold">
+                  <span className="text-[10px] sm:text-[11px] text-emerald-400 font-mono uppercase tracking-wider block font-bold">
                     কোর্স অ্যাক্সেস কনফার্মেশন (Eligible Enrolled Course)
                   </span>
                   <span className="text-white text-xs sm:text-sm font-bold">
@@ -654,7 +654,7 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
                 </div>
               </div>
               <div className="flex items-center gap-2 shrink-0">
-                <span className="text-[11px] bg-emerald-500/20 text-emerald-200 border border-emerald-500/30 px-3 py-1 rounded-full font-mono">
+                <span className="text-[10px] sm:text-[11px] bg-emerald-500/20 text-emerald-200 border border-emerald-500/30 px-2.5 py-0.5 sm:px-3 sm:py-1 rounded-full font-mono">
                   ✓ Eligible Active Student
                 </span>
               </div>
@@ -1050,31 +1050,31 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
           {user.isApproved && (
             <>
               {/* Control Panel: Search & Subject/Course Filters */}
-              <div className="bg-white/5 backdrop-blur-md rounded-xl border border-white/10 p-4 mb-8 space-y-3">
-                <div className="flex flex-col lg:flex-row gap-4 items-center justify-between">
+              <div className="bg-white/5 backdrop-blur-md rounded-xl border border-white/10 p-3 sm:p-3.5 mb-3.5 sm:mb-4 space-y-2.5">
+                <div className="flex flex-col lg:flex-row gap-3 lg:gap-4 items-center justify-between">
                   {/* Search bar */}
                   <div className="relative w-full lg:w-80">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-slate-400" />
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                     <input
                       type="text"
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                       placeholder="সার্চ করুন (যেমন: Quantum, Carbon)..."
-                      className="w-full pl-10 pr-4 py-2 rounded-lg bg-white/5 border border-white/10 focus:border-cyan-400 text-slate-200 text-sm outline-none transition-colors"
+                      className="w-full pl-9 pr-3.5 py-1.5 sm:py-2 rounded-lg bg-white/5 border border-white/10 focus:border-cyan-400 text-slate-200 text-xs sm:text-sm outline-none transition-colors"
                     />
                   </div>
 
                   {/* Course Display */}
-                  <div className="flex items-center gap-3 w-full sm:w-auto shrink-0 flex-wrap">
+                  <div className="flex items-center gap-2 sm:gap-3 w-full sm:w-auto shrink-0 flex-wrap">
                     {displayDropdownCourses.length > 0 && (
-                      <div className="flex items-center gap-2 flex-wrap">
+                      <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
                         <span className="text-xs text-slate-300 font-mono flex items-center gap-1">
                           <BookOpen className="w-3.5 h-3.5 text-emerald-400" />
                           এনরোলকৃত কোর্স:
                         </span>
                         <div className="flex flex-wrap items-center gap-1.5">
                           {displayDropdownCourses.map(c => (
-                            <span key={c.id} className="px-3 py-1 rounded-lg bg-emerald-500/15 border border-emerald-500/35 text-emerald-300 text-xs font-bold font-sans flex items-center gap-1.5 shadow-sm">
+                            <span key={c.id} className="px-2.5 py-0.5 sm:px-3 sm:py-1 rounded-lg bg-emerald-500/15 border border-emerald-500/35 text-emerald-300 text-xs font-bold font-sans flex items-center gap-1 shadow-sm">
                               <span>📚</span>
                               <span>{c.title}</span>
                             </span>
@@ -1085,12 +1085,12 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
                   </div>
 
                   {/* Subject Pills */}
-                  <div className="flex flex-wrap gap-2 w-full lg:w-auto justify-start lg:justify-end overflow-x-auto pb-1 lg:pb-0">
+                  <div className="flex gap-1.5 sm:gap-2 w-full lg:w-auto justify-start lg:justify-end overflow-x-auto pb-1 lg:pb-0 custom-scrollbar overscroll-x-contain">
                     {subjects.map(subj => (
                       <button
                         key={subj}
                         onClick={() => setSelectedSubject(subj)}
-                        className={`px-3.5 py-1.5 rounded-full text-xs font-medium transition-all cursor-pointer ${
+                        className={`px-3 py-1 sm:px-3.5 sm:py-1.5 rounded-full text-xs font-medium transition-all cursor-pointer whitespace-nowrap shrink-0 ${
                           selectedSubject === subj
                             ? 'bg-cyan-500 text-slate-950 font-semibold shadow-[0_0_10px_rgba(34,211,238,0.4)]'
                             : 'bg-white/5 text-slate-300 border border-white/10 hover:text-white hover:border-cyan-500/20'
@@ -1103,14 +1103,15 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
                 </div>
               </div>
 
-      {/* Main Grid: Interactive Video Player (with Horizontal PDFs below) & Video Master List (Large Banners on Right) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 mb-12 items-stretch">
+      {/* Main Grid: Interactive Video Player & PDF Notes on Left (Desktop), Uploaded Classes Playlist on Right */}
+      {/* On Mobile: Single column in order: 1. Video Player -> 2. Video Classes -> 3. PDF Notes */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-3.5 sm:gap-4 lg:gap-6 mb-8 sm:mb-10 items-stretch">
         
-        {/* Left Column (8 of 12 cols on Desktop): Active Class Video Player & Horizontal PDF Notes Directly Below It */}
-        <div className="lg:col-span-7 xl:col-span-8 space-y-6 flex flex-col justify-start" id="active-video-player-container">
-          
-          {/* 1. Active Lecture Video Player Card */}
-          <div className="border border-white/10 rounded-2xl bg-white/5 overflow-hidden shadow-2xl">
+        {/* Item 1: Active Lecture Video Player Card (Order 1 on Mobile, Row 1 Col 1..8 on Desktop) */}
+        <div 
+          id="active-video-player-container"
+          className="order-1 lg:order-none lg:col-start-1 lg:col-span-7 xl:col-span-8 lg:row-start-1 border border-white/10 rounded-2xl bg-white/5 overflow-hidden shadow-2xl"
+        >
             <div className="p-4 border-b border-white/10 bg-white/5 flex items-center justify-between gap-2 flex-wrap">
               <div className="flex items-center gap-2 text-cyan-400">
                 <Video className="w-5 h-5" />
@@ -1379,9 +1380,9 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
               );
 
               return (
-                <div className="p-5 sm:p-6 bg-gradient-to-b from-[#091326]/95 to-[#060c1a]/95 border-t border-white/10 space-y-4">
+                <div className="p-4 sm:p-5 bg-gradient-to-b from-[#091326]/95 to-[#060c1a]/95 border-t border-white/10 space-y-3">
                   {/* Top Header & Navigation Toolbar */}
-                  <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-white/10">
+                  <div className="flex flex-wrap items-center justify-between gap-2.5 pb-2.5 border-b border-white/10">
                     <div className="flex items-center gap-2 flex-wrap">
                       {/* Active Class Index Tag */}
                       <span className="px-3 py-1 rounded-lg bg-cyan-500/15 border border-cyan-400/30 text-cyan-300 font-mono font-bold text-xs flex items-center gap-1.5 shadow-sm">
@@ -1477,8 +1478,8 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
 
                   {/* Active Class Description / Overview */}
                   {activeVideo.description && (
-                    <div className="p-3.5 rounded-xl bg-white/[0.03] border border-white/5">
-                      <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-300 mb-1.5">
+                    <div className="p-3 rounded-xl bg-white/[0.03] border border-white/5">
+                      <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-300 mb-1">
                         <Info className="w-3.5 h-3.5 text-cyan-400" />
                         <span>লেকচার ওভারভিউ ও বিবরণ:</span>
                       </div>
@@ -1489,7 +1490,7 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
                   )}
 
                   {/* Bottom Meta & Status Details Bar */}
-                  <div className="pt-3 border-t border-white/10 flex items-center justify-between gap-3 flex-wrap text-xs text-slate-400 font-mono">
+                  <div className="pt-2.5 border-t border-white/10 flex items-center justify-between gap-3 flex-wrap text-xs text-slate-400 font-mono">
                     <div className="flex items-center gap-3 sm:gap-4 flex-wrap">
                       <span className="flex items-center gap-1.5 text-slate-300">
                         <Clock className="w-3.5 h-3.5 text-cyan-400" />
@@ -1520,207 +1521,14 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
                 </div>
               );
             })()}
-          </div>
-
-          {/* 2. PDF Lecture Notes Section (DISPLAYED HORIZONTALLY BELOW THE PLAYER FROM LEFT TO RIGHT) */}
-          <div className="space-y-3.5">
-            {/* PDF Section Header matching Right-Side Playlist Header */}
-            <div className="px-4.5 py-4 rounded-2xl bg-[#091326]/90 backdrop-blur-md border border-rose-500/25 shadow-lg flex items-center justify-between gap-3 flex-wrap">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl bg-rose-500/15 border border-rose-400/30 flex items-center justify-center text-rose-400 shrink-0">
-                  <FileText className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="font-display font-bold text-sm sm:text-base text-white flex items-center gap-1.5">
-                    আপলোডকৃত পিডিএফ ও লেকচার শিট তালিকা
-                  </h3>
-                  <p className="text-slate-400 text-[11px] font-sans">
-                    বাম থেকে ডানে স্ক্রল করে লেকচার শিট পড়ুন ও ডাউনলোড করুন
-                  </p>
-                </div>
-              </div>
-
-              {/* Counter and Navigation Arrows */}
-              <div className="flex items-center gap-2">
-                <span className="px-3 py-1 rounded-full bg-rose-500/15 text-rose-300 border border-rose-400/30 text-xs font-mono font-bold shrink-0 shadow-sm">
-                  {filteredNotes.length} PDFs
-                </span>
-
-                <div className="flex items-center gap-1.5 ml-1">
-                  <button
-                    type="button"
-                    onClick={() => scrollNotes('left')}
-                    className={`p-2 rounded-xl border text-xs font-semibold flex items-center justify-center transition-all cursor-pointer shadow-sm active:scale-95 ${
-                      canScrollNotesLeft
-                        ? 'bg-rose-500/20 text-rose-300 border-rose-400/60 hover:bg-rose-500/30'
-                        : 'bg-white/5 text-slate-400 border-white/10 hover:bg-white/10 hover:text-slate-200'
-                    }`}
-                    title="বাম দিকে স্ক্রল করুন (Previous)"
-                  >
-                    <ChevronLeft className="w-4 h-4" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => scrollNotes('right')}
-                    className={`p-2 rounded-xl border text-xs font-semibold flex items-center justify-center transition-all cursor-pointer shadow-sm active:scale-95 ${
-                      canScrollNotesRight
-                        ? 'bg-rose-500/20 text-rose-300 border-rose-400/60 hover:bg-rose-500/30'
-                        : 'bg-white/5 text-slate-400 border-white/10 hover:bg-white/10 hover:text-slate-200'
-                    }`}
-                    title="ডান দিকে স্ক্রল করুন (Next)"
-                  >
-                    <ChevronRight className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* Horizontal Scrollable Slider of PDFs (Left to Right) */}
-            <div 
-              ref={notesScrollRef}
-              className="flex gap-4 overflow-x-auto pb-4 pt-1 custom-scrollbar snap-x scroll-smooth overscroll-x-contain"
-              style={{ scrollSnapType: 'x mandatory' }}
-            >
-              {filteredNotes.length > 0 ? (
-                filteredNotes.map((note, idx) => {
-                  const bannerUrl = getNoteBannerUrl(note, coursesList);
-
-                  return (
-                    <div 
-                      key={note.id} 
-                      className="w-[280px] sm:w-[320px] shrink-0 snap-start rounded-2xl border transition-all duration-300 overflow-hidden group relative bg-[#091326]/90 hover:bg-[#0d1d36]/90 border-white/10 hover:border-rose-500/40 hover:shadow-[0_0_20px_rgba(244,63,94,0.15)] flex flex-col justify-between"
-                    >
-                      {/* 1. Large 16:9 Banner Image Header (Identical to Right-Side Playlist Cards) */}
-                      <div 
-                        onClick={() => handleOpenPDF(note)}
-                        className="w-full aspect-[16/9] relative overflow-hidden bg-slate-950 border-b border-white/10 select-none cursor-pointer"
-                      >
-                        <img 
-                          src={bannerUrl} 
-                          alt={note.title} 
-                          referrerPolicy="no-referrer"
-                          onError={(e) => {
-                            e.currentTarget.src = getDefaultSubjectBanner(note.subject);
-                          }}
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
-                        />
-
-                        {/* Top Overlay Badges */}
-                        <div className="absolute top-2.5 left-2.5 right-2.5 flex items-center justify-between gap-1.5 pointer-events-none z-10">
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className="text-[10px] font-mono font-bold uppercase bg-slate-950/85 backdrop-blur-md text-cyan-300 border border-cyan-400/40 px-2.5 py-0.5 rounded-lg shadow-sm">
-                              {note.subject}
-                            </span>
-                            {note.courseTitle && (
-                              <span className="text-[10px] font-mono font-semibold bg-purple-950/85 backdrop-blur-md text-purple-300 border border-purple-400/40 px-2.5 py-0.5 rounded-lg truncate max-w-[140px] shadow-sm">
-                                📚 {note.courseTitle}
-                              </span>
-                            )}
-                          </div>
-
-                          {/* Bookmark / PDF Button */}
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              toggleBookmark(note.id);
-                            }}
-                            className="pointer-events-auto p-1.5 rounded-lg bg-slate-950/85 backdrop-blur-md border border-white/15 text-slate-300 hover:text-cyan-300 hover:border-cyan-400/50 transition-all shadow cursor-pointer active:scale-95"
-                            title="বুকমার্ক করুন"
-                          >
-                            <Bookmark className={`w-3.5 h-3.5 ${bookmarkedIds.includes(note.id) ? 'fill-cyan-400 text-cyan-400' : ''}`} />
-                          </button>
-                        </div>
-
-                        {/* Center Read Indicator / Hover Overlay */}
-                        <div className="absolute inset-0 bg-slate-950/35 group-hover:bg-slate-950/15 transition-all flex items-center justify-center">
-                          <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-slate-950/85 backdrop-blur-md border border-white/30 text-white flex items-center justify-center shadow-xl group-hover:scale-110 group-hover:bg-rose-500 group-hover:text-white group-hover:border-rose-300 transition-all">
-                            <BookOpen className="w-5 h-5 ml-0.5 fill-current" />
-                          </div>
-                        </div>
-
-                        {/* Bottom Banner Info Bar */}
-                        <div className="absolute bottom-2 left-2.5 right-2.5 flex items-center justify-between text-[10px] font-mono text-slate-200 bg-slate-950/85 backdrop-blur-md px-2.5 py-1 rounded-lg border border-white/10">
-                          <span className="flex items-center gap-1 text-slate-300">
-                            <Clock className="w-3 h-3 text-rose-400" />
-                            {new Date(note.createdAt).toLocaleDateString()}
-                          </span>
-                          <span className="font-bold text-rose-300">পিডিএফ #{idx + 1}</span>
-                        </div>
-                      </div>
-
-                      {/* 2. Card Content Body */}
-                      <div className="p-4 sm:p-4.5 space-y-2.5 flex-1 flex flex-col justify-between">
-                        <div>
-                          <h4 
-                            onClick={() => handleOpenPDF(note)}
-                            className="font-display font-bold text-sm sm:text-[15px] line-clamp-2 leading-snug text-white group-hover:text-rose-300 transition-colors cursor-pointer"
-                          >
-                            {note.title}
-                          </h4>
-
-                          {note.description && (
-                            <p className="text-slate-300 text-xs line-clamp-2 font-sans leading-relaxed mt-1">
-                              {note.description}
-                            </p>
-                          )}
-                        </div>
-
-                        {/* Action & Status Row */}
-                        <div className="flex items-center justify-between pt-3 border-t border-white/10 text-xs gap-2">
-                          <button
-                            type="button"
-                            onClick={() => handleOpenPDF(note)}
-                            className="flex-1 py-2 px-3 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 bg-rose-500/15 group-hover:bg-rose-500 text-rose-300 group-hover:text-white border border-rose-400/30 transition-all cursor-pointer shadow-sm active:scale-95"
-                          >
-                            <BookOpen className="w-3.5 h-3.5" />
-                            <span>নোট পড়ুন (Read)</span>
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDownloadPDF(note);
-                            }}
-                            className="p-2 rounded-lg bg-white/5 hover:bg-emerald-500/20 text-slate-300 hover:text-emerald-300 border border-white/10 hover:border-emerald-400/40 transition-all cursor-pointer shrink-0 active:scale-95"
-                            title="সরাসরি ডাউনলোড করুন"
-                          >
-                            <Download className="w-4 h-4" />
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              openPdfInBrowser(note.pdfUrl);
-                            }}
-                            className="p-2 rounded-lg bg-white/5 hover:bg-purple-500/20 text-slate-300 hover:text-purple-300 border border-white/10 hover:border-purple-400/40 transition-all cursor-pointer shrink-0 active:scale-95"
-                            title="ব্রাউজারে নতুন ট্যাবে খুলুন"
-                          >
-                            <ExternalLink className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })
-              ) : (
-                <div className="w-full p-8 rounded-2xl border border-dashed border-white/10 text-center text-slate-400 text-sm">
-                  বর্তমান ফিল্টারে কোনো পিডিএফ লেকচার নোট পাওয়া যায়নি।
-                </div>
-              )}
-            </div>
-          </div>
-
         </div>
 
-        {/* Right Column (4 of 12 cols on Desktop): UPLOADED CLASSES PLAYLIST WITH LARGE BANNERS (Strictly matches left column PDF section bottom) */}
-        <div className="lg:col-span-5 xl:col-span-4 lg:relative flex flex-col">
-          <div className="lg:absolute lg:inset-0 flex flex-col space-y-3.5">
+        {/* Item 2: Uploaded Classes Playlist (Order 2 on Mobile - directly below Player; Right Column spanning Rows 1 & 2 on Desktop) */}
+        <div className="order-2 lg:order-none lg:col-start-8 xl:col-start-9 lg:col-span-5 xl:col-span-4 lg:row-start-1 lg:row-span-2 lg:relative flex flex-col">
+          <div className="lg:absolute lg:inset-0 flex flex-col space-y-3">
           
           {/* Playlist Header */}
-          <div className="px-4.5 py-4 rounded-2xl bg-[#091326]/90 backdrop-blur-md border border-cyan-500/25 shadow-lg flex items-center justify-between gap-3 shrink-0">
+          <div className="px-4 py-3 sm:px-4.5 sm:py-3.5 rounded-2xl bg-[#091326]/90 backdrop-blur-md border border-cyan-500/25 shadow-lg flex items-center justify-between gap-3 shrink-0">
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-xl bg-cyan-500/15 border border-cyan-400/30 flex items-center justify-center text-cyan-400 shrink-0">
                 <Video className="w-5 h-5" />
@@ -1739,8 +1547,8 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
             </span>
           </div>
 
-          {/* Top-to-Bottom Playlist with Large Banners - Perfectly constrained to the left section height */}
-          <div className="space-y-4 flex-1 min-h-0 max-h-[580px] lg:max-h-none overflow-y-auto pr-1.5 custom-scrollbar overscroll-contain rounded-2xl">
+          {/* Top-to-Bottom Playlist with Large Banners - Constrained height on mobile and desktop */}
+          <div className="space-y-3 sm:space-y-3.5 flex-1 min-h-0 max-h-[460px] sm:max-h-[520px] lg:max-h-none overflow-y-auto pr-1.5 custom-scrollbar overscroll-contain rounded-2xl">
             {filteredClasses.length > 0 ? (
               filteredClasses.map((cls, idx) => {
                 const isActive = activeVideo?.id === cls.id;
@@ -1868,6 +1676,197 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
             )}
           </div>
 
+          </div>
+        </div>
+
+        {/* Item 3: PDF Lecture Notes Section (Order 3 on Mobile - below Classes; Row 2 Col 1..8 on Desktop - below Player) */}
+        <div className="order-3 lg:order-none lg:col-start-1 lg:col-span-7 xl:col-span-8 lg:row-start-2 space-y-3">
+          {/* PDF Section Header matching Right-Side Playlist Header */}
+          <div className="px-4 py-3 sm:px-4.5 sm:py-3.5 rounded-2xl bg-[#091326]/90 backdrop-blur-md border border-rose-500/25 shadow-lg flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-rose-500/15 border border-rose-400/30 flex items-center justify-center text-rose-400 shrink-0">
+                <FileText className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-display font-bold text-sm sm:text-base text-white flex items-center gap-1.5">
+                  আপলোডকৃত পিডিএফ ও লেকচার শিট তালিকা
+                </h3>
+                <p className="text-slate-400 text-[11px] font-sans">
+                  বাম থেকে ডানে স্ক্রল করে লেকচার শিট পড়ুন ও ডাউনলোড করুন
+                </p>
+              </div>
+            </div>
+
+            {/* Counter and Navigation Arrows */}
+            <div className="flex items-center gap-2">
+              <span className="px-3 py-1 rounded-full bg-rose-500/15 text-rose-300 border border-rose-400/30 text-xs font-mono font-bold shrink-0 shadow-sm">
+                {filteredNotes.length} PDFs
+              </span>
+
+              <div className="flex items-center gap-1.5 ml-1">
+                <button
+                  type="button"
+                  onClick={() => scrollNotes('left')}
+                  className={`p-2 rounded-xl border text-xs font-semibold flex items-center justify-center transition-all cursor-pointer shadow-sm active:scale-95 ${
+                    canScrollNotesLeft
+                      ? 'bg-rose-500/20 text-rose-300 border-rose-400/60 hover:bg-rose-500/30'
+                      : 'bg-white/5 text-slate-400 border-white/10 hover:bg-white/10 hover:text-slate-200'
+                  }`}
+                  title="বাম দিকে স্ক্রল করুন (Previous)"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => scrollNotes('right')}
+                  className={`p-2 rounded-xl border text-xs font-semibold flex items-center justify-center transition-all cursor-pointer shadow-sm active:scale-95 ${
+                    canScrollNotesRight
+                      ? 'bg-rose-500/20 text-rose-300 border-rose-400/60 hover:bg-rose-500/30'
+                      : 'bg-white/5 text-slate-400 border-white/10 hover:bg-white/10 hover:text-slate-200'
+                  }`}
+                  title="ডান দিকে স্ক্রল করুন (Next)"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Horizontal Scrollable Slider of PDFs (Left to Right) */}
+          <div 
+            ref={notesScrollRef}
+            className="flex gap-3.5 sm:gap-4 overflow-x-auto pb-3.5 pt-1 custom-scrollbar snap-x scroll-smooth overscroll-x-contain"
+            style={{ scrollSnapType: 'x mandatory' }}
+          >
+            {filteredNotes.length > 0 ? (
+              filteredNotes.map((note, idx) => {
+                const bannerUrl = getNoteBannerUrl(note, coursesList);
+
+                return (
+                  <div 
+                    key={note.id} 
+                    className="w-[260px] sm:w-[300px] md:w-[320px] shrink-0 snap-start rounded-2xl border transition-all duration-300 overflow-hidden group relative bg-[#091326]/90 hover:bg-[#0d1d36]/90 border-white/10 hover:border-rose-500/40 hover:shadow-[0_0_20px_rgba(244,63,94,0.15)] flex flex-col justify-between"
+                  >
+                    {/* 1. Large 16:9 Banner Image Header (Identical to Right-Side Playlist Cards) */}
+                    <div 
+                      onClick={() => handleOpenPDF(note)}
+                      className="w-full aspect-[16/9] relative overflow-hidden bg-slate-950 border-b border-white/10 select-none cursor-pointer"
+                    >
+                      <img 
+                        src={bannerUrl} 
+                        alt={note.title} 
+                        referrerPolicy="no-referrer"
+                        onError={(e) => {
+                          e.currentTarget.src = getDefaultSubjectBanner(note.subject);
+                        }}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
+                      />
+
+                      {/* Top Overlay Badges */}
+                      <div className="absolute top-2.5 left-2.5 right-2.5 flex items-center justify-between gap-1.5 pointer-events-none z-10">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-[10px] font-mono font-bold uppercase bg-slate-950/85 backdrop-blur-md text-cyan-300 border border-cyan-400/40 px-2.5 py-0.5 rounded-lg shadow-sm">
+                            {note.subject}
+                          </span>
+                          {note.courseTitle && (
+                            <span className="text-[10px] font-mono font-semibold bg-purple-950/85 backdrop-blur-md text-purple-300 border border-purple-400/40 px-2.5 py-0.5 rounded-lg truncate max-w-[140px] shadow-sm">
+                              📚 {note.courseTitle}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Bookmark / PDF Button */}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleBookmark(note.id);
+                          }}
+                          className="pointer-events-auto p-1.5 rounded-lg bg-slate-950/85 backdrop-blur-md border border-white/15 text-slate-300 hover:text-cyan-300 hover:border-cyan-400/50 transition-all shadow cursor-pointer active:scale-95"
+                          title="বুকমার্ক করুন"
+                        >
+                          <Bookmark className={`w-3.5 h-3.5 ${bookmarkedIds.includes(note.id) ? 'fill-cyan-400 text-cyan-400' : ''}`} />
+                        </button>
+                      </div>
+
+                      {/* Center Read Indicator / Hover Overlay */}
+                      <div className="absolute inset-0 bg-slate-950/35 group-hover:bg-slate-950/15 transition-all flex items-center justify-center">
+                        <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-slate-950/85 backdrop-blur-md border border-white/30 text-white flex items-center justify-center shadow-xl group-hover:scale-110 group-hover:bg-rose-500 group-hover:text-white group-hover:border-rose-300 transition-all">
+                          <BookOpen className="w-5 h-5 ml-0.5 fill-current" />
+                        </div>
+                      </div>
+
+                      {/* Bottom Banner Info Bar */}
+                      <div className="absolute bottom-2 left-2.5 right-2.5 flex items-center justify-between text-[10px] font-mono text-slate-200 bg-slate-950/85 backdrop-blur-md px-2.5 py-1 rounded-lg border border-white/10">
+                        <span className="flex items-center gap-1 text-slate-300">
+                          <Clock className="w-3 h-3 text-rose-400" />
+                          {new Date(note.createdAt).toLocaleDateString()}
+                        </span>
+                        <span className="font-bold text-rose-300">পিডিএফ #{idx + 1}</span>
+                      </div>
+                    </div>
+
+                    {/* 2. Card Content Body */}
+                    <div className="p-4 sm:p-4.5 space-y-2.5 flex-1 flex flex-col justify-between">
+                      <div>
+                        <h4 
+                          onClick={() => handleOpenPDF(note)}
+                          className="font-display font-bold text-sm sm:text-[15px] line-clamp-2 leading-snug text-white group-hover:text-rose-300 transition-colors cursor-pointer"
+                        >
+                          {note.title}
+                        </h4>
+
+                        {note.description && (
+                          <p className="text-slate-300 text-xs line-clamp-2 font-sans leading-relaxed mt-1">
+                            {note.description}
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Action & Status Row */}
+                      <div className="flex items-center justify-between pt-3 border-t border-white/10 text-xs gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenPDF(note)}
+                          className="flex-1 py-2 px-3 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 bg-rose-500/15 group-hover:bg-rose-500 text-rose-300 group-hover:text-white border border-rose-400/30 transition-all cursor-pointer shadow-sm active:scale-95"
+                        >
+                          <BookOpen className="w-3.5 h-3.5" />
+                          <span>নোট পড়ুন (Read)</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDownloadPDF(note);
+                          }}
+                          className="p-2 rounded-lg bg-white/5 hover:bg-emerald-500/20 text-slate-300 hover:text-emerald-300 border border-white/10 hover:border-emerald-400/40 transition-all cursor-pointer shrink-0 active:scale-95"
+                          title="সরাসরি ডাউনলোড করুন"
+                        >
+                          <Download className="w-4 h-4" />
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openPdfInBrowser(note.pdfUrl);
+                          }}
+                          className="p-2 rounded-lg bg-white/5 hover:bg-purple-500/20 text-slate-300 hover:text-purple-300 border border-white/10 hover:border-purple-400/40 transition-all cursor-pointer shrink-0 active:scale-95"
+                          title="ব্রাউজারে নতুন ট্যাবে খুলুন"
+                        >
+                          <ExternalLink className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            ) : (
+              <div className="w-full p-8 rounded-2xl border border-dashed border-white/10 text-center text-slate-400 text-sm">
+                বর্তমান ফিল্টারে কোনো পিডিএফ লেকচার নোট পাওয়া যায়নি।
+              </div>
+            )}
           </div>
         </div>
 
