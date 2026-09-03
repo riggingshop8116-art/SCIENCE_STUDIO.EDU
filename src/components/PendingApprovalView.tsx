@@ -222,11 +222,23 @@ export default function PendingApprovalView({
     }
   };
 
+  const studentDisplayName = (() => {
+    const raw = (user?.name || '').trim();
+    if (raw && raw.toLowerCase() !== 'student' && raw.toLowerCase() !== 'user' && raw !== 'স্টুডেন্ট') {
+      return raw;
+    }
+    if (user?.email && user.email.includes('@')) {
+      const prefix = user.email.split('@')[0];
+      return prefix.charAt(0).toUpperCase() + prefix.slice(1);
+    }
+    return 'শিক্ষার্থী';
+  })();
+
   const helplineNumber = settings?.contactPhone || '01700-000000';
   const whatsappNumber = settings?.whatsappNumber || settings?.contactPhone || '01700-000000';
   const cleanWhatsApp = whatsappNumber.replace(/[^\d+]/g, '').replace(/^0/, '880');
   const whatsappUrl = `https://wa.me/${cleanWhatsApp}?text=${encodeURIComponent(
-    `আসসালামু আলাইকুম স্যার, আমি Science Studio-তে ভর্তি হয়েছি।\nনাম: ${user.name}\nইমেইল: ${user.email}\nকোর্স: ${enrolledCoursesDisplay.join(', ')}\nTrxID: ${user.transactionId || 'N/A'}\nদয়া করে আমার অ্যাকাউন্টটি অনুমোদন (Approve) করে দিন। ধন্যবাদ!`
+    `আসসালামু আলাইকুম স্যার, আমি Science Studio-তে ভর্তি হয়েছি।\nনাম: ${studentDisplayName}\nইমেইল: ${user.email}\nকোর্স: ${enrolledCoursesDisplay.join(', ')}\nTrxID: ${user.transactionId || 'N/A'}\nদয়া করে আমার অ্যাকাউন্টটি অনুমোদন (Approve) করে দিন। ধন্যবাদ!`
   )}`;
 
   return (
@@ -303,7 +315,7 @@ export default function PendingApprovalView({
 
           {/* Descriptive Subtext */}
           <p className="text-slate-300 text-xs sm:text-sm sm:leading-relaxed max-w-2xl font-sans">
-            প্রিয় <strong className="text-cyan-300 font-bold">{user.name}</strong>, সায়েন্স স্টুডিওতে আপনার রেজিস্ট্রেশন ও পেমেন্ট সংক্রান্ত তথ্য সফলভাবে ডাটাবেজে জমা হয়েছে। অ্যাডমিন / সাকিব স্যার আপনার ট্রানজেকশন তথ্য (TrxID) যাচাই করা মাত্র আপনার ক্লাসরুম ও সকল লেকচার স্বয়ংক্রিয়ভাবে আনলক হয়ে যাবে।
+            প্রিয় <strong className="text-cyan-300 font-bold">{studentDisplayName}</strong>, সায়েন্স স্টুডিওতে আপনার রেজিস্ট্রেশন ও পেমেন্ট সংক্রান্ত তথ্য সফলভাবে ডাটাবেজে জমা হয়েছে। অ্যাডমিন / সাকিব স্যার আপনার ট্রানজেকশন তথ্য (TrxID) যাচাই করা মাত্র আপনার ক্লাসরুম ও সকল লেকচার স্বয়ংক্রিয়ভাবে আনলক হয়ে যাবে।
           </p>
 
           {/* Live Action Bar: Check Live Status & Helpline */}
@@ -402,7 +414,7 @@ export default function PendingApprovalView({
               {/* Student Name */}
               <div className="flex items-center justify-between py-1.5 border-b border-white/5">
                 <span className="text-slate-400 font-medium">শিক্ষার্থীর নাম:</span>
-                <span className="text-white font-bold">{user.name}</span>
+                <span className="text-white font-bold">{studentDisplayName}</span>
               </div>
 
               {/* Email */}
@@ -595,6 +607,36 @@ export default function PendingApprovalView({
                           </span>
                         </div>
                       </div>
+
+                      {/* Course Features Highlight - Directly Beneath Banner */}
+                      {(() => {
+                        const activeFeatures = (course.features && Array.isArray(course.features) && course.features.length > 0)
+                          ? course.features
+                          : (settings?.defaultCourseFeatures && Array.isArray(settings.defaultCourseFeatures) && settings.defaultCourseFeatures.length > 0
+                              ? settings.defaultCourseFeatures
+                              : ['রেকর্ডেড ও লাইভ ভিডিও ক্লাস', 'অধ্যায়ভিত্তিক এইচডি পিডিএফ লেকচার শিট', 'সাপ্তাহিক অনলাইন পরীক্ষা', '২৪/৭ ডাউট সলভ']);
+
+                        return (
+                          <div className="mx-3 mt-3 p-2.5 rounded-xl bg-slate-950/80 border border-cyan-500/30 space-y-1.5 shadow-inner">
+                            <div className="text-[10px] font-mono font-bold text-cyan-300 flex items-center gap-1.5">
+                              <Sparkles className="w-3 h-3 text-cyan-400" />
+                              <span>কোর্সের বৈশিষ্ট্যসমূহ:</span>
+                            </div>
+                            <div className="flex flex-wrap gap-1">
+                              {activeFeatures.map((feat, fIdx) => (
+                                <span
+                                  key={fIdx}
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-cyan-500/10 border border-cyan-500/30 text-[10px] text-cyan-200 font-sans"
+                                  title={feat}
+                                >
+                                  <Check className="w-2.5 h-2.5 text-emerald-400 shrink-0" />
+                                  <span className="truncate max-w-[140px] sm:max-w-[160px]">{feat}</span>
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })()}
 
                       <div className="p-4 space-y-2">
                         <h4 className="text-sm font-bold text-white group-hover:text-cyan-300 transition-colors line-clamp-1">

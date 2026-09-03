@@ -425,6 +425,7 @@ export async function upsertCourseToSupabase(cr: any) {
       batch: cr.classLevel || cr.batch || '',
       duration: cr.duration || '',
       description: cr.description || '',
+      features: Array.isArray(cr.features) ? cr.features : [],
       updated_at: new Date().toISOString()
     };
 
@@ -591,10 +592,14 @@ export async function upsertSettingsToSupabase(st: any) {
     };
 
     let maxRetries = 10;
+    let appSettingsSucceeded = false;
     while (maxRetries > 0 && canAttemptSupabase()) {
       maxRetries--;
       const { error } = await supabaseServer.from('app_settings').upsert(payload, { onConflict: 'id' });
-      if (!error) break;
+      if (!error) {
+        appSettingsSucceeded = true;
+        break;
+      }
       if (isNetworkError(error)) {
         markSupabaseOffline(error);
         return;
@@ -607,8 +612,10 @@ export async function upsertSettingsToSupabase(st: any) {
       }
     }
 
-    // Also sync to settings table if configured as fallback
-    await syncSettingsToTable('settings', st).catch(() => {});
+    // Only fallback to settings table if app_settings failed
+    if (!appSettingsSucceeded) {
+      await syncSettingsToTable('settings', st).catch(() => {});
+    }
   } catch (err: any) {
     if (isNetworkError(err)) {
       markSupabaseOffline(err);
@@ -628,7 +635,13 @@ async function syncSettingsToTable(table: string, s: any) {
         markSupabaseOffline(selectErr);
         return;
       }
-      if (selectErr.code === '42P01' || selectErr.message?.includes('does not exist')) {
+      const selectMsg = selectErr.message || '';
+      if (
+        selectErr.code === '42P01' || 
+        selectErr.code === 'PGRST205' || 
+        selectMsg.includes('does not exist') || 
+        selectMsg.includes('schema cache')
+      ) {
         return;
       }
     }
@@ -702,6 +715,14 @@ async function syncSettingsToTable(table: string, s: any) {
       }
 
       const errorMsg = res.error.message || '';
+      if (
+        res.error.code === '42P01' ||
+        res.error.code === 'PGRST205' ||
+        errorMsg.includes('does not exist') ||
+        errorMsg.includes('schema cache')
+      ) {
+        break;
+      }
       const missingCol = extractMissingColumn(errorMsg);
 
       if (missingCol && missingCol in payload) {
@@ -932,8 +953,8 @@ export async function syncToSupabase(data: any) {
                 time: rt.time
               })), { onConflict: 'id' });
 
-            if (upsertErr && isNetworkError(upsertErr)) {
-              markSupabaseOffline(upsertErr);
+            if (upsertErr) {
+              if (isNetworkError(upsertErr)) markSupabaseOffline(upsertErr);
               return;
             }
 
@@ -1206,7 +1227,11 @@ export async function loadFromSupabase(defaultData: any) {
           badge: r.badge || '',
           rating: Number(r.rating || 5.0),
           enrolledCount: Number(r.enrolledCount || r.enrolled_count || 0),
-          features: Array.isArray(r.features) ? r.features : [],
+          features: Array.isArray(r.features) && r.features.length > 0 
+            ? r.features 
+            : (r.data && Array.isArray(r.data.features) && r.data.features.length > 0 
+              ? r.data.features 
+              : ['রেকর্ডেড ও লাইভ ক্লাস', 'অধ্যায়ভিত্তিক PDF নোট', 'সাপ্তাহিক অনলাইন পরীক্ষা', '২৪/৭ ডাউট সলভ']),
           imageUrl: r.imageUrl || r.image_url || '',
           ...(r.data || {})
         }));

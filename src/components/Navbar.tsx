@@ -54,6 +54,19 @@ export default function Navbar({
     setCurrentTab('lab');
   };
 
+  const userDisplayName = (() => {
+    if (!user) return '';
+    const raw = (user.name || '').trim();
+    if (raw && raw.toLowerCase() !== 'student' && raw.toLowerCase() !== 'user' && raw !== 'স্টুডেন্ট') {
+      return raw;
+    }
+    if (user.email && user.email.includes('@')) {
+      const prefix = user.email.split('@')[0];
+      return prefix.charAt(0).toUpperCase() + prefix.slice(1);
+    }
+    return user.role === 'admin' ? 'এডমিন' : 'শিক্ষার্থী';
+  })();
+
   return (
     <header className="w-full z-50 sticky top-0 backdrop-blur-2xl bg-[#060b18]/90 border-b border-cyan-500/20 shadow-[0_4px_30px_rgba(0,0,0,0.6)] transition-all duration-300" id="app-header">
       {/* High-visibility glowing neon accent divider line at the very bottom of header */}
@@ -207,7 +220,7 @@ export default function Navbar({
                   >
                     <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-lg overflow-hidden flex items-center justify-center shrink-0 ${user.role === 'admin' ? 'bg-rose-500/15 border border-rose-500/40 text-rose-400' : 'bg-cyan-500/15 border border-cyan-500/40 text-cyan-400'}`}>
                       {user.photoUrl || user.avatarUrl ? (
-                        <img src={user.photoUrl || user.avatarUrl} alt={user.name} className="w-full h-full object-cover" />
+                        <img src={user.photoUrl || user.avatarUrl} alt={userDisplayName} className="w-full h-full object-cover" />
                       ) : user.role === 'admin' ? (
                         <Shield className="w-4 h-4" />
                       ) : (
@@ -216,7 +229,7 @@ export default function Navbar({
                     </div>
                     
                     <div className="text-left">
-                      <div className="text-[11px] sm:text-xs font-bold text-gray-200 leading-none truncate max-w-[85px] xs:max-w-[100px] md:max-w-[130px]">{user.name}</div>
+                      <div className="text-[11px] sm:text-xs font-bold text-gray-200 leading-none truncate max-w-[85px] xs:max-w-[100px] md:max-w-[130px]">{userDisplayName}</div>
                       <span className={`text-[7.5px] sm:text-[8px] font-mono px-1 rounded-sm uppercase mt-0.5 inline-block font-semibold ${
                         user.role === 'admin' 
                           ? 'bg-rose-500/20 text-rose-300 border border-rose-500/20' 
@@ -264,13 +277,13 @@ export default function Navbar({
                         <div className="flex items-center gap-2.5 pb-2.5 mb-2.5 border-b border-white/10">
                           <div className={`w-10 h-10 rounded-xl overflow-hidden flex items-center justify-center shrink-0 ${user.role === 'admin' ? 'bg-rose-500/20 text-rose-400' : 'bg-cyan-500/20 text-cyan-400'}`}>
                             {user.photoUrl || user.avatarUrl ? (
-                              <img src={user.photoUrl || user.avatarUrl} alt={user.name} className="w-full h-full object-cover" />
+                              <img src={user.photoUrl || user.avatarUrl} alt={userDisplayName} className="w-full h-full object-cover" />
                             ) : (
                               <UserIcon className="w-5 h-5" />
                             )}
                           </div>
                           <div className="min-w-0 flex-1">
-                            <div className="text-xs font-bold text-white truncate">{user.name}</div>
+                            <div className="text-xs font-bold text-white truncate">{userDisplayName}</div>
                             <div className="text-[10px] text-slate-400 font-mono truncate">{user.phone || user.email || 'স্টুডেন্ট আইডি'}</div>
                             <span className="inline-block text-[8px] font-mono font-bold text-cyan-300 bg-cyan-500/20 px-1.5 py-0.5 rounded mt-0.5">
                               {user.role === 'admin' ? 'MAIN ADMIN' : `${user.studentClass || 'Class'} • রোল: ${user.studentRoll || 'N/A'}`}

@@ -617,11 +617,13 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
   };
 
   // Helper to generate tamper-resistant self-contained session tokens
-  const generateSessionToken = (user: { id: string; email?: string; role?: string }) => {
+  const generateSessionToken = (user: { id: string; email?: string; role?: string; name?: string; isApproved?: boolean }) => {
     const payload = {
       id: user.id,
       email: (user.email || '').toLowerCase().trim(),
+      name: user.name || '',
       role: user.role || 'student',
+      isApproved: user.isApproved !== undefined ? Boolean(user.isApproved) : false,
       t: Date.now()
     };
     const b64 = Buffer.from(JSON.stringify(payload)).toString('base64url');
@@ -649,16 +651,31 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 
       if (!error && sbUser) {
         const nested = (sbUser.data && typeof sbUser.data === 'object') ? sbUser.data : {};
-        const isApprovedVal = sbUser.isApproved !== undefined 
-          ? Boolean(sbUser.isApproved) 
-          : (sbUser.is_approved !== undefined ? Boolean(sbUser.is_approved) : u.isApproved);
+        // Strict approval calculation - new students MUST NOT be auto-approved
+        const isApprovedVal = sbUser.is_approved !== undefined && sbUser.is_approved !== null
+          ? Boolean(sbUser.is_approved)
+          : (sbUser.isApproved !== undefined && sbUser.isApproved !== null
+            ? Boolean(sbUser.isApproved)
+            : (nested.isApproved !== undefined ? Boolean(nested.isApproved) : Boolean(u.isApproved || false)));
         
         const enrolledList = Array.isArray(sbUser.enrolledCourseTitles) 
           ? sbUser.enrolledCourseTitles 
           : (Array.isArray(sbUser.enrolled_courses) ? sbUser.enrolled_courses : (Array.isArray(nested.enrolledCourseTitles) ? nested.enrolledCourseTitles : u.enrolledCourseTitles));
 
         u.isApproved = isApprovedVal;
-        u.name = sbUser.name || nested.name || u.name;
+        
+        // Ensure student name is never downgraded to generic 'Student' or 'User'
+        const candidateName = (sbUser.name || nested.name || '').trim();
+        const emailDerivedName = cleanEmail.includes('@') 
+          ? cleanEmail.split('@')[0].charAt(0).toUpperCase() + cleanEmail.split('@')[0].slice(1)
+          : 'শিক্ষার্থী';
+          
+        if (candidateName && candidateName.toLowerCase() !== 'student' && candidateName.toLowerCase() !== 'user' && candidateName !== 'স্টুডেন্ট') {
+          u.name = candidateName;
+        } else if (!u.name || u.name.toLowerCase() === 'student' || u.name.toLowerCase() === 'user' || u.name === 'স্টুডেন্ট') {
+          u.name = emailDerivedName;
+        }
+
         u.phone = sbUser.phone || nested.phone || u.phone;
         u.studentClass = sbUser.batch || sbUser.student_class || nested.studentClass || u.studentClass;
         u.enrolledCourseTitles = enrolledList;
@@ -720,12 +737,15 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 
         if (!matchedUser) {
           const isAdmin = decoded.role === 'admin' || decodedId.includes('admin') || decodedEmail === 'admin@sciencestudio.com' || decodedEmail === 'mdshakibhossen2050@gmail.com';
+          const emailName = decodedEmail ? decodedEmail.split('@')[0].charAt(0).toUpperCase() + decodedEmail.split('@')[0].slice(1) : "শিক্ষার্থী";
           matchedUser = {
             id: decodedId,
-            name: decoded.name || (isAdmin ? "Dr. Sayeed Rahman" : "Student"),
+            name: (decoded.name && decoded.name !== 'Student' && decoded.name !== 'User' && decoded.name !== 'স্টুডেন্ট') 
+              ? decoded.name 
+              : (isAdmin ? "Dr. Sayeed Rahman" : emailName),
             email: decodedEmail || (isAdmin ? "admin@sciencestudio.com" : "student@sciencestudio.com"),
             role: decoded.role || (isAdmin ? 'admin' : 'student'),
-            isApproved: true,
+            isApproved: isAdmin ? true : (decoded.isApproved !== undefined ? Boolean(decoded.isApproved) : false),
             createdAt: new Date().toISOString(),
             token
           };
@@ -818,12 +838,18 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
       if (token) {
         const decoded = decodeSessionToken(token);
         if (decoded && decoded.id) {
+          const decEmail = (decoded.email || '').toLowerCase().trim();
+          const isAdmin = decoded.role === 'admin' || String(decoded.id).includes('admin') || decEmail === 'admin@sciencestudio.com' || decEmail === 'mdshakibhossen2050@gmail.com';
+          const emailName = decEmail.includes('@') ? decEmail.split('@')[0].charAt(0).toUpperCase() + decEmail.split('@')[0].slice(1) : 'শিক্ষার্থী';
+
           user = {
             id: String(decoded.id),
-            name: decoded.name || 'User',
-            email: decoded.email || '',
-            role: decoded.role || 'student',
-            isApproved: true,
+            name: (decoded.name && decoded.name !== 'Student' && decoded.name !== 'User' && decoded.name !== 'স্টুডেন্ট') 
+              ? decoded.name 
+              : (isAdmin ? "Dr. Sayeed Rahman" : emailName),
+            email: decEmail,
+            role: decoded.role || (isAdmin ? 'admin' : 'student'),
+            isApproved: isAdmin ? true : (decoded.isApproved !== undefined ? Boolean(decoded.isApproved) : false),
             createdAt: new Date().toISOString()
           };
           (req as any).user = user;
@@ -975,11 +1001,19 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
         initialEnrolled = [courseTitle];
       }
 
-      const token = generateSessionToken({ id: 'usr_' + Math.random().toString(36).substring(2, 9), email: cleanEmail, role: 'student' });
+      const newUserId = 'usr_' + Math.random().toString(36).substring(2, 9);
+      const studentName = name.trim();
+      const token = generateSessionToken({ 
+        id: newUserId, 
+        email: cleanEmail, 
+        name: studentName, 
+        role: 'student', 
+        isApproved: false 
+      });
 
       const newUser = {
-        id: 'usr_' + Math.random().toString(36).substring(2, 9),
-        name: name.trim(),
+        id: newUserId,
+        name: studentName,
         email: cleanEmail,
         phone: cleanPhone,
         password,
@@ -1090,14 +1124,24 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 
           if (sbUser) {
             const nested = (sbUser.data && typeof sbUser.data === 'object') ? sbUser.data : {};
-            const isApprovedVal = sbUser.isApproved !== undefined 
-              ? Boolean(sbUser.isApproved) 
-              : (sbUser.is_approved !== undefined ? Boolean(sbUser.is_approved) : false);
+            const isApprovedVal = sbUser.is_approved !== undefined && sbUser.is_approved !== null
+              ? Boolean(sbUser.is_approved)
+              : (sbUser.isApproved !== undefined && sbUser.isApproved !== null
+                ? Boolean(sbUser.isApproved)
+                : (nested.isApproved !== undefined ? Boolean(nested.isApproved) : false));
+
+            const emailDerivedName = cleanEmail.includes('@') 
+              ? cleanEmail.split('@')[0].charAt(0).toUpperCase() + cleanEmail.split('@')[0].slice(1)
+              : 'শিক্ষার্থী';
+            const rawName = (sbUser.name || nested.name || '').trim();
+            const finalName = (rawName && rawName.toLowerCase() !== 'student' && rawName.toLowerCase() !== 'user' && rawName !== 'স্টুডেন্ট') 
+              ? rawName 
+              : emailDerivedName;
 
             user = {
               ...nested,
               id: sbUser.id || 'usr_' + Math.random().toString(36).substring(2, 9),
-              name: sbUser.name || nested.name || 'Student',
+              name: finalName,
               email: sbUser.email || nested.email || cleanEmail,
               password: sbUser.password || nested.password || cleanPassword,
               role: sbUser.role || nested.role || 'student',
@@ -1125,9 +1169,15 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
             if (!authErr && authResult?.user) {
               authenticatedViaSupabaseAuth = true;
               const meta = authResult.user.user_metadata || {};
+              const emailDerivedName = cleanEmail.split('@')[0] ? cleanEmail.split('@')[0].charAt(0).toUpperCase() + cleanEmail.split('@')[0].slice(1) : 'শিক্ষার্থী';
+              const rawName = (meta.name || '').trim();
+              const finalName = (rawName && rawName.toLowerCase() !== 'student' && rawName.toLowerCase() !== 'user' && rawName !== 'স্টুডেন্ট') 
+                ? rawName 
+                : emailDerivedName;
+
               user = {
                 id: authResult.user.id || 'usr_' + Math.random().toString(36).substring(2, 9),
-                name: meta.name || 'Student',
+                name: finalName,
                 email: authResult.user.email || cleanEmail,
                 password: cleanPassword,
                 role: (meta.role as any) || 'student',
@@ -1551,7 +1601,11 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
                 originalPrice: r.originalPrice ? Number(r.originalPrice) : (r.original_price ? Number(r.original_price) : undefined),
                 duration: r.duration || '',
                 description: r.description || '',
-                features: Array.isArray(r.features) ? r.features : [],
+                features: (Array.isArray(r.features) && r.features.length > 0)
+                  ? r.features
+                  : (existingIndex !== -1 && Array.isArray(db.courses![existingIndex]?.features) && db.courses![existingIndex].features.length > 0
+                      ? db.courses![existingIndex].features
+                      : ['রেকর্ডেড ও লাইভ ক্লাস', 'অধ্যায়ভিত্তিক PDF নোট', 'সাপ্তাহিক অনলাইন পরীক্ষা', '২৪/৭ ডাউট সলভ']),
                 imageUrl: r.imageUrl || r.image_url || '',
                 ...(r.data || {})
               };
@@ -1611,6 +1665,14 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
       const db = readDB();
       if (!db.courses) db.courses = [];
 
+      const defaultFeatures = (db.settings?.defaultCourseFeatures && Array.isArray(db.settings.defaultCourseFeatures) && db.settings.defaultCourseFeatures.length > 0)
+        ? db.settings.defaultCourseFeatures
+        : ["রেকর্ডেড ও লাইভ ভিডিও ক্লাস", "অধ্যায়ভিত্তিক এইচডি পিডিএফ লেকচার শিট", "সাপ্তাহিক অনলাইন প্র্যাকটিস কুইজ ও এক্সাম", "২৪/৭ ডাউট সলভিং ও মেন্টর সাপোর্ট"];
+
+      const resolvedFeatures = Array.isArray(features) 
+        ? features.map((f: any) => String(f).trim()).filter(Boolean) 
+        : (typeof features === 'string' ? features.split('\n').map(f => f.trim()).filter(Boolean) : []);
+
       const newCourse = {
         id: courseId,
         title: String(title).trim(),
@@ -1621,7 +1683,7 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
         originalPrice: originalPrice ? Number(originalPrice) : undefined,
         duration: duration ? String(duration).trim() : '',
         description: description ? String(description).trim() : '',
-        features: Array.isArray(features) ? features : (typeof features === 'string' ? features.split('\n').filter(Boolean) : []),
+        features: resolvedFeatures.length > 0 ? resolvedFeatures : defaultFeatures,
         createdAt: new Date().toISOString()
       };
 
@@ -1774,12 +1836,23 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
             sbResponse.data.forEach((r: any) => {
               const existing = db.users.find(u => (u.id && r.id && u.id === r.id) || (u.email && r.email && u.email.toLowerCase() === r.email.toLowerCase()));
               if (!existing) {
+                const userEmail = r.email ? r.email.toLowerCase().trim() : '';
+                const emailDerivedName = userEmail.includes('@') 
+                  ? userEmail.split('@')[0].charAt(0).toUpperCase() + userEmail.split('@')[0].slice(1) 
+                  : 'শিক্ষার্থী';
+                const rName = (r.name || (r.data && r.data.name) || '').trim();
+                const validName = (rName && rName.toLowerCase() !== 'student' && rName.toLowerCase() !== 'user' && rName !== 'স্টুডেন্ট') 
+                  ? rName 
+                  : emailDerivedName;
+
                 db.users.push({
                   id: r.id || 'usr_' + Math.random().toString(36).substring(2, 9),
-                  name: r.name || 'User',
-                  email: r.email ? r.email.toLowerCase() : '',
+                  name: validName,
+                  email: userEmail,
                   role: r.role || 'student',
-                  isApproved: r.is_approved ?? r.isApproved ?? true,
+                  isApproved: (r.is_approved !== undefined && r.is_approved !== null) 
+                    ? Boolean(r.is_approved) 
+                    : Boolean(r.isApproved || false),
                   phone: r.phone || '',
                   enrolledCourseTitles: Array.isArray(r.enrolled_courses) ? r.enrolled_courses : (r.enrolledCourseTitles || []),
                   transactionId: r.transaction_id || r.transactionId || '',
@@ -1873,10 +1946,19 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
                   ...(Array.isArray(sbCourses) ? sbCourses : [])
                 ]));
 
+                const rawName = (localUser.name && localUser.name.toLowerCase() !== 'student' && localUser.name.toLowerCase() !== 'user' && localUser.name !== 'স্টুডেন্ট') 
+                  ? localUser.name 
+                  : ((r.name && r.name.toLowerCase() !== 'student' && r.name.toLowerCase() !== 'user' && r.name !== 'স্টুডেন্ট') 
+                    ? r.name 
+                    : (nested.name && nested.name.toLowerCase() !== 'student' && nested.name.toLowerCase() !== 'user' && nested.name !== 'স্টুডেন্ট' ? nested.name : ''));
+                const emailDerived = cleanSupabaseEmail.includes('@') 
+                  ? cleanSupabaseEmail.split('@')[0].charAt(0).toUpperCase() + cleanSupabaseEmail.split('@')[0].slice(1) 
+                  : 'শিক্ষার্থী';
+
                 db.users[existingIndex] = {
                   ...nested,
                   ...localUser,
-                  name: localUser.name || r.name || nested.name || 'User',
+                  name: rawName || emailDerived,
                   email: localUser.email || cleanSupabaseEmail || nested.email || '',
                   role: localUser.role || r.role || nested.role || 'student',
                   phone: localUser.phone || sbPhone || '',
@@ -1887,15 +1969,22 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
                   transactionId: localUser.transactionId || sbTrx || '',
                   paymentMethod: localUser.paymentMethod || sbPayment || '',
                   senderPhone: localUser.senderPhone || sbSender || '',
-                  isApproved: localUser.isApproved !== undefined ? localUser.isApproved : sbApproved,
+                  isApproved: sbApproved !== undefined ? sbApproved : (localUser.isApproved !== undefined ? localUser.isApproved : false),
                   createdAt: localUser.createdAt || r.created_at || nested.createdAt || new Date().toISOString(),
                   token: localUser.token || nested.token
                 };
               } else {
+                const rawNewName = (r.name && r.name.toLowerCase() !== 'student' && r.name.toLowerCase() !== 'user' && r.name !== 'স্টুডেন্ট') 
+                  ? r.name 
+                  : (nested.name && nested.name.toLowerCase() !== 'student' && nested.name.toLowerCase() !== 'user' && nested.name !== 'স্টুডেন্ট' ? nested.name : '');
+                const emailDerived = cleanSupabaseEmail.includes('@') 
+                  ? cleanSupabaseEmail.split('@')[0].charAt(0).toUpperCase() + cleanSupabaseEmail.split('@')[0].slice(1) 
+                  : 'শিক্ষার্থী';
+
                 const newUser = {
                   ...nested,
                   id: r.id || 'usr_' + Math.random().toString(36).substring(2, 9),
-                  name: r.name || nested.name || 'User',
+                  name: rawNewName || emailDerived,
                   email: cleanSupabaseEmail || nested.email || '',
                   role: r.role || nested.role || 'student',
                   isApproved: sbApproved,
@@ -1960,15 +2049,19 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
               name: sbUser.name || nested.name || 'User',
               email: sbUser.email || nested.email || '',
               role: sbUser.role || nested.role || 'student',
-              isApproved: sbUser.is_approved !== undefined ? Boolean(sbUser.is_approved) : false,
+              isApproved: sbUser.isApproved !== undefined 
+                ? Boolean(sbUser.isApproved) 
+                : (sbUser.is_approved !== undefined ? Boolean(sbUser.is_approved) : (nested.isApproved !== undefined ? Boolean(nested.isApproved) : false)),
               phone: sbUser.phone || nested.phone || '',
-              studentClass: sbUser.student_class || nested.studentClass || '',
-              photoUrl: sbUser.photo_url || nested.photoUrl || '',
-              avatarUrl: sbUser.photo_url || nested.avatarUrl || '',
-              enrolledCourseTitles: Array.isArray(sbUser.enrolled_courses) ? sbUser.enrolled_courses : (Array.isArray(nested.enrolledCourseTitles) ? nested.enrolledCourseTitles : []),
-              transactionId: sbUser.transaction_id || nested.transactionId || '',
-              paymentMethod: sbUser.payment_method || nested.paymentMethod || '',
-              senderPhone: sbUser.sender_phone || nested.senderPhone || '',
+              studentClass: sbUser.batch || sbUser.student_class || nested.studentClass || '',
+              photoUrl: sbUser.avatar || sbUser.photo_url || nested.photoUrl || '',
+              avatarUrl: sbUser.avatar || sbUser.photo_url || nested.avatarUrl || '',
+              enrolledCourseTitles: Array.isArray(sbUser.enrolledCourseTitles) 
+                ? sbUser.enrolledCourseTitles 
+                : (Array.isArray(sbUser.enrolled_courses) ? sbUser.enrolled_courses : (Array.isArray(nested.enrolledCourseTitles) ? nested.enrolledCourseTitles : [])),
+              transactionId: sbUser.transactionId || sbUser.transaction_id || nested.transactionId || '',
+              paymentMethod: sbUser.paymentMethod || sbUser.payment_method || nested.paymentMethod || '',
+              senderPhone: sbUser.senderPhone || sbUser.sender_phone || nested.senderPhone || '',
               createdAt: sbUser.created_at || nested.createdAt || new Date().toISOString()
             };
             db.users.push(user);
@@ -2020,15 +2113,19 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
               name: sbUser.name || nested.name || 'User',
               email: sbUser.email || nested.email || '',
               role: sbUser.role || nested.role || 'student',
-              isApproved: sbUser.is_approved !== undefined ? Boolean(sbUser.is_approved) : false,
+              isApproved: sbUser.isApproved !== undefined 
+                ? Boolean(sbUser.isApproved) 
+                : (sbUser.is_approved !== undefined ? Boolean(sbUser.is_approved) : (nested.isApproved !== undefined ? Boolean(nested.isApproved) : false)),
               phone: sbUser.phone || nested.phone || '',
-              studentClass: sbUser.student_class || nested.studentClass || '',
-              photoUrl: sbUser.photo_url || nested.photoUrl || '',
-              avatarUrl: sbUser.photo_url || nested.avatarUrl || '',
-              enrolledCourseTitles: Array.isArray(sbUser.enrolled_courses) ? sbUser.enrolled_courses : (Array.isArray(nested.enrolledCourseTitles) ? nested.enrolledCourseTitles : []),
-              transactionId: sbUser.transaction_id || nested.transactionId || '',
-              paymentMethod: sbUser.payment_method || nested.paymentMethod || '',
-              senderPhone: sbUser.sender_phone || nested.senderPhone || '',
+              studentClass: sbUser.batch || sbUser.student_class || nested.studentClass || '',
+              photoUrl: sbUser.avatar || sbUser.photo_url || nested.photoUrl || '',
+              avatarUrl: sbUser.avatar || sbUser.photo_url || nested.avatarUrl || '',
+              enrolledCourseTitles: Array.isArray(sbUser.enrolledCourseTitles) 
+                ? sbUser.enrolledCourseTitles 
+                : (Array.isArray(sbUser.enrolled_courses) ? sbUser.enrolled_courses : (Array.isArray(nested.enrolledCourseTitles) ? nested.enrolledCourseTitles : [])),
+              transactionId: sbUser.transactionId || sbUser.transaction_id || nested.transactionId || '',
+              paymentMethod: sbUser.paymentMethod || sbUser.payment_method || nested.paymentMethod || '',
+              senderPhone: sbUser.senderPhone || sbUser.sender_phone || nested.senderPhone || '',
               createdAt: sbUser.created_at || nested.createdAt || new Date().toISOString()
             };
             db.users.push(user);

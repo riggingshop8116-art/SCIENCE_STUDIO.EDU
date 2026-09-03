@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import { AuthResponse } from '../types';
 import AnimatedCapAvatar from './AnimatedCapAvatar';
-import { supabaseServer, canAttemptSupabase } from '../lib/supabaseSync';
+import { supabase, canAttemptSupabase } from '../lib/supabase';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -167,7 +167,7 @@ export default function AuthModal({
 
         if (canAttemptSupabase()) {
           try {
-            await supabaseServer.auth.signUp({
+            await supabase.auth.signUp({
               email: cleanEmail,
               password: password.trim(),
               options: {
@@ -179,14 +179,14 @@ export default function AuthModal({
           }
 
           try {
-            await supabaseServer.from('app_users').upsert({
+            await supabase.from('app_users').upsert({
               id: userId,
               name: name.trim(),
               email: cleanEmail,
               phone: formattedPhone,
               role: 'student',
-              is_approved: false,
-              enrolled_courses: [],
+              isApproved: false,
+              enrolledCourseTitles: [],
               data: { ...fallbackUser, password: password.trim() },
               updated_at: new Date().toISOString()
             }, { onConflict: 'id' });
@@ -208,17 +208,21 @@ export default function AuthModal({
         // Direct Student / Admin Login Fallback
         if (!activeAdminMode && canAttemptSupabase()) {
           try {
-            const { data: authData } = await supabaseServer.auth.signInWithPassword({
+            const { data: authData } = await supabase.auth.signInWithPassword({
               email: cleanEmail,
               password: password.trim()
             });
 
             if (authData?.user) {
-              const { data: dbProfile } = await supabaseServer
+              const { data: dbProfile } = await supabase
                 .from('app_users')
                 .select('*')
                 .eq('email', cleanEmail)
                 .maybeSingle();
+
+              const approvedValue = dbProfile?.isApproved !== undefined 
+                ? Boolean(dbProfile.isApproved) 
+                : (dbProfile?.is_approved !== undefined ? Boolean(dbProfile.is_approved) : false);
 
               const fallbackStudent = {
                 id: dbProfile?.id || authData.user.id,
@@ -226,8 +230,10 @@ export default function AuthModal({
                 email: cleanEmail,
                 phone: dbProfile?.phone || authData.user.user_metadata?.phone || '',
                 role: 'student' as const,
-                isApproved: dbProfile?.is_approved ?? false,
-                enrolledCourseTitles: dbProfile?.enrolled_courses || [],
+                isApproved: approvedValue,
+                enrolledCourseTitles: Array.isArray(dbProfile?.enrolledCourseTitles) 
+                  ? dbProfile.enrolledCourseTitles 
+                  : (Array.isArray(dbProfile?.enrolled_courses) ? dbProfile.enrolled_courses : []),
                 createdAt: dbProfile?.created_at || new Date().toISOString()
               };
               const token = 'tok_' + Math.random().toString(36).substring(2, 12);
