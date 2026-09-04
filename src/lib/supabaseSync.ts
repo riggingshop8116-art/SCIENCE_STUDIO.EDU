@@ -53,14 +53,32 @@ export async function registerUserInSupabaseAuth(
   if (!canAttemptSupabase()) return null;
   try {
     let authData = null;
+    const cleanEmail = email.toLowerCase().trim();
+    const enrolledList = Array.isArray(userObject?.enrolledCourseTitles) 
+      ? userObject.enrolledCourseTitles 
+      : (userObject?.course ? [userObject.course] : []);
 
-    // 1. Try standard signUp first
+    const userMetadata = {
+      id: userObject?.id || '',
+      name: userObject?.name || name || '',
+      phone: userObject?.phone || phone || '',
+      role: userObject?.role || 'student',
+      isApproved: Boolean(userObject?.isApproved),
+      transactionId: userObject?.transactionId || '',
+      paymentMethod: userObject?.paymentMethod || '',
+      senderPhone: userObject?.senderPhone || '',
+      enrolledCourseTitles: enrolledList,
+      studentClass: userObject?.studentClass || userObject?.batch || '',
+      createdAt: userObject?.createdAt || new Date().toISOString()
+    };
+
+    // 1. Try standard signUp first - Saves user into Supabase Authentication (auth.users)
     try {
       const { data, error } = await supabaseServer.auth.signUp({
-        email,
+        email: cleanEmail,
         password,
         options: {
-          data: { name, phone, role: userObject?.role || 'student' }
+          data: userMetadata
         }
       });
       if (error) {
@@ -82,10 +100,10 @@ export async function registerUserInSupabaseAuth(
     if (!authData && supabaseServer.auth && (supabaseServer.auth as any).admin?.createUser) {
       try {
         const { data, error } = await (supabaseServer.auth as any).admin.createUser({
-          email,
+          email: cleanEmail,
           password,
           email_confirm: true,
-          user_metadata: { name, phone, role: userObject?.role || 'student' }
+          user_metadata: userMetadata
         });
         if (error) {
           if (isNetworkError(error)) {
@@ -103,43 +121,11 @@ export async function registerUserInSupabaseAuth(
       }
     }
 
-    // 3. Always sync user profile & login data into Supabase app_users database table
-    const targetEmail = userObject?.email || email;
-    if (targetEmail && canAttemptSupabase()) {
-      try {
-        const userId = userObject?.id || 'usr_' + Math.random().toString(36).substring(2, 9);
-        const enrolledList = Array.isArray(userObject?.enrolledCourseTitles) 
-          ? userObject.enrolledCourseTitles 
-          : (userObject?.course ? [userObject.course] : []);
-
-        const payload: any = {
-          id: userId,
-          name: userObject?.name || name || '',
-          email: targetEmail.toLowerCase().trim(),
-          phone: userObject?.phone || phone || '',
-          password: password || userObject?.password || '',
-          role: userObject?.role || 'student',
-          isApproved: userObject?.isApproved !== undefined ? Boolean(userObject.isApproved) : false,
-          course: enrolledList.length > 0 ? enrolledList[0] : (userObject?.course || ''),
-          batch: userObject?.studentClass || userObject?.batch || '',
-          enrolledCourseTitles: enrolledList,
-          enrolledCourseIds: Array.isArray(userObject?.enrolledCourseIds) ? userObject.enrolledCourseIds : [],
-          transactionId: userObject?.transactionId || '',
-          avatar: userObject?.photoUrl || userObject?.avatarUrl || userObject?.avatar || '',
-          joinedAt: userObject?.joinedAt || userObject?.createdAt || new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        };
-
-        const { error: upsertErr } = await supabaseServer.from('app_users').upsert(payload, { onConflict: 'id' });
-
-        if (upsertErr && isNetworkError(upsertErr)) {
-          markSupabaseOffline(upsertErr);
-        }
-      } catch (dbErr: any) {
-        if (isNetworkError(dbErr)) {
-          markSupabaseOffline(dbErr);
-        }
-      }
+    // 3. User is now in Supabase Authentication!
+    // Per requirement: Unapproved students must NOT be added to Table Editor (app_users table).
+    // They will only be added to app_users when Admin explicitly approves them.
+    if (userObject?.isApproved === true || userObject?.role === 'admin') {
+      await upsertUserToSupabase(userObject);
     }
 
     return authData;
@@ -283,10 +269,22 @@ export async function deleteFromSupabase(table: string, id: string) {
 export async function upsertUserToSupabase(u: any) {
   if (!canAttemptSupabase() || !u || !u.id) return;
   try {
+    const isApproved = u.isApproved !== undefined ? Boolean(u.isApproved) : (u.is_approved !== undefined ? Boolean(u.is_approved) : false);
+
+    // Rule: Unapproved students must NOT be added to app_users table until admin approves!
+    // They remain in Supabase Authentication until approved.
+    if (u.role !== 'admin' && !isApproved) {
+      try {
+        await supabaseServer.from('app_users').delete().eq('id', u.id);
+      } catch (delErr) {}
+      return;
+    }
+
     const enrolledList = Array.isArray(u.enrolledCourseTitles) 
       ? u.enrolledCourseTitles 
       : (u.course ? [u.course] : (Array.isArray(u.enrolled_courses) ? u.enrolled_courses : []));
 
+    const userAvatar = u.photoUrl || u.avatarUrl || u.avatar || '';
     const payload: any = {
       id: u.id,
       name: u.name || '',
@@ -294,16 +292,20 @@ export async function upsertUserToSupabase(u: any) {
       phone: u.phone || '',
       password: u.password || '',
       role: u.role || 'student',
-      isApproved: u.isApproved !== undefined ? Boolean(u.isApproved) : (u.is_approved !== undefined ? Boolean(u.is_approved) : false),
+      isApproved: true,
       course: enrolledList.length > 0 ? enrolledList[0] : (u.course || ''),
       batch: u.studentClass || u.batch || '',
       enrolledCourseTitles: enrolledList,
       enrolledCourseIds: Array.isArray(u.enrolledCourseIds) ? u.enrolledCourseIds : [],
       transactionId: u.transactionId || u.transaction_id || '',
-      avatar: u.photoUrl || u.avatarUrl || u.avatar || '',
       joinedAt: u.joinedAt || u.createdAt || u.created_at || new Date().toISOString(),
       updated_at: new Date().toISOString()
     };
+
+    // If an avatar is provided, include it in payload. If empty, don't overwrite DB avatar with empty string!
+    if (userAvatar) {
+      payload.avatar = userAvatar;
+    }
 
     let maxRetries = 8;
     while (maxRetries > 0 && canAttemptSupabase()) {
@@ -455,23 +457,37 @@ export async function upsertCourseToSupabase(cr: any) {
 /**
  * Removes a user record from Supabase table AND Supabase Authentication (auth.users)
  */
-export async function deleteUserFromSupabase(id: string, email?: string) {
-  if (!canAttemptSupabase()) return;
+export async function deleteUserFromSupabase(id: string, email?: string): Promise<boolean> {
+  if (!canAttemptSupabase()) return false;
   try {
+    const tasks: Promise<any>[] = [];
     if (id) {
-      await supabaseServer.from('app_users').delete().eq('id', id);
+      tasks.push((async () => {
+        try {
+          await supabaseServer.from('app_users').delete().eq('id', id);
+        } catch (e) {}
+      })());
     }
     if (email && email.trim()) {
       const cleanEmail = email.trim().toLowerCase();
-      await supabaseServer.from('app_users').delete().ilike('email', cleanEmail);
-      try {
-        await supabaseServer.rpc('delete_auth_user', { target_email: cleanEmail });
-      } catch (e: any) {}
+      tasks.push((async () => {
+        try {
+          await supabaseServer.from('app_users').delete().ilike('email', cleanEmail);
+        } catch (e) {}
+      })());
+      tasks.push((async () => {
+        try {
+          await supabaseServer.rpc('delete_auth_user', { target_email: cleanEmail });
+        } catch (e) {}
+      })());
     }
+    await Promise.allSettled(tasks);
+    return true;
   } catch (err: any) {
     if (isNetworkError(err)) {
       markSupabaseOffline(err);
     }
+    return false;
   }
 }
 
@@ -765,48 +781,59 @@ export async function syncToSupabase(data: any) {
       );
     }
 
-    // 2. Sync Users
-    if (Array.isArray(data.users) && data.users.length > 0) {
+    // 2. Sync Users - ONLY approved students and admins are saved in app_users table
+    if (Array.isArray(data.users)) {
       promises.push(
         (async () => {
           if (!canAttemptSupabase()) return;
           try {
-            const usersPayload = data.users.map((u: any) => {
-              const enrolledList = Array.isArray(u.enrolledCourseTitles) 
-                ? u.enrolledCourseTitles 
-                : (u.course ? [u.course] : (Array.isArray(u.enrolled_courses) ? u.enrolled_courses : []));
-              return {
-                id: u.id,
-                name: u.name || '',
-                email: u.email ? u.email.toLowerCase().trim() : '',
-                phone: u.phone || '',
-                password: u.password || '',
-                role: u.role || 'student',
-                isApproved: u.isApproved !== undefined ? Boolean(u.isApproved) : (u.is_approved !== undefined ? Boolean(u.is_approved) : false),
-                course: enrolledList.length > 0 ? enrolledList[0] : (u.course || ''),
-                batch: u.studentClass || u.batch || '',
-                enrolledCourseTitles: enrolledList,
-                enrolledCourseIds: Array.isArray(u.enrolledCourseIds) ? u.enrolledCourseIds : [],
-                transactionId: u.transactionId || u.transaction_id || '',
-                avatar: u.photoUrl || u.avatarUrl || u.avatar || '',
-                joinedAt: u.joinedAt || u.createdAt || u.created_at || new Date().toISOString(),
-                updated_at: new Date().toISOString()
-              };
-            });
+            // Strict requirement: Unapproved students stay in Supabase Auth until admin approval!
+            const approvedUsers = data.users.filter((u: any) => 
+              u.role === 'admin' || 
+              (u.isApproved !== undefined ? Boolean(u.isApproved) : (u.is_approved !== undefined ? Boolean(u.is_approved) : false))
+            );
 
-            const { error: upsertErr } = await supabaseServer
-              .from('app_users')
-              .upsert(usersPayload, { onConflict: 'id' });
+            if (approvedUsers.length > 0) {
+              const usersPayload = approvedUsers.map((u: any) => {
+                const enrolledList = Array.isArray(u.enrolledCourseTitles) 
+                  ? u.enrolledCourseTitles 
+                  : (u.course ? [u.course] : (Array.isArray(u.enrolled_courses) ? u.enrolled_courses : []));
+                return {
+                  id: u.id,
+                  name: u.name || '',
+                  email: u.email ? u.email.toLowerCase().trim() : '',
+                  phone: u.phone || '',
+                  password: u.password || '',
+                  role: u.role || 'student',
+                  isApproved: true,
+                  course: enrolledList.length > 0 ? enrolledList[0] : (u.course || ''),
+                  batch: u.studentClass || u.batch || '',
+                  enrolledCourseTitles: enrolledList,
+                  enrolledCourseIds: Array.isArray(u.enrolledCourseIds) ? u.enrolledCourseIds : [],
+                  transactionId: u.transactionId || u.transaction_id || '',
+                  avatar: u.photoUrl || u.avatarUrl || u.avatar || '',
+                  joinedAt: u.joinedAt || u.createdAt || u.created_at || new Date().toISOString(),
+                  updated_at: new Date().toISOString()
+                };
+              });
 
-            if (upsertErr && isNetworkError(upsertErr)) {
-              markSupabaseOffline(upsertErr);
-              return;
-            }
+              const { error: upsertErr } = await supabaseServer
+                .from('app_users')
+                .upsert(usersPayload, { onConflict: 'id' });
 
-            const currentIds = data.users.map((u: any) => u.id).filter(Boolean);
-            if (currentIds.length > 0 && canAttemptSupabase()) {
-              const filterStr = `(${currentIds.map((i: string) => `"${i}"`).join(',')})`;
-              await supabaseServer.from('app_users').delete().not('id', 'in', filterStr);
+              if (upsertErr && isNetworkError(upsertErr)) {
+                markSupabaseOffline(upsertErr);
+                return;
+              }
+
+              const currentApprovedIds = approvedUsers.map((u: any) => u.id).filter(Boolean);
+              if (currentApprovedIds.length > 0 && canAttemptSupabase()) {
+                const filterStr = `(${currentApprovedIds.map((i: string) => `"${i}"`).join(',')})`;
+                await supabaseServer.from('app_users').delete().not('id', 'in', filterStr);
+              }
+            } else if (canAttemptSupabase()) {
+              // If no approved users, ensure app_users has no remaining rows
+              await supabaseServer.from('app_users').delete().neq('id', '');
             }
           } catch (e: any) {
             if (isNetworkError(e)) markSupabaseOffline(e);

@@ -167,32 +167,48 @@ export default function AuthModal({
 
         if (canAttemptSupabase()) {
           try {
+            const { data: existingCheck } = await supabase
+              .from('app_users')
+              .select('id, email, phone')
+              .or(`email.ilike.${cleanEmail},phone.eq.${formattedPhone}`)
+              .limit(2);
+
+            if (existingCheck && existingCheck.length > 0) {
+              const hasEmail = existingCheck.some(u => (u.email || '').toLowerCase().trim() === cleanEmail);
+              if (hasEmail) {
+                throw new Error('এই ইমেইল দিয়ে ইতোমধ্যেই একটি অ্যাকাউন্ট তৈরি করা আছে। অনুগ্রহ করে লগইন করুন বা অন্য ইমেইল দিন।');
+              }
+              const hasPhone = existingCheck.some(u => (u.phone || '').replace(/\D/g, '') === formattedPhone);
+              if (hasPhone) {
+                throw new Error('এই মোবাইল নম্বর দিয়ে ইতোমধ্যেই একটি অ্যাকাউন্ট তৈরি করা আছে। একই নম্বর দিয়ে একাধিক রেজিস্ট্রেশন সম্ভব নয়।');
+              }
+            }
+          } catch (checkErr: any) {
+            if (checkErr.message && checkErr.message.includes('ইতোমধ্যেই')) {
+              throw checkErr;
+            }
+          }
+
+          try {
             await supabase.auth.signUp({
               email: cleanEmail,
               password: password.trim(),
               options: {
-                data: { name: name.trim(), phone: formattedPhone, role: 'student' }
+                data: {
+                  id: userId,
+                  name: name.trim(),
+                  phone: formattedPhone,
+                  role: 'student',
+                  isApproved: false,
+                  enrolledCourseTitles: []
+                }
               }
             });
           } catch (sbAuthErr) {
             console.warn("Supabase Auth fallback notice:", sbAuthErr);
           }
-
-          try {
-            await supabase.from('app_users').upsert({
-              id: userId,
-              name: name.trim(),
-              email: cleanEmail,
-              phone: formattedPhone,
-              role: 'student',
-              isApproved: false,
-              enrolledCourseTitles: [],
-              data: { ...fallbackUser, password: password.trim() },
-              updated_at: new Date().toISOString()
-            }, { onConflict: 'id' });
-          } catch (sbDbErr) {
-            console.warn("Supabase DB upsert notice:", sbDbErr);
-          }
+          // Note: Unapproved students must NOT be added to app_users table in Table Editor!
+          // They will only be added to app_users when Admin approves them.
         }
 
         const authPayload = { user: fallbackUser, token };

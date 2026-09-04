@@ -220,7 +220,7 @@ export default function AdminDashboard({
 
   // Filtered and Paginated User List
   const filteredUserList = useMemo(() => {
-    return userList.filter(u => {
+    const list = userList.filter(u => {
       const q = userSearchQuery.toLowerCase().trim();
       const matchesSearch = !q ||
         u.name.toLowerCase().includes(q) ||
@@ -249,6 +249,23 @@ export default function AdminDashboard({
       }
 
       return matchesSearch && matchesStatus && matchesDate;
+    });
+
+    // Sorting: Admin ID always on top, then sorted by most recent date (newest students at the top)
+    return list.sort((a, b) => {
+      const aIsPrimaryAdmin = a.id === 'usr_admin' || (a.email && a.email.toLowerCase() === 'admin@sciencestudio.com');
+      const bIsPrimaryAdmin = b.id === 'usr_admin' || (b.email && b.email.toLowerCase() === 'admin@sciencestudio.com');
+      if (aIsPrimaryAdmin && !bIsPrimaryAdmin) return -1;
+      if (!aIsPrimaryAdmin && bIsPrimaryAdmin) return 1;
+
+      const aIsAdmin = a.role === 'admin';
+      const bIsAdmin = b.role === 'admin';
+      if (aIsAdmin && !bIsAdmin) return -1;
+      if (!aIsAdmin && bIsAdmin) return 1;
+
+      const timeA = new Date(a.createdAt || (a as any).joinedAt || 0).getTime();
+      const timeB = new Date(b.createdAt || (b as any).joinedAt || 0).getTime();
+      return timeB - timeA;
     });
   }, [userList, userSearchQuery, userStatusFilter, userStartDate, userEndDate]);
 
@@ -2839,7 +2856,28 @@ export default function AdminDashboard({
                 <tbody className="divide-y divide-white/5 text-slate-300">
                   {paginatedUserList.map(item => (
                     <tr key={item.id} className="hover:bg-white/5 transition-colors">
-                      <td className="py-3.5 px-4 font-semibold text-white">{item.name}</td>
+                      <td className="py-3.5 px-4 font-semibold text-white">
+                        <div className="flex items-center gap-2.5">
+                          {item.photoUrl || item.avatarUrl ? (
+                            <img 
+                              src={item.photoUrl || item.avatarUrl} 
+                              alt={item.name} 
+                              className="w-8 h-8 rounded-full object-cover border border-cyan-500/40 shadow-sm shrink-0" 
+                              referrerPolicy="no-referrer"
+                            />
+                          ) : (
+                            <div className="w-8 h-8 rounded-full bg-slate-800 border border-white/10 flex items-center justify-center shrink-0 text-xs font-bold text-cyan-300">
+                              {item.name ? item.name.charAt(0).toUpperCase() : 'U'}
+                            </div>
+                          )}
+                          <div className="flex flex-col">
+                            <span className="font-semibold text-white truncate max-w-[150px] sm:max-w-none">{item.name}</span>
+                            {item.id === 'usr_admin' && (
+                              <span className="text-[10px] text-amber-400 font-mono font-bold">★ প্রধান অ্যাডমিন</span>
+                            )}
+                          </div>
+                        </div>
+                      </td>
                       <td className="py-3.5 px-4 font-mono">
                         <div>{item.email}</div>
                         {item.phone && <div className="text-[11px] text-cyan-400 font-sans font-medium mt-0.5">📱 {item.phone}</div>}

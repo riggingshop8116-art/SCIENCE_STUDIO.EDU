@@ -35,6 +35,7 @@ interface DBStructure {
   classes: any[];
   notes: any[];
   courses?: any[];
+  deletedUserIds?: string[];
   settings?: {
     academyName: string;
     announcement: string;
@@ -684,6 +685,16 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
         u.senderPhone = sbUser.sender_phone || nested.senderPhone || u.senderPhone;
         if (sbUser.role) u.role = sbUser.role;
 
+        // Preserve profile picture / avatar across approval and refreshes
+        const sbAvatar = sbUser.avatar || sbUser.photo_url || sbUser.photoUrl || nested.photoUrl || nested.avatarUrl || nested.avatar || '';
+        if (sbAvatar) {
+          u.photoUrl = sbAvatar;
+          u.avatarUrl = sbAvatar;
+        } else if (u.photoUrl || u.avatarUrl) {
+          u.photoUrl = u.photoUrl || u.avatarUrl;
+          u.avatarUrl = u.avatarUrl || u.photoUrl;
+        }
+
         // Persist to local in-memory DB
         const db = readDB();
         const idx = db.users.findIndex(item => item.id === u.id || (item.email && item.email.toLowerCase() === cleanEmail));
@@ -988,10 +999,53 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
       }
 
       const cleanEmail = email.trim().toLowerCase();
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(cleanEmail)) {
+        return res.status(400).json({ error: "অনুগ্রহ করে একটি বৈধ ইমেইল ঠিকানা প্রদান করুন।" });
+      }
+
       const db = readDB();
-      const existing = db.users.find(u => u.email && u.email.toLowerCase() === cleanEmail);
-      if (existing) {
-        return res.status(400).json({ error: "এই ইমেইল দিয়ে ইতোমধ্যেই একটি অ্যাকাউন্ট তৈরি করা আছে।" });
+
+      // 1. Strict Unique Email check in local DB
+      const existingByEmail = db.users.find(u => u.email && u.email.toLowerCase().trim() === cleanEmail);
+      if (existingByEmail) {
+        return res.status(400).json({ error: "এই ইমেইল দিয়ে ইতোমধ্যেই একটি অ্যাকাউন্ট তৈরি করা আছে। অনুগ্রহ করে লগইন করুন অথবা অন্য ইমেইল ব্যবহার করুন।" });
+      }
+
+      // 2. Strict Unique Mobile Number check in local DB
+      const existingByPhone = db.users.find(u => {
+        if (!u) return false;
+        const uPhone = (u.phone || '').replace(/\D/g, '');
+        return uPhone && uPhone === cleanPhone;
+      });
+      if (existingByPhone) {
+        return res.status(400).json({ error: "এই মোবাইল নম্বর দিয়ে ইতোমধ্যেই একটি অ্যাকাউন্ট তৈরি করা আছে। একই মোবাইল নম্বর দিয়ে একাধিক স্টুডেন্ট রেজিস্ট্রেশন করতে পারবে না। অনুগ্রহ করে লগইন করুন অথবা আপনার অন্য নম্বর ব্যবহার করুন।" });
+      }
+
+      // 3. Strict Unique Email & Mobile check in Supabase app_users table
+      if (canAttemptSupabase()) {
+        try {
+          const { data: sbConflicts } = await supabaseServer
+            .from('app_users')
+            .select('id, email, phone')
+            .or(`email.ilike.${cleanEmail},phone.eq.${cleanPhone}`)
+            .limit(5);
+
+          if (Array.isArray(sbConflicts) && sbConflicts.length > 0) {
+            for (const conflict of sbConflicts) {
+              const cEmail = (conflict.email || '').toLowerCase().trim();
+              const cPhone = (conflict.phone || '').replace(/\D/g, '');
+              if (cEmail === cleanEmail) {
+                return res.status(400).json({ error: "এই ইমেইল দিয়ে ইতোমধ্যেই একটি অ্যাকাউন্ট তৈরি করা আছে। অনুগ্রহ করে লগইন করুন।" });
+              }
+              if (cPhone === cleanPhone) {
+                return res.status(400).json({ error: "এই মোবাইল নম্বর দিয়ে ইতোমধ্যেই একটি অ্যাকাউন্ট তৈরি করা আছে। একই মোবাইল নম্বর দিয়ে একাধিক স্টুডেন্ট রেজিস্ট্রেশন করতে পারবে না।" });
+              }
+            }
+          }
+        } catch (sbErr) {
+          console.log("Supabase signup uniqueness check note:", sbErr);
+        }
       }
 
       let initialEnrolled: string[] = [];
@@ -1030,10 +1084,16 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
       db.users.push(newUser);
       writeDB(db);
 
-      // Register user in Supabase Authentication & app_users table asynchronously without blocking signup response
-      registerUserInSupabaseAuth(cleanEmail, password, name.trim(), cleanPhone, newUser).catch(e => {
-        console.log("Supabase Auth registration notice:", e);
-      });
+      // Register user in Supabase Authentication (auth.users)
+      // Per requirements: Data is saved to Supabase Auth. It will be added to app_users (Table Editor) once admin approves.
+      try {
+        await Promise.race([
+          registerUserInSupabaseAuth(cleanEmail, password, studentName, cleanPhone, newUser),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Supabase Auth registration timeout')), 3500))
+        ]);
+      } catch (authErr) {
+        console.log("Supabase Auth registration notice:", authErr);
+      }
 
       // Exclude password and internal fields from response
       const { password: _, token: __, ...userWithoutPassword } = newUser;
@@ -1472,15 +1532,17 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
     db.classes.splice(index, 1);
     writeDB(db);
 
-    // Non-blocking background Supabase deletion and sync
-    (async () => {
-      try {
-        await deleteFromSupabase('app_classes', id);
-        await syncToSupabase(readDB());
-      } catch (e) {
-        console.log('Background delete class notice:', e);
-      }
-    })();
+    try {
+      await Promise.race([
+        Promise.allSettled([
+          deleteFromSupabase('app_classes', id),
+          syncToSupabase(readDB())
+        ]),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Deletion timeout')), 3000))
+      ]);
+    } catch (e) {
+      console.log('Class delete Supabase sync note:', e);
+    }
 
     res.json({ message: "Class successfully deleted." });
   });
@@ -1552,21 +1614,23 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
     db.notes.splice(index, 1);
     writeDB(db);
 
-    // Non-blocking background Supabase deletion and sync
-    (async () => {
-      try {
-        await deleteFromSupabase('app_notes', id);
-        await syncToSupabase(readDB());
-        if (noteToDelete.pdfUrl && noteToDelete.pdfUrl.includes('handnotes-pdf/')) {
-          const fileName = noteToDelete.pdfUrl.split('handnotes-pdf/')[1]?.split('?')[0];
-          if (fileName) {
-            deleteFromSupabaseStorage('handnotes-pdf', fileName).catch(e => console.log('Delete PDF storage notice:', e));
-          }
+    try {
+      await Promise.race([
+        Promise.allSettled([
+          deleteFromSupabase('app_notes', id),
+          syncToSupabase(readDB())
+        ]),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Deletion timeout')), 3000))
+      ]);
+      if (noteToDelete.pdfUrl && noteToDelete.pdfUrl.includes('handnotes-pdf/')) {
+        const fileName = noteToDelete.pdfUrl.split('handnotes-pdf/')[1]?.split('?')[0];
+        if (fileName) {
+          deleteFromSupabaseStorage('handnotes-pdf', fileName).catch(e => console.log('Delete PDF storage notice:', e));
         }
-      } catch (e) {
-        console.log('Background delete note notice:', e);
       }
-    })();
+    } catch (e) {
+      console.log('Note delete Supabase sync note:', e);
+    }
 
     res.json({ message: "Note successfully deleted." });
   });
@@ -1788,25 +1852,25 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 
       writeDB(db);
 
-      // Non-blocking background Supabase deletion and sync
-      (async () => {
-        try {
-          await Promise.all([
+      try {
+        await Promise.race([
+          Promise.allSettled([
             deleteFromSupabase('app_courses', id),
             ...deletedClassIds.map(clsId => deleteFromSupabase('app_classes', clsId)),
-            ...deletedNoteIds.map(nteId => deleteFromSupabase('app_notes', nteId))
-          ]);
-          await syncToSupabase(readDB());
-          if (courseToDelete.imageUrl && courseToDelete.imageUrl.includes('course-images/')) {
-            const fileName = courseToDelete.imageUrl.split('course-images/')[1]?.split('?')[0];
-            if (fileName) {
-              deleteFromSupabaseStorage('course-images', fileName).catch(e => console.log('Delete image storage notice:', e));
-            }
+            ...deletedNoteIds.map(nteId => deleteFromSupabase('app_notes', nteId)),
+            syncToSupabase(readDB())
+          ]),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Deletion timeout')), 3000))
+        ]);
+        if (courseToDelete.imageUrl && courseToDelete.imageUrl.includes('course-images/')) {
+          const fileName = courseToDelete.imageUrl.split('course-images/')[1]?.split('?')[0];
+          if (fileName) {
+            deleteFromSupabaseStorage('course-images', fileName).catch(e => console.log('Delete image storage notice:', e));
           }
-        } catch (e) {
-          console.log('Background course delete notice:', e);
         }
-      })();
+      } catch (e) {
+        console.log('Course delete Supabase sync note:', e);
+      }
 
       res.json({ message: "Course successfully deleted." });
     } catch (err: any) {
@@ -1918,8 +1982,13 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
           const sbUsers = sbResponse?.data;
           if (Array.isArray(sbUsers) && sbUsers.length > 0) {
             let updated = false;
+            const tombstoneSet = new Set(Array.isArray(db.deletedUserIds) ? db.deletedUserIds : []);
             sbUsers.forEach((r: any) => {
               const cleanSupabaseEmail = r.email ? r.email.toLowerCase().trim() : '';
+              if ((r.id && tombstoneSet.has(r.id)) || (cleanSupabaseEmail && tombstoneSet.has(cleanSupabaseEmail))) {
+                // User was deleted by admin; do not re-resurrect into local database
+                return;
+              }
               const existingIndex = db.users.findIndex(u => 
                 (u.id && r.id && u.id === r.id) || 
                 (u.email && cleanSupabaseEmail && u.email.toLowerCase().trim() === cleanSupabaseEmail)
@@ -1955,6 +2024,8 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
                   ? cleanSupabaseEmail.split('@')[0].charAt(0).toUpperCase() + cleanSupabaseEmail.split('@')[0].slice(1) 
                   : 'শিক্ষার্থী';
 
+                const sbAvatar = r.avatar || r.photo_url || r.photoUrl || nested.photoUrl || nested.avatarUrl || nested.avatar || '';
+
                 db.users[existingIndex] = {
                   ...nested,
                   ...localUser,
@@ -1963,8 +2034,8 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
                   role: localUser.role || r.role || nested.role || 'student',
                   phone: localUser.phone || sbPhone || '',
                   studentClass: localUser.studentClass || r.student_class || nested.studentClass || '',
-                  photoUrl: localUser.photoUrl || r.photo_url || nested.photoUrl || '',
-                  avatarUrl: localUser.avatarUrl || localUser.photoUrl || r.photo_url || nested.avatarUrl || '',
+                  photoUrl: localUser.photoUrl || localUser.avatarUrl || sbAvatar || '',
+                  avatarUrl: localUser.avatarUrl || localUser.photoUrl || sbAvatar || '',
                   enrolledCourseTitles: mergedCourses,
                   transactionId: localUser.transactionId || sbTrx || '',
                   paymentMethod: localUser.paymentMethod || sbPayment || '',
@@ -1980,6 +2051,7 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
                 const emailDerived = cleanSupabaseEmail.includes('@') 
                   ? cleanSupabaseEmail.split('@')[0].charAt(0).toUpperCase() + cleanSupabaseEmail.split('@')[0].slice(1) 
                   : 'শিক্ষার্থী';
+                const sbAvatar = r.avatar || r.photo_url || r.photoUrl || nested.photoUrl || nested.avatarUrl || nested.avatar || '';
 
                 const newUser = {
                   ...nested,
@@ -1990,8 +2062,8 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
                   isApproved: sbApproved,
                   phone: sbPhone,
                   studentClass: r.student_class || r.studentClass || nested.studentClass || '',
-                  photoUrl: r.photo_url || r.photoUrl || nested.photoUrl || '',
-                  avatarUrl: r.photo_url || r.avatarUrl || nested.avatarUrl || '',
+                  photoUrl: sbAvatar,
+                  avatarUrl: sbAvatar,
                   enrolledCourseTitles: sbCourses,
                   transactionId: sbTrx,
                   paymentMethod: sbPayment,
@@ -2012,7 +2084,32 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
         }
       }
 
-      const cleanUsers = db.users.map(({ password: _, ...u }) => u);
+      const tombstoneFilter = new Set(Array.isArray(db.deletedUserIds) ? db.deletedUserIds : []);
+      const cleanUsers = db.users
+        .filter((u: any) => {
+          if (u.id && tombstoneFilter.has(u.id)) return false;
+          if (u.email && tombstoneFilter.has(u.email.toLowerCase().trim())) return false;
+          return true;
+        })
+        .map(({ password: _, ...u }) => u);
+
+      // Sort: Admin ID always on top, then sorted by most recent registration date (newest students first)
+      cleanUsers.sort((a: any, b: any) => {
+        const aIsPrimaryAdmin = a.id === 'usr_admin' || (a.email && a.email.toLowerCase() === 'admin@sciencestudio.com');
+        const bIsPrimaryAdmin = b.id === 'usr_admin' || (b.email && b.email.toLowerCase() === 'admin@sciencestudio.com');
+        if (aIsPrimaryAdmin && !bIsPrimaryAdmin) return -1;
+        if (!aIsPrimaryAdmin && bIsPrimaryAdmin) return 1;
+
+        const aIsAdmin = a.role === 'admin';
+        const bIsAdmin = b.role === 'admin';
+        if (aIsAdmin && !bIsAdmin) return -1;
+        if (!aIsAdmin && bIsAdmin) return 1;
+
+        const timeA = new Date(a.createdAt || a.joinedAt || 0).getTime();
+        const timeB = new Date(b.createdAt || b.joinedAt || 0).getTime();
+        return timeB - timeA;
+      });
+
       res.json(cleanUsers);
     } catch (err: any) {
       console.error("Fetch admin users error:", err);
@@ -2143,12 +2240,34 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
       if (Array.isArray(enrolledCourseTitles) && enrolledCourseTitles.length > 0) {
         user.enrolledCourseTitles = enrolledCourseTitles;
       }
+
+      // Ensure student's profile photo is strictly preserved and not overwritten
+      if ((!user.photoUrl && !user.avatarUrl) && canAttemptSupabase()) {
+        try {
+          const { data: sbRow } = await supabaseServer
+            .from('app_users')
+            .select('avatar')
+            .eq('id', user.id)
+            .maybeSingle();
+          if (sbRow?.avatar) {
+            user.photoUrl = sbRow.avatar;
+            user.avatarUrl = sbRow.avatar;
+          }
+        } catch (e) {}
+      }
+
       writeDB(db);
 
       // Immediate synchronous sync to Supabase database
+      // If approved: add to app_users table (Table Editor)
+      // If unapproved: remove from app_users table (remains in Supabase Auth)
       if (canAttemptSupabase()) {
         try {
-          await upsertUserToSupabase(user);
+          if (user.isApproved) {
+            await upsertUserToSupabase(user);
+          } else {
+            await supabaseServer.from('app_users').delete().eq('id', user.id);
+          }
         } catch (e) {
           console.log('Supabase approve sync notice:', e);
         }
@@ -2261,7 +2380,15 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
       }
 
       if (phone !== undefined && typeof phone === 'string') {
-        user.phone = phone.trim();
+        const banglaToEnglishDigits = (str: string) => str.replace(/[০-৯]/g, d => '০১২৩৪৫৬৭৮৯'.indexOf(d).toString());
+        const cleanNewPhone = banglaToEnglishDigits(phone.trim()).replace(/\D/g, '');
+        if (cleanNewPhone && cleanNewPhone !== (user.phone || '').replace(/\D/g, '')) {
+          const phoneInUse = db.users.find(u => u.id !== user.id && (u.phone || '').replace(/\D/g, '') === cleanNewPhone);
+          if (phoneInUse) {
+            return res.status(400).json({ error: "এই মোবাইল নম্বর দিয়ে ইতোমধ্যেই অন্য একটি অ্যাকাউন্ট আছে।" });
+          }
+          user.phone = cleanNewPhone;
+        }
       }
 
       writeDB(db);
@@ -2312,17 +2439,33 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 
     const deletedUser = db.users[index];
     db.users.splice(index, 1);
+    if (!Array.isArray(db.deletedUserIds)) {
+      db.deletedUserIds = [];
+    }
+    if (id && !db.deletedUserIds.includes(id)) {
+      db.deletedUserIds.push(id);
+    }
+    if (deletedUser?.email) {
+      const cleanEmail = deletedUser.email.trim().toLowerCase();
+      if (!db.deletedUserIds.includes(cleanEmail)) {
+        db.deletedUserIds.push(cleanEmail);
+      }
+    }
     writeDB(db);
 
-    // Non-blocking background Supabase deletion and sync
-    (async () => {
-      try {
-        await deleteUserFromSupabase(id, deletedUser?.email);
-        await syncToSupabase(readDB());
-      } catch (e) {
-        console.log('Delete user Supabase notice:', e);
-      }
-    })();
+    // Concurrently await both remote deletion and sync before returning response
+    // to prevent race condition where GET /api/admin/users re-imports the user from Supabase
+    try {
+      await Promise.race([
+        Promise.allSettled([
+          deleteUserFromSupabase(id, deletedUser?.email),
+          syncToSupabase(readDB())
+        ]),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Deletion timeout')), 3000))
+      ]);
+    } catch (e) {
+      console.log('Delete user Supabase sync note:', e);
+    }
 
     res.json({ message: "User successfully deleted." });
   });

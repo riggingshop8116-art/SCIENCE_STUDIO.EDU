@@ -328,11 +328,15 @@ CREATE TRIGGER on_app_user_deleted
   AFTER DELETE ON public.app_users
   FOR EACH ROW EXECUTE FUNCTION public.handle_delete_app_user();
 
--- RPC function to delete user directly from auth.users by email
+-- RPC function to delete user directly from auth.users by email (case-insensitive)
 CREATE OR REPLACE FUNCTION public.delete_auth_user(target_email TEXT)
-RETURNS VOID AS $$
+RETURNS VOID AS $
 BEGIN
-  DELETE FROM auth.users WHERE email = target_email;
+  DELETE FROM auth.users WHERE LOWER(TRIM(email)) = LOWER(TRIM(target_email));
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Grant execution to service_role and anon/authenticated for safe backend execution
+GRANT EXECUTE ON FUNCTION public.delete_auth_user(TEXT) TO postgres, service_role, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.handle_delete_app_user() TO postgres, service_role;
 
