@@ -230,6 +230,7 @@ export default function AuthModal({
             });
 
             if (authData?.user) {
+              const meta = authData.user.user_metadata || {};
               const { data: dbProfile } = await supabase
                 .from('app_users')
                 .select('*')
@@ -238,19 +239,31 @@ export default function AuthModal({
 
               const approvedValue = dbProfile?.isApproved !== undefined 
                 ? Boolean(dbProfile.isApproved) 
-                : (dbProfile?.is_approved !== undefined ? Boolean(dbProfile.is_approved) : false);
+                : (dbProfile?.is_approved !== undefined 
+                  ? Boolean(dbProfile.is_approved) 
+                  : (meta.isApproved !== undefined ? Boolean(meta.isApproved) : false));
+
+              const enrolledList = Array.isArray(dbProfile?.enrolledCourseTitles) && dbProfile.enrolledCourseTitles.length > 0
+                ? dbProfile.enrolledCourseTitles
+                : (Array.isArray(dbProfile?.enrolled_courses) && dbProfile.enrolled_courses.length > 0
+                  ? dbProfile.enrolled_courses
+                  : (Array.isArray(meta.enrolledCourseTitles) && meta.enrolledCourseTitles.length > 0
+                    ? meta.enrolledCourseTitles
+                    : (meta.course ? [meta.course] : (meta.courseTitle ? [meta.courseTitle] : []))));
 
               const fallbackStudent = {
                 id: dbProfile?.id || authData.user.id,
-                name: dbProfile?.name || authData.user.user_metadata?.name || 'শিক্ষার্থী',
+                name: dbProfile?.name || meta.name || 'শিক্ষার্থী',
                 email: cleanEmail,
-                phone: dbProfile?.phone || authData.user.user_metadata?.phone || '',
+                phone: dbProfile?.phone || meta.phone || '',
                 role: 'student' as const,
                 isApproved: approvedValue,
-                enrolledCourseTitles: Array.isArray(dbProfile?.enrolledCourseTitles) 
-                  ? dbProfile.enrolledCourseTitles 
-                  : (Array.isArray(dbProfile?.enrolled_courses) ? dbProfile.enrolled_courses : []),
-                createdAt: dbProfile?.created_at || new Date().toISOString()
+                enrolledCourseTitles: enrolledList,
+                transactionId: dbProfile?.transactionId || meta.transactionId || meta.transaction_id || '',
+                paymentMethod: dbProfile?.paymentMethod || meta.paymentMethod || '',
+                senderPhone: dbProfile?.senderPhone || meta.senderPhone || '',
+                studentClass: dbProfile?.batch || meta.studentClass || '',
+                createdAt: dbProfile?.created_at || authData.user.created_at || new Date().toISOString()
               };
               const token = 'tok_' + Math.random().toString(36).substring(2, 12);
               onSuccess({ user: fallbackStudent, token });

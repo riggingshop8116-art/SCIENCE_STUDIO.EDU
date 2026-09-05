@@ -17,6 +17,7 @@ import {
   upsertNoteToSupabase,
   upsertCourseToSupabase,
   upsertSettingsToSupabase,
+  updateUserInSupabaseAuth,
   canAttemptSupabase,
   isNetworkError,
   markSupabaseOffline
@@ -1229,8 +1230,8 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
             writeDB(db);
           }
 
-          // 2. Try Supabase Auth verification
-          if (!user && cleanEmail.includes('@')) {
+          // 2. Try Supabase Auth verification & match state from Supabase Auth
+          if (cleanEmail.includes('@')) {
             const { data: authResult, error: authErr } = await supabaseServer.auth.signInWithPassword({
               email: cleanEmail,
               password: cleanPassword
@@ -1244,20 +1245,54 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
                 ? rawName 
                 : emailDerivedName;
 
-              user = {
-                id: authResult.user.id || 'usr_' + Math.random().toString(36).substring(2, 9),
-                name: finalName,
-                email: authResult.user.email || cleanEmail,
-                password: cleanPassword,
-                role: (meta.role as any) || 'student',
-                isApproved: false,
-                phone: meta.phone || cleanPhone || '',
-                enrolledCourseTitles: [],
-                transactionId: '',
-                createdAt: authResult.user.created_at || new Date().toISOString()
-              };
-              db.users.push(user);
-              writeDB(db);
+              const authCourses = Array.isArray(meta.enrolledCourseTitles) && meta.enrolledCourseTitles.length > 0
+                ? meta.enrolledCourseTitles
+                : (meta.course ? [meta.course] : (meta.courseTitle ? [meta.courseTitle] : []));
+              const authTrx = meta.transactionId || meta.transaction_id || '';
+              const authPayment = meta.paymentMethod || meta.payment_method || '';
+              const authSender = meta.senderPhone || meta.sender_phone || '';
+              const authClass = meta.studentClass || meta.batch || '';
+              const authAvatar = meta.photoUrl || meta.avatarUrl || meta.avatar || '';
+              const isApprovedVal = meta.isApproved !== undefined ? Boolean(meta.isApproved) : false;
+
+              if (user) {
+                // If user exists locally, merge matched metadata from Supabase Auth so no data is missing
+                if (authCourses.length > 0) {
+                  const existingCourses = Array.isArray(user.enrolledCourseTitles) ? user.enrolledCourseTitles : [];
+                  user.enrolledCourseTitles = Array.from(new Set([...existingCourses, ...authCourses]));
+                }
+                if (!user.transactionId && authTrx) user.transactionId = authTrx;
+                if (!user.paymentMethod && authPayment) user.paymentMethod = authPayment;
+                if (!user.senderPhone && authSender) user.senderPhone = authSender;
+                if (!user.studentClass && authClass) user.studentClass = authClass;
+                if (!user.photoUrl && authAvatar) {
+                  user.photoUrl = authAvatar;
+                  user.avatarUrl = authAvatar;
+                }
+                if (isApprovedVal && !user.isApproved) user.isApproved = true;
+                writeDB(db);
+              } else {
+                // Recreate user directly from Supabase Auth with complete state
+                user = {
+                  id: authResult.user.id || 'usr_' + Math.random().toString(36).substring(2, 9),
+                  name: finalName,
+                  email: authResult.user.email || cleanEmail,
+                  password: cleanPassword,
+                  role: (meta.role as any) || 'student',
+                  isApproved: isApprovedVal,
+                  phone: meta.phone || cleanPhone || '',
+                  studentClass: authClass,
+                  photoUrl: authAvatar,
+                  avatarUrl: authAvatar,
+                  enrolledCourseTitles: authCourses,
+                  transactionId: authTrx,
+                  paymentMethod: authPayment,
+                  senderPhone: authSender,
+                  createdAt: authResult.user.created_at || new Date().toISOString()
+                };
+                db.users.push(user);
+                writeDB(db);
+              }
             }
           }
         } catch (sbErr) {
@@ -2277,6 +2312,13 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
           } else {
             await supabaseServer.from('app_users').delete().eq('id', user.id);
           }
+          if (user.email) {
+            updateUserInSupabaseAuth(user.email, user.password, {
+              isApproved: user.isApproved,
+              enrolledCourseTitles: user.enrolledCourseTitles,
+              transactionId: user.transactionId || ''
+            }).catch(() => {});
+          }
         } catch (e) {
           console.log('Supabase approve sync notice:', e);
         }
@@ -2305,7 +2347,15 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
       user.enrolledCourseTitles = Array.isArray(enrolledCourseTitles) ? enrolledCourseTitles : [];
       writeDB(db);
 
-      upsertUserToSupabase(user).catch(() => {});
+      if (user.isApproved) {
+        await upsertUserToSupabase(user).catch(() => {});
+      }
+      if (canAttemptSupabase() && user.email) {
+        updateUserInSupabaseAuth(user.email, user.password, {
+          enrolledCourseTitles: user.enrolledCourseTitles,
+          isApproved: Boolean(user.isApproved)
+        }).catch(() => {});
+      }
 
       const { password: _, token: __, ...userWithoutPassword } = user;
       return res.json(userWithoutPassword);
@@ -2343,7 +2393,25 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 
     writeDB(db);
 
-    await upsertUserToSupabase(user).catch(() => {});
+    // Persist enrollment and transaction details to Supabase Auth metadata so re-login state is matched
+    if (canAttemptSupabase() && user.email) {
+      try {
+        await updateUserInSupabaseAuth(user.email, user.password, {
+          enrolledCourseTitles: user.enrolledCourseTitles,
+          course: courseTitle,
+          transactionId: user.transactionId || '',
+          paymentMethod: user.paymentMethod || '',
+          senderPhone: user.senderPhone || '',
+          isApproved: Boolean(user.isApproved)
+        });
+      } catch (authErr) {
+        console.log("Supabase Auth enrollment update notice:", authErr);
+      }
+    }
+
+    if (user.isApproved) {
+      await upsertUserToSupabase(user).catch(() => {});
+    }
 
     const { password: _, ...userWithoutPassword } = user;
     res.json(userWithoutPassword);
@@ -2427,7 +2495,18 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
     if (senderPhone !== undefined) user.senderPhone = senderPhone;
 
     writeDB(db);
-    await upsertUserToSupabase(user).catch(e => console.log('User transaction sync error:', e));
+    if (user.isApproved) {
+      await upsertUserToSupabase(user).catch(e => console.log('User transaction sync error:', e));
+    }
+    if (canAttemptSupabase() && user.email) {
+      updateUserInSupabaseAuth(user.email, user.password, {
+        transactionId: user.transactionId || '',
+        paymentMethod: user.paymentMethod || '',
+        senderPhone: user.senderPhone || '',
+        enrolledCourseTitles: user.enrolledCourseTitles,
+        isApproved: Boolean(user.isApproved)
+      }).catch(() => {});
+    }
 
     const { password: _, ...userWithoutPassword } = user;
     res.json(userWithoutPassword);

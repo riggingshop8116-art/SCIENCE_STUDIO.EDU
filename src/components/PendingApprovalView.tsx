@@ -29,6 +29,7 @@ import {
   Layers
 } from 'lucide-react';
 import { User, Course, Settings } from '../types';
+import { supabase } from '../lib/supabase';
 
 interface PendingApprovalViewProps {
   user: User;
@@ -126,12 +127,38 @@ export default function PendingApprovalView({
     }
   };
 
-  // Auto poll status every 12 seconds in the background
+  // Real-time live status detection and auto-poll every 5 seconds
   useEffect(() => {
     const interval = setInterval(() => {
       handleCheckStatus(false);
-    }, 12000);
-    return () => clearInterval(interval);
+    }, 5000);
+
+    let channel: any = null;
+    try {
+      channel = supabase
+        .channel(`user-approval-${user.id}`)
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'app_users' },
+          (payload: any) => {
+            if (payload?.new && (payload.new.id === user.id || payload.new.email?.toLowerCase() === user.email?.toLowerCase())) {
+              handleCheckStatus(false);
+            }
+          }
+        )
+        .subscribe();
+    } catch (e) {
+      console.warn('Realtime approval notice:', e);
+    }
+
+    return () => {
+      clearInterval(interval);
+      if (channel) {
+        try {
+          supabase.removeChannel(channel);
+        } catch (err) {}
+      }
+    };
   }, [user.id]);
 
   // Handle Edit Transaction Submission

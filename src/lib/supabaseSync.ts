@@ -138,6 +138,60 @@ export async function registerUserInSupabaseAuth(
 }
 
 /**
+ * Updates a user's metadata in Supabase Authentication (auth.users)
+ * This ensures enrolled courses, transaction ID, payment method, and sender phone
+ * are persistently stored in Supabase Auth before Admin approval.
+ */
+export async function updateUserInSupabaseAuth(
+  email: string,
+  password?: string,
+  metadata?: any
+): Promise<boolean> {
+  if (!canAttemptSupabase() || !email || !metadata) return false;
+  const cleanEmail = email.toLowerCase().trim();
+  try {
+    // 1. If user's password is provided, sign in as user and update user metadata
+    if (password) {
+      try {
+        const client = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+          auth: { persistSession: false }
+        });
+        const { data: loginData, error: loginErr } = await client.auth.signInWithPassword({
+          email: cleanEmail,
+          password: String(password).trim()
+        });
+        if (!loginErr && loginData?.user) {
+          const currentMeta = loginData.user.user_metadata || {};
+          const mergedMeta = {
+            ...currentMeta,
+            ...metadata
+          };
+          const { error: updateErr } = await client.auth.updateUser({
+            data: mergedMeta
+          });
+          if (!updateErr) return true;
+        }
+      } catch (clientErr) {
+        console.log('Client session auth update notice:', clientErr);
+      }
+    }
+
+    // 2. Try admin updateUserById if admin API is available
+    if ((supabaseServer.auth as any)?.admin?.updateUserById && metadata?.id) {
+      try {
+        const { error } = await (supabaseServer.auth as any).admin.updateUserById(metadata.id, {
+          user_metadata: metadata
+        });
+        if (!error) return true;
+      } catch (adminErr) {}
+    }
+  } catch (err: any) {
+    if (isNetworkError(err)) markSupabaseOffline(err);
+  }
+  return false;
+}
+
+/**
  * Ensures a Supabase Storage bucket exists
  */
 export async function ensureSupabaseBucket(bucket: string) {

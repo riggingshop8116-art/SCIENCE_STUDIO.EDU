@@ -1256,6 +1256,60 @@ export default function AdminDashboard({
   useEffect(() => {
     fetchStatsAndUsers(true);
     fetchCourses();
+
+    // Periodic auto-sync every 5 seconds so any updates, enrollments, or deletes reflect immediately without page refresh
+    const pollInterval = setInterval(() => {
+      fetchStatsAndUsers(false);
+      fetchCourses();
+    }, 5000);
+
+    // Live Supabase Realtime subscription
+    let channel: any = null;
+    try {
+      channel = supabase
+        .channel('admin-dashboard-realtime')
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'app_users' },
+          () => {
+            fetchStatsAndUsers(false);
+          }
+        )
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'app_courses' },
+          () => {
+            fetchCourses();
+            if (onRefreshSettings) onRefreshSettings();
+          }
+        )
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'app_classes' },
+          () => {
+            onRefreshData();
+          }
+        )
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'app_notes' },
+          () => {
+            onRefreshData();
+          }
+        )
+        .subscribe();
+    } catch (realtimeErr) {
+      console.warn('Realtime subscription notice:', realtimeErr);
+    }
+
+    return () => {
+      clearInterval(pollInterval);
+      if (channel) {
+        try {
+          supabase.removeChannel(channel);
+        } catch (e) {}
+      }
+    };
   }, []);
 
   // Create/Publish course
@@ -1676,6 +1730,8 @@ export default function AdminDashboard({
   // Update user enrolled courses
   const handleAssignUserCourse = async (userId: string, newCourseTitles: string[]) => {
     setActionError('');
+    // Instant optimistic update so UI updates with zero delay
+    setUserList(prev => prev.map(u => u.id === userId ? { ...u, enrolledCourseTitles: newCourseTitles } : u));
     try {
       const response = await fetch(`/api/admin/users/${userId}/courses`, {
         method: 'PUT',
@@ -1688,10 +1744,11 @@ export default function AdminDashboard({
         throw new Error(data.error || 'Failed to update user courses');
       }
 
-      fetchStatsAndUsers();
+      fetchStatsAndUsers(false);
     } catch (err: any) {
       alert(err.message || 'কোর্স আপডেট করতে সমস্যা হয়েছে');
       setActionError(err.message || 'Error occurred while updating user courses');
+      fetchStatsAndUsers(false);
     }
   };
 
@@ -1704,12 +1761,17 @@ export default function AdminDashboard({
   // Confirm Update Transaction ID
   const handleConfirmUpdateTrx = async () => {
     if (!userToEditTrx) return;
+    const targetUserId = userToEditTrx.id;
+    const newTrx = editTrxInput.trim();
+    // Instant optimistic update so the admin sees the updated TrxID immediately
+    setUserList(prev => prev.map(u => u.id === targetUserId ? { ...u, transactionId: newTrx } : u));
+    setUserToEditTrx(null);
     setIsUpdatingTrx(true);
     try {
-      const response = await fetch(`/api/admin/users/${userToEditTrx.id}/transaction`, {
+      const response = await fetch(`/api/admin/users/${targetUserId}/transaction`, {
         method: 'PUT',
         headers: getAdminHeaders(true),
-        body: JSON.stringify({ transactionId: editTrxInput.trim() })
+        body: JSON.stringify({ transactionId: newTrx })
       });
 
       const data = await response.json().catch(() => ({}));
@@ -1717,10 +1779,10 @@ export default function AdminDashboard({
         throw new Error(data.error || 'Failed to update transaction ID');
       }
 
-      setUserToEditTrx(null);
-      fetchStatsAndUsers();
+      fetchStatsAndUsers(false);
     } catch (err: any) {
       alert(err.message || 'ট্রানজেকশন আইডি আপডেট করতে সমস্যা হয়েছে');
+      fetchStatsAndUsers(false);
     } finally {
       setIsUpdatingTrx(false);
     }
