@@ -977,6 +977,15 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 
   // --- API ROUTES ---
 
+  // Health Check Endpoint (Required for Cloud Run, Vercel, and deployment health probes)
+  app.get('/api/health', (req, res) => {
+    res.json({
+      status: "ok",
+      uptime: Math.floor(process.uptime()),
+      timestamp: new Date().toISOString()
+    });
+  });
+
   // Auth: Signup
   app.post('/api/auth/signup', async (req, res) => {
     try {
@@ -2729,6 +2738,10 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
     });
   });
 
+  // 404 JSON fallback for unhandled API routes (prevents returning HTML for API calls)
+  app.all('/api/*', (req, res) => {
+    res.status(404).json({ error: `API route ${req.method} ${req.originalUrl} not found` });
+  });
 
   // --- VITE DEV / PRODUCTION STATIC SERVER ---
 async function startServer() {
