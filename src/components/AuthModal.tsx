@@ -18,6 +18,9 @@ interface AuthModalProps {
   initialMode?: 'login' | 'register';
 }
 
+// Optimized pure helper outside component scope to prevent re-allocation on keystrokes
+const banglaToEnglishDigits = (str: string) => str.replace(/[০-৯]/g, d => '০১২৩৪৫৬৭৮৯'.indexOf(d).toString());
+
 export default function AuthModal({ 
   isOpen, 
   onClose, 
@@ -40,6 +43,7 @@ export default function AuthModal({
 
   useEffect(() => {
     if (isOpen) {
+      document.body.classList.add('auth-modal-open');
       setActiveAdminMode(isAdminMode);
       setIsLogin(isAdminMode ? true : initialMode === 'login');
       setName('');
@@ -49,10 +53,14 @@ export default function AuthModal({
       setShowPassword(false);
       setError('');
       setFocusedField(null);
+    } else {
+      document.body.classList.remove('auth-modal-open');
     }
-  }, [isOpen, isAdminMode, initialMode]);
 
-  const banglaToEnglishDigits = (str: string) => str.replace(/[০-৯]/g, d => '০১২৩৪৫৬৭৮৯'.indexOf(d).toString());
+    return () => {
+      document.body.classList.remove('auth-modal-open');
+    };
+  }, [isOpen, isAdminMode, initialMode]);
 
   const handlePhoneChange = (val: string) => {
     // Gracefully handle Bengali digits and filter out non-numeric characters
@@ -136,6 +144,33 @@ export default function AuthModal({
         }
         if (!activeAdminMode && data.user?.role === 'admin') {
           throw new Error('এটি একটি এডমিন (প্রশাসক) অ্যাকাউন্ট। অনুগ্রহ করে এডমিন পোর্টাল মোডে সুইচ করে লগইন করুন।');
+        }
+
+        // Merge any locally preserved enrollment state into user so unapproved students never lose their pending view
+        if (data.user?.id) {
+          try {
+            const savedCoursesStr = localStorage.getItem(`scicenter_enrolled_${data.user.id}`);
+            const savedTrx = localStorage.getItem(`scicenter_trx_${data.user.id}`);
+            const savedPayment = localStorage.getItem(`scicenter_payment_${data.user.id}`);
+            const savedSender = localStorage.getItem(`scicenter_sender_${data.user.id}`);
+
+            if (savedCoursesStr) {
+              const savedCourses = JSON.parse(savedCoursesStr);
+              if (Array.isArray(savedCourses) && savedCourses.length > 0) {
+                const current = Array.isArray(data.user.enrolledCourseTitles) ? data.user.enrolledCourseTitles : [];
+                data.user.enrolledCourseTitles = Array.from(new Set([...current, ...savedCourses]));
+              }
+            }
+            if (savedTrx && !data.user.transactionId) {
+              data.user.transactionId = savedTrx;
+            }
+            if (savedPayment && !data.user.paymentMethod) {
+              data.user.paymentMethod = savedPayment;
+            }
+            if (savedSender && !data.user.senderPhone) {
+              data.user.senderPhone = savedSender;
+            }
+          } catch (e) {}
         }
 
         onSuccess(data);
@@ -299,7 +334,7 @@ export default function AuthModal({
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           onClick={onClose} 
-          className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-0"
+          className="fixed inset-0 bg-slate-950/85 z-0"
         />
 
         {/* Modal Container with Refined Academic Materials */}
@@ -474,7 +509,9 @@ export default function AuthModal({
                       onBlur={() => setFocusedField(null)}
                       onChange={(e) => setName(e.target.value)}
                       placeholder="যেমন: মোঃ সাকিব হাসান"
-                      className={`w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-900/90 border text-white text-sm outline-none transition-all placeholder:text-slate-500 ${
+                      autoComplete="name"
+                      spellCheck={false}
+                      className={`w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-900/90 border text-white text-sm outline-none transition-[border-color,box-shadow] duration-150 placeholder:text-slate-500 ${
                         focusedField === 'name' 
                           ? 'border-emerald-500 ring-2 ring-emerald-500/20 shadow-sm' 
                           : 'border-slate-700/80 hover:border-slate-600'
@@ -500,7 +537,8 @@ export default function AuthModal({
                       onBlur={() => setFocusedField(null)}
                       onChange={(e) => handlePhoneChange(e.target.value)}
                       placeholder="01712345678"
-                      className={`w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-900/90 border text-white text-sm outline-none transition-all font-mono placeholder:text-slate-500 ${
+                      autoComplete="tel"
+                      className={`w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-900/90 border text-white text-sm outline-none transition-[border-color,box-shadow] duration-150 font-mono placeholder:text-slate-500 ${
                         focusedField === 'phone' 
                           ? 'border-emerald-500 ring-2 ring-emerald-500/20 shadow-sm' 
                           : 'border-slate-700/80 hover:border-slate-600'
@@ -530,7 +568,9 @@ export default function AuthModal({
                   onBlur={() => setFocusedField(null)}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder={activeAdminMode ? "admin@sciencestudio.com" : "student@example.com"}
-                  className={`w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-900/90 border text-white text-sm outline-none transition-all placeholder:text-slate-500 font-sans ${
+                  autoComplete="email"
+                  spellCheck={false}
+                  className={`w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-900/90 border text-white text-sm outline-none transition-[border-color,box-shadow] duration-150 placeholder:text-slate-500 font-sans ${
                     focusedField === 'email' 
                       ? (activeAdminMode 
                           ? 'border-rose-500 ring-2 ring-rose-500/20 shadow-sm' 
@@ -562,7 +602,8 @@ export default function AuthModal({
                   onBlur={() => setFocusedField(null)}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  className={`w-full pl-10 pr-10 py-2.5 rounded-xl bg-slate-900/90 border text-white text-sm outline-none transition-all font-mono placeholder:text-slate-500 ${
+                  autoComplete={isLogin ? "current-password" : "new-password"}
+                  className={`w-full pl-10 pr-10 py-2.5 rounded-xl bg-slate-900/90 border text-white text-sm outline-none transition-[border-color,box-shadow] duration-150 font-mono placeholder:text-slate-500 ${
                     focusedField === 'password' 
                       ? 'border-amber-500 ring-2 ring-amber-500/20 shadow-sm' 
                       : 'border-slate-700/80 hover:border-slate-600'

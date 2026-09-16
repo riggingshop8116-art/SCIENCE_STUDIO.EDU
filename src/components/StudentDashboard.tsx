@@ -4,6 +4,7 @@ import { downloadPdfFile, openPdfInBrowser } from '../utils/pdfHelper';
 import { formatVideoEmbedUrl, isIframeVideoUrl, getVideoBannerUrl, getDefaultSubjectBanner, getNoteBannerUrl } from '../utils/videoHelper';
 import StudentProfileModal from './StudentProfileModal';
 import PendingApprovalView from './PendingApprovalView';
+import { supabase } from '../lib/supabase';
 import { 
   Video, 
   FileText, 
@@ -245,9 +246,21 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
 
     if (selectedCourseForPayment) {
       const courseTitle = selectedCourseForPayment.title;
+      const updatedEnrolled = enrolledCourses.includes(courseTitle) ? enrolledCourses : [...enrolledCourses, courseTitle];
+      setEnrolledCourses(updatedEnrolled);
+
+      try {
+        localStorage.setItem(`scicenter_enrolled_${user.id}`, JSON.stringify(updatedEnrolled));
+        localStorage.setItem(`scicenter_trx_${user.id}`, transactionId.trim());
+        localStorage.setItem(`scicenter_payment_${user.id}`, paymentMethod);
+        localStorage.setItem(`scicenter_sender_${user.id}`, senderPhone.trim());
+      } catch (err) {
+        console.error(err);
+      }
+
       try {
         const tokenStr = localStorage.getItem('science_studio_token') || `token-${user.id}`;
-        await fetch('/api/user/enroll', {
+        fetch('/api/user/enroll', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -259,17 +272,32 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
             paymentMethod,
             senderPhone: senderPhone.trim()
           })
+        }).then(async (res) => {
+          if (res.ok) {
+            const data = await res.json();
+            if (data.token) {
+              localStorage.setItem('science_studio_token', data.token);
+            }
+          }
+        }).catch((err) => {
+          console.error("Error registering course enrollment:", err);
         });
-      } catch (err) {
-        console.error("Error registering course enrollment:", err);
-      }
 
-      const updatedEnrolled = enrolledCourses.includes(courseTitle) ? enrolledCourses : [...enrolledCourses, courseTitle];
-      setEnrolledCourses(updatedEnrolled);
-      try {
-        localStorage.setItem(`scicenter_enrolled_${user.id}`, JSON.stringify(updatedEnrolled));
+        // Also sync directly with Supabase Auth metadata if client session exists
+        if (supabase) {
+          supabase.auth.updateUser({
+            data: {
+              enrolledCourseTitles: updatedEnrolled,
+              course: courseTitle,
+              transactionId: transactionId.trim(),
+              paymentMethod: paymentMethod,
+              senderPhone: senderPhone.trim(),
+              isApproved: false
+            }
+          }).catch(() => {});
+        }
       } catch (err) {
-        console.error(err);
+        console.error("Enrollment dispatch notice:", err);
       }
 
       if (onUpdateUser) {
@@ -507,10 +535,29 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
 
   // User is considered pending approval ONLY if they have enrolled in a course or submitted transaction details, AND are not yet approved by admin.
   // Newly registered students without any course enrollment / transaction submission will see their account page & unlocked classroom & available courses.
+  const localSavedTrx = (() => {
+    try {
+      return localStorage.getItem(`scicenter_trx_${user.id}`) || '';
+    } catch {
+      return '';
+    }
+  })();
+
+  const localSavedCourses = (() => {
+    try {
+      const raw = localStorage.getItem(`scicenter_enrolled_${user.id}`);
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
+  })();
+
   const hasEnrolledOrTrx = Boolean(
     (user.enrolledCourseTitles && user.enrolledCourseTitles.length > 0) ||
     (enrolledCourses && enrolledCourses.length > 0) ||
-    (user.transactionId && user.transactionId.trim().length > 0)
+    (localSavedCourses && localSavedCourses.length > 0) ||
+    (user.transactionId && user.transactionId.trim().length > 0) ||
+    (localSavedTrx && localSavedTrx.trim().length > 0)
   );
   const isPendingApproval = !user.isApproved && hasEnrolledOrTrx;
 

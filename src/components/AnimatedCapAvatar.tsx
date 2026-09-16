@@ -11,7 +11,7 @@ interface AnimatedCapAvatarProps {
   isLoading?: boolean;
 }
 
-export default function AnimatedCapAvatar({
+function AnimatedCapAvatarComponent({
   isPasswordFocused,
   showPassword,
   focusedField,
@@ -693,4 +693,18 @@ export default function AnimatedCapAvatar({
     </div>
   );
 }
+
+// Memoized export prevents expensive SVG re-renders on keystrokes in parent form
+const AnimatedCapAvatar = React.memo(AnimatedCapAvatarComponent, (prev, next) => {
+  return (
+    prev.isPasswordFocused === next.isPasswordFocused &&
+    prev.showPassword === next.showPassword &&
+    prev.focusedField === next.focusedField &&
+    prev.mode === next.mode &&
+    prev.hasError === next.hasError &&
+    prev.isLoading === next.isLoading
+  );
+});
+
+export default AnimatedCapAvatar;
 

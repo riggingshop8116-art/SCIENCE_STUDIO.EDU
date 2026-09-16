@@ -1205,7 +1205,7 @@ export async function loadFromSupabase(defaultData: any) {
       if (userErr && isNetworkError(userErr)) {
         markSupabaseOffline(userErr);
       } else if (Array.isArray(usersRows) && usersRows.length > 0) {
-        loadedData.users = usersRows.map(r => {
+        const approvedFromSb = usersRows.map(r => {
           const nested = (r.data && typeof r.data === 'object') ? r.data : {};
           const enrolledCourses = Array.isArray(r.enrolled_courses) && r.enrolled_courses.length > 0
             ? r.enrolled_courses
@@ -1233,6 +1233,53 @@ export async function loadFromSupabase(defaultData: any) {
             createdAt: r.created_at || nested.createdAt || new Date().toISOString()
           };
         });
+
+        // CRITICAL: Preserve all unapproved students and local pending enrollments from defaultData.users
+        // Unapproved students are kept in local storage and Supabase Auth until approved, so they must NEVER be wiped out.
+        const existingUnapproved = Array.isArray(defaultData.users)
+          ? defaultData.users.filter((u: any) => {
+              if (u.role === 'admin') return false;
+              const uEmail = (u.email || '').toLowerCase().trim();
+              const uId = String(u.id || '').trim();
+              // Check if this student is already in approvedFromSb
+              const isApprovedInSb = approvedFromSb.some((sb: any) => {
+                const sbEmail = (sb.email || '').toLowerCase().trim();
+                const sbId = String(sb.id || '').trim();
+                return (sbId && uId && sbId === uId) || (sbEmail && uEmail && sbEmail === uEmail);
+              });
+              return !isApprovedInSb;
+            })
+          : [];
+
+        // Also merge local pending transaction details or enrolled courses into approved students if missing in Supabase
+        const mergedApproved = approvedFromSb.map(sb => {
+          const sbEmail = (sb.email || '').toLowerCase().trim();
+          const sbId = String(sb.id || '').trim();
+          const localMatch = Array.isArray(defaultData.users) ? defaultData.users.find((u: any) => {
+            const uEmail = (u.email || '').toLowerCase().trim();
+            const uId = String(u.id || '').trim();
+            return (uId && sbId && uId === sbId) || (uEmail && sbEmail && uEmail === sbEmail);
+          }) : null;
+
+          if (localMatch) {
+            const mergedCourses = Array.from(new Set([
+              ...(Array.isArray(sb.enrolledCourseTitles) ? sb.enrolledCourseTitles : []),
+              ...(Array.isArray(localMatch.enrolledCourseTitles) ? localMatch.enrolledCourseTitles : [])
+            ]));
+            return {
+              ...sb,
+              enrolledCourseTitles: mergedCourses,
+              transactionId: sb.transactionId || localMatch.transactionId || '',
+              paymentMethod: sb.paymentMethod || localMatch.paymentMethod || '',
+              senderPhone: sb.senderPhone || localMatch.senderPhone || '',
+              studentClass: sb.studentClass || localMatch.studentClass || '',
+              phone: sb.phone || localMatch.phone || ''
+            };
+          }
+          return sb;
+        });
+
+        loadedData.users = [...mergedApproved, ...existingUnapproved];
         hasLoadedAny = true;
       }
     } catch (e: any) {

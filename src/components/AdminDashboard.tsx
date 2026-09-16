@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { User, Class, Note, AdminStats, Settings, RoutineItem, Course, HeroBanner } from '../types';
 import { formatVideoEmbedUrl, isIframeVideoUrl } from '../utils/videoHelper';
 import LogoImage from '../assets/images/science_studio_logo_1784521830593.jpg';
@@ -65,7 +65,9 @@ import {
   ArrowRight,
   RotateCcw,
   Sun,
-  Moon
+  Moon,
+  Menu,
+  Zap
 } from 'lucide-react';
 import { downloadPdfFile, openPdfInBrowser } from '../utils/pdfHelper';
 import { compressImageFile } from '../utils/imageHelper';
@@ -285,6 +287,30 @@ export default function AdminDashboard({
     if (initialSection === 'settings') return 'settings';
     return 'overview';
   });
+
+  // Main scrollable content reference to ensure content-only scrolling & instant scroll-to-top on tab switch
+  const mainContentRef = useRef<HTMLElement | null>(null);
+  const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
+
+  const handleNavSelect = (
+    tab: 'dashboard' | 'upload' | 'course-overview',
+    subTab?: 'overview' | 'users' | 'settings' | 'routine' | 'courses' | 'hero-banners'
+  ) => {
+    setActiveTab(tab);
+    if (subTab) {
+      setDashSubTab(subTab);
+    }
+    setMobileDrawerOpen(false);
+    if (mainContentRef.current) {
+      mainContentRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
+  useEffect(() => {
+    if (mainContentRef.current) {
+      mainContentRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  }, [activeTab, dashSubTab]);
 
   // Hero Banners Management State
   const defaultAdminHeroBanners: HeroBanner[] = useMemo(() => [
@@ -1892,7 +1918,7 @@ export default function AdminDashboard({
   };
 
   return (
-    <div className="relative min-h-screen w-full text-slate-100 overflow-hidden font-sans">
+    <div className="relative w-full text-slate-100 font-sans min-h-screen lg:h-[calc(100dvh-4.5rem)] lg:min-h-0 lg:overflow-hidden flex flex-col">
       {/* Dynamic Contextual Scientific Hero Banner Background with High-Legibility Overlay */}
       <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden">
         <img 
@@ -1905,163 +1931,284 @@ export default function AdminDashboard({
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-cyan-900/20 via-transparent to-slate-950/80" />
       </div>
 
-      <div className="relative z-10 w-full max-w-[99vw] xl:max-w-[1800px] mx-auto px-2 sm:px-4 lg:px-6 py-4 sm:py-6 animate-fade-in space-y-4">
+      <div className="relative z-10 w-full max-w-[1920px] mx-auto px-2 sm:px-4 lg:px-6 py-2 sm:py-3 flex flex-col flex-1 min-h-0 h-full overflow-hidden">
       
-      {/* Contextual Active Background Indicator */}
-      <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2 rounded-2xl bg-[#0a1122]/90 border border-cyan-500/25 shadow-[0_0_15px_rgba(34,211,238,0.1)] text-xs">
-        <div className="flex items-center gap-2 text-cyan-300 font-mono">
-          <Sparkles className="w-4 h-4 text-cyan-400 animate-pulse shrink-0" />
-          <span className="hidden sm:inline text-slate-400">অ্যাডমিন ব্যাকগ্রাউন্ড থিম:</span>
-          <span className="font-bold text-white tracking-wide">{sectionBgMeta.label}</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="px-2.5 py-0.5 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/30 text-[10px] uppercase font-mono font-bold tracking-wider">
-            {sectionBgMeta.badge}
-          </span>
-        </div>
-      </div>
-      
-      {actionError && (
-        <div className="flex items-start gap-2 p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-sm mb-6 max-w-xl">
-          <ShieldAlert className="w-5 h-5 shrink-0 mt-0.5" />
-          <span>{actionError}</span>
-        </div>
-      )}
-
-      {/* Sidebar and Content Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 sm:gap-6 items-stretch">
-        
-        {/* Sidebar Nav */}
-        <div className="col-span-1 lg:col-span-3 xl:col-span-3 flex flex-col">
-          <div className="sticky top-4 sm:top-6 p-3.5 sm:p-5 rounded-3xl bg-[#0a1122]/95 backdrop-blur-2xl border-2 border-cyan-500/40 shadow-[0_0_30px_rgba(34,211,238,0.2)] flex flex-col gap-2.5 lg:gap-3.5 lg:min-h-[80vh]">
-            
-            {/* Sidebar Banner: Logo only (Display only) */}
-            <div className="hidden lg:flex flex-col items-center justify-center gap-3 border-b border-cyan-500/20 pb-4 select-none pointer-events-none">
-              {/* Logo Only */}
-              <div className="relative w-16 h-16 rounded-full overflow-hidden border-2 border-cyan-400 shadow-[0_0_20px_rgba(34,211,238,0.4)] bg-slate-900 shrink-0">
-                <img 
-                  src={LogoImage} 
-                  alt="Science Studio Logo" 
-                  className="w-full h-full object-cover pointer-events-none"
-                  draggable={false}
-                />
-              </div>
-              <div className="text-center">
-                <h4 className="text-sm font-display font-bold text-white tracking-wide">SCIENCE STUDIO</h4>
-                <p className="text-[11px] font-mono text-cyan-400 font-semibold">এডমিন কন্ট্রোল প্যানেল</p>
-              </div>
+        {/* Top Header Controls: Theme Indicator & Mobile Quick Navigation */}
+        <div className="shrink-0 mb-3 space-y-2">
+          <div className="flex flex-wrap items-center justify-between gap-2 px-3 sm:px-4 py-2 rounded-2xl bg-[#0a1122]/90 border border-cyan-500/25 shadow-[0_0_15px_rgba(34,211,238,0.1)] text-xs">
+            <div className="flex items-center gap-2 text-cyan-300 font-mono">
+              <Sparkles className="w-4 h-4 text-cyan-400 animate-pulse shrink-0" />
+              <span className="hidden sm:inline text-slate-400">অ্যাডমিন ব্যাকগ্রাউন্ড থিম:</span>
+              <span className="font-bold text-white tracking-wide">{sectionBgMeta.label}</span>
             </div>
-
-            <div className="px-1 sm:px-2 py-1 text-xs font-mono uppercase tracking-widest text-cyan-400 font-black flex items-center justify-between">
-              <span>মেনু ও ন্যাভিগেশন</span>
-              <span className="lg:hidden text-[10px] text-emerald-400 font-sans font-bold">অ্যাক্টিভ</span>
+            <div className="flex items-center gap-2">
+              <span className="px-2.5 py-0.5 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/30 text-[10px] uppercase font-mono font-bold tracking-wider">
+                {sectionBgMeta.badge}
+              </span>
             </div>
-            
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:flex lg:flex-col gap-2.5 sm:gap-3">
+          </div>
+          
+          {actionError && (
+            <div className="flex items-start gap-2 p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs max-w-xl">
+              <ShieldAlert className="w-4 h-4 shrink-0 mt-0.5" />
+              <span>{actionError}</span>
+            </div>
+          )}
+
+          {/* Mobile Sticky Quick Navigation Bar (Visible only on mobile/tablet < lg) */}
+          <div className="lg:hidden sticky top-0 z-30 flex items-center gap-1.5 p-1.5 rounded-2xl bg-[#0a1122]/95 backdrop-blur-xl border border-cyan-500/30 shadow-lg">
+            {/* Drawer Menu Button */}
             <button
-              onClick={() => {
-                setActiveTab('dashboard');
-                setDashSubTab('overview');
-              }}
-              className={`flex items-center gap-3 px-4 py-3 sm:px-4.5 sm:py-3.5 rounded-2xl font-bold transition-all duration-300 cursor-pointer text-sm sm:text-base group ${
-                activeTab === 'dashboard' && (dashSubTab === 'overview' || dashSubTab === 'users')
-                  ? 'text-cyan-300 bg-gradient-to-r from-cyan-500/30 to-teal-500/30 border-2 border-cyan-400 shadow-[0_0_25px_rgba(34,211,238,0.35)] scale-[1.02]'
-                  : 'text-slate-200 hover:text-white hover:bg-gradient-to-r hover:from-cyan-500/15 hover:to-teal-500/15 border border-white/10 hover:border-cyan-400/60 hover:shadow-[0_0_15px_rgba(34,211,238,0.2)] hover:translate-x-1.5'
-              }`}
+              onClick={() => setMobileDrawerOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-cyan-500/15 text-cyan-300 border border-cyan-500/40 text-xs font-bold shrink-0 hover:bg-cyan-500/25 active:scale-95 transition-all cursor-pointer"
+              title="সকল অ্যাডমিন মেনু খুলুন"
             >
-              <Activity className="w-5 h-5 sm:w-5.5 sm:h-5.5 text-cyan-400 group-hover:scale-115 transition-transform duration-300 shrink-0" />
-              <span className="truncate">ড্যাশবোর্ড</span>
+              <Menu className="w-4 h-4 text-cyan-400" />
+              <span className="text-[11px]">মেনু</span>
             </button>
 
-            <button
-              onClick={() => {
-                setActiveTab('dashboard');
-                setDashSubTab('hero-banners');
-              }}
-              className={`flex items-center gap-3 px-4 py-3 sm:px-4.5 sm:py-3.5 rounded-2xl font-bold transition-all duration-300 cursor-pointer text-sm sm:text-base group ${
-                activeTab === 'dashboard' && dashSubTab === 'hero-banners'
-                  ? 'text-teal-300 bg-gradient-to-r from-teal-500/30 to-cyan-500/30 border-2 border-teal-400 shadow-[0_0_25px_rgba(20,184,166,0.35)] scale-[1.02]'
-                  : 'text-slate-200 hover:text-white hover:bg-gradient-to-r hover:from-teal-500/15 hover:to-cyan-500/15 border border-white/10 hover:border-teal-400/60 hover:shadow-[0_0_15px_rgba(20,184,166,0.2)] hover:translate-x-1.5'
-              }`}
-            >
-              <ImageIcon className="w-5 h-5 sm:w-5.5 sm:h-5.5 text-teal-400 group-hover:scale-115 transition-transform duration-300 shrink-0" />
-              <span className="truncate">হিরো সেকশন</span>
-            </button>
+            {/* Horizontal Scrollable Quick-Access Chips */}
+            <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5 flex-1">
+              <button
+                onClick={() => handleNavSelect('dashboard', 'overview')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap shrink-0 transition-all cursor-pointer ${
+                  activeTab === 'dashboard' && dashSubTab === 'overview'
+                    ? 'bg-cyan-500 text-slate-950 font-bold shadow-md shadow-cyan-500/30'
+                    : 'bg-white/5 text-slate-300 hover:text-white hover:bg-white/10 border border-white/10'
+                }`}
+              >
+                <Activity className="w-3.5 h-3.5" />
+                <span>ড্যাশবোর্ড</span>
+              </button>
 
-            <button
-              onClick={() => setActiveTab('upload')}
-              className={`flex items-center gap-3 px-4 py-3 sm:px-4.5 sm:py-3.5 rounded-2xl font-bold transition-all duration-300 cursor-pointer text-sm sm:text-base group ${
-                activeTab === 'upload'
-                  ? 'text-emerald-300 bg-gradient-to-r from-emerald-500/30 to-teal-500/30 border-2 border-emerald-400 shadow-[0_0_25px_rgba(16,185,129,0.35)] scale-[1.02]'
-                  : 'text-slate-200 hover:text-white hover:bg-gradient-to-r hover:from-emerald-500/15 hover:to-teal-500/15 border border-white/10 hover:border-emerald-400/60 hover:shadow-[0_0_15px_rgba(16,185,129,0.2)] hover:translate-x-1.5'
-              }`}
-            >
-              <Upload className="w-5 h-5 sm:w-5.5 sm:h-5.5 text-emerald-400 group-hover:scale-115 transition-transform duration-300 shrink-0" />
-              <span className="truncate">আপলোড</span>
-            </button>
+              <button
+                onClick={() => handleNavSelect('dashboard', 'users')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap shrink-0 transition-all cursor-pointer ${
+                  activeTab === 'dashboard' && dashSubTab === 'users'
+                    ? 'bg-emerald-500 text-slate-950 font-bold shadow-md shadow-emerald-500/30'
+                    : 'bg-white/5 text-slate-300 hover:text-white hover:bg-white/10 border border-white/10'
+                }`}
+              >
+                <Users className="w-3.5 h-3.5" />
+                <span>স্টুডেন্টস</span>
+                {userList.filter(u => !u.isApproved).length > 0 && (
+                  <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
+                )}
+              </button>
 
-            <button
-              onClick={() => {
-                setActiveTab('dashboard');
-                setDashSubTab('settings');
-              }}
-              className={`flex items-center gap-3 px-4 py-3 sm:px-4.5 sm:py-3.5 rounded-2xl font-bold transition-all duration-300 cursor-pointer text-sm sm:text-base group ${
-                activeTab === 'dashboard' && dashSubTab === 'settings'
-                  ? 'text-amber-300 bg-gradient-to-r from-amber-500/30 to-orange-500/30 border-2 border-amber-400 shadow-[0_0_25px_rgba(245,158,11,0.35)] scale-[1.02]'
-                  : 'text-slate-200 hover:text-white hover:bg-gradient-to-r hover:from-amber-500/15 hover:to-orange-500/15 border border-white/10 hover:border-amber-400/60 hover:shadow-[0_0_15px_rgba(245,158,11,0.2)] hover:translate-x-1.5'
-              }`}
-            >
-              <SettingsIcon className="w-5 h-5 sm:w-5.5 sm:h-5.5 text-amber-400 group-hover:scale-110 transition-transform duration-300 shrink-0" />
-              <span className="truncate">সেটিংস</span>
-            </button>
+              <button
+                onClick={() => handleNavSelect('upload')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap shrink-0 transition-all cursor-pointer ${
+                  activeTab === 'upload'
+                    ? 'bg-emerald-500 text-slate-950 font-bold shadow-md shadow-emerald-500/30'
+                    : 'bg-white/5 text-slate-300 hover:text-white hover:bg-white/10 border border-white/10'
+                }`}
+              >
+                <Upload className="w-3.5 h-3.5" />
+                <span>আপলোড</span>
+              </button>
 
-            <button
-              onClick={() => {
-                setActiveTab('dashboard');
-                setDashSubTab('routine');
-              }}
-              className={`flex items-center gap-3 px-4 py-3 sm:px-4.5 sm:py-3.5 rounded-2xl font-bold transition-all duration-300 cursor-pointer text-sm sm:text-base group ${
-                activeTab === 'dashboard' && dashSubTab === 'routine'
-                  ? 'text-rose-300 bg-gradient-to-r from-rose-500/30 to-pink-500/30 border-2 border-rose-400 shadow-[0_0_25px_rgba(244,63,94,0.35)] scale-[1.02]'
-                  : 'text-slate-200 hover:text-white hover:bg-gradient-to-r hover:from-rose-500/15 hover:to-pink-500/15 border border-white/10 hover:border-rose-400/60 hover:shadow-[0_0_15px_rgba(244,63,94,0.2)] hover:translate-x-1.5'
-              }`}
-            >
-              <Calendar className="w-5 h-5 sm:w-5.5 sm:h-5.5 text-rose-400 group-hover:scale-115 transition-transform duration-300 shrink-0" />
-              <span className="truncate">ক্লাস রুটিন</span>
-            </button>
+              <button
+                onClick={() => handleNavSelect('dashboard', 'courses')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap shrink-0 transition-all cursor-pointer ${
+                  activeTab === 'dashboard' && dashSubTab === 'courses'
+                    ? 'bg-violet-500 text-slate-950 font-bold shadow-md shadow-violet-500/30'
+                    : 'bg-white/5 text-slate-300 hover:text-white hover:bg-white/10 border border-white/10'
+                }`}
+              >
+                <BookOpen className="w-3.5 h-3.5" />
+                <span>কোর্স পাবলিশ</span>
+              </button>
 
-            <button
-              onClick={() => {
-                setActiveTab('dashboard');
-                setDashSubTab('courses');
-              }}
-              className={`flex items-center gap-3 px-4 py-3 sm:px-4.5 sm:py-3.5 rounded-2xl font-bold transition-all duration-300 cursor-pointer text-sm sm:text-base group ${
-                activeTab === 'dashboard' && dashSubTab === 'courses'
-                  ? 'text-violet-300 bg-gradient-to-r from-violet-500/30 to-purple-500/30 border-2 border-violet-400 shadow-[0_0_25px_rgba(139,92,246,0.35)] scale-[1.02]'
-                  : 'text-slate-200 hover:text-white hover:bg-gradient-to-r hover:from-violet-500/15 hover:to-purple-500/15 border border-white/10 hover:border-violet-400/60 hover:shadow-[0_0_15px_rgba(139,92,246,0.2)] hover:translate-x-1.5'
-              }`}
-            >
-              <BookOpen className="w-5 h-5 sm:w-5.5 sm:h-5.5 text-violet-400 group-hover:scale-115 transition-transform duration-300 shrink-0" />
-              <span className="truncate">কোর্স পাবলিশ</span>
-            </button>
+              <button
+                onClick={() => handleNavSelect('course-overview')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap shrink-0 transition-all cursor-pointer ${
+                  activeTab === 'course-overview'
+                    ? 'bg-cyan-500 text-slate-950 font-bold shadow-md shadow-cyan-500/30'
+                    : 'bg-white/5 text-slate-300 hover:text-white hover:bg-white/10 border border-white/10'
+                }`}
+              >
+                <Layers className="w-3.5 h-3.5" />
+                <span>কোর্স ওভারভিউ</span>
+              </button>
 
-            <button
-              onClick={() => setActiveTab('course-overview')}
-              className={`flex items-center gap-3 px-4 py-3 sm:px-4.5 sm:py-3.5 rounded-2xl font-bold transition-all duration-300 cursor-pointer text-sm sm:text-base group ${
-                activeTab === 'course-overview'
-                  ? 'text-cyan-300 bg-gradient-to-r from-cyan-500/30 to-blue-500/30 border-2 border-cyan-400 shadow-[0_0_25px_rgba(34,211,238,0.35)] scale-[1.02]'
-                  : 'text-slate-200 hover:text-white hover:bg-gradient-to-r hover:from-cyan-500/15 hover:to-blue-500/15 border border-white/10 hover:border-cyan-400/60 hover:shadow-[0_0_15px_rgba(34,211,238,0.2)] hover:translate-x-1.5'
-              }`}
-            >
-              <Layers className="w-5 h-5 sm:w-5.5 sm:h-5.5 text-cyan-400 group-hover:scale-115 transition-transform duration-300 shrink-0" />
-              <span className="truncate">কোর্স ওভারভিউ</span>
-            </button>
+              <button
+                onClick={() => handleNavSelect('dashboard', 'routine')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap shrink-0 transition-all cursor-pointer ${
+                  activeTab === 'dashboard' && dashSubTab === 'routine'
+                    ? 'bg-rose-500 text-white font-bold shadow-md shadow-rose-500/30'
+                    : 'bg-white/5 text-slate-300 hover:text-white hover:bg-white/10 border border-white/10'
+                }`}
+              >
+                <Calendar className="w-3.5 h-3.5" />
+                <span>রুটিন</span>
+              </button>
+
+              <button
+                onClick={() => handleNavSelect('dashboard', 'settings')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap shrink-0 transition-all cursor-pointer ${
+                  activeTab === 'dashboard' && dashSubTab === 'settings'
+                    ? 'bg-amber-500 text-slate-950 font-bold shadow-md shadow-amber-500/30'
+                    : 'bg-white/5 text-slate-300 hover:text-white hover:bg-white/10 border border-white/10'
+                }`}
+              >
+                <SettingsIcon className="w-3.5 h-3.5" />
+                <span>সেটিংস</span>
+              </button>
+
+              <button
+                onClick={() => handleNavSelect('dashboard', 'hero-banners')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap shrink-0 transition-all cursor-pointer ${
+                  activeTab === 'dashboard' && dashSubTab === 'hero-banners'
+                    ? 'bg-teal-500 text-slate-950 font-bold shadow-md shadow-teal-500/30'
+                    : 'bg-white/5 text-slate-300 hover:text-white hover:bg-white/10 border border-white/10'
+                }`}
+              >
+                <ImageIcon className="w-3.5 h-3.5" />
+                <span>ব্যানার</span>
+              </button>
             </div>
           </div>
         </div>
 
-        {/* Content Panel Area */}
-        <div className="col-span-1 lg:col-span-9 xl:col-span-9 space-y-6">
+        {/* Two-Column Workspace: Left Fixed Stationary Sidebar, Right Independently Scrollable Workspace */}
+        <div className="flex-1 flex flex-col lg:flex-row gap-4 lg:gap-6 min-h-0 h-full overflow-hidden">
+          
+          {/* Left Desktop Sidebar: Fixed, Stationary, Never Pushed Up By Content */}
+          <aside className="hidden lg:flex w-72 xl:w-80 shrink-0 h-full flex-col">
+            <div className="h-full p-4 xl:p-5 rounded-3xl bg-[#0a1122]/95 backdrop-blur-2xl border-2 border-cyan-500/40 shadow-[0_0_30px_rgba(34,211,238,0.2)] flex flex-col overflow-hidden">
+              
+              {/* Sidebar Header: Logo & Title (Fixed at top of sidebar) */}
+              <div className="flex flex-col items-center justify-center gap-2.5 border-b border-cyan-500/20 pb-4 select-none shrink-0">
+                <div className="relative w-14 h-14 rounded-full overflow-hidden border-2 border-cyan-400 shadow-[0_0_20px_rgba(34,211,238,0.4)] bg-slate-900 shrink-0">
+                  <img 
+                    src={LogoImage} 
+                    alt="Science Studio Logo" 
+                    className="w-full h-full object-cover pointer-events-none"
+                    draggable={false}
+                  />
+                </div>
+                <div className="text-center">
+                  <h4 className="text-sm font-display font-bold text-white tracking-wide">SCIENCE STUDIO</h4>
+                  <p className="text-[11px] font-mono text-cyan-400 font-semibold">এডমিন কন্ট্রোল প্যানেল</p>
+                </div>
+              </div>
+
+              {/* Sidebar Section Title */}
+              <div className="px-2 py-2 text-xs font-mono uppercase tracking-widest text-cyan-400 font-black flex items-center justify-between shrink-0">
+                <span>মেনু ও ন্যাভিগেশন</span>
+                <span className="text-[10px] text-emerald-400 font-sans font-bold flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                  অনলাইন
+                </span>
+              </div>
+              
+              {/* Sidebar Navigation Items: Scrollable inside sidebar if needed, independent of content */}
+              <nav className="flex-1 overflow-y-auto custom-scrollbar flex flex-col gap-2 py-1 pr-1">
+                <button
+                  onClick={() => handleNavSelect('dashboard', 'overview')}
+                  className={`flex items-center gap-3 px-3.5 py-3 rounded-2xl font-bold transition-all duration-300 cursor-pointer text-sm group ${
+                    activeTab === 'dashboard' && (dashSubTab === 'overview' || dashSubTab === 'users')
+                      ? 'text-cyan-300 bg-gradient-to-r from-cyan-500/30 to-teal-500/30 border-2 border-cyan-400 shadow-[0_0_25px_rgba(34,211,238,0.35)] translate-x-1'
+                      : 'text-slate-200 hover:text-white hover:bg-gradient-to-r hover:from-cyan-500/15 hover:to-teal-500/15 border border-white/10 hover:border-cyan-400/60 hover:shadow-[0_0_15px_rgba(34,211,238,0.2)] hover:translate-x-1'
+                  }`}
+                >
+                  <Activity className="w-5 h-5 text-cyan-400 group-hover:scale-110 transition-transform duration-300 shrink-0" />
+                  <span className="truncate">ড্যাশবোর্ড</span>
+                </button>
+
+                <button
+                  onClick={() => handleNavSelect('dashboard', 'hero-banners')}
+                  className={`flex items-center gap-3 px-3.5 py-3 rounded-2xl font-bold transition-all duration-300 cursor-pointer text-sm group ${
+                    activeTab === 'dashboard' && dashSubTab === 'hero-banners'
+                      ? 'text-teal-300 bg-gradient-to-r from-teal-500/30 to-cyan-500/30 border-2 border-teal-400 shadow-[0_0_25px_rgba(20,184,166,0.35)] translate-x-1'
+                      : 'text-slate-200 hover:text-white hover:bg-gradient-to-r hover:from-teal-500/15 hover:to-cyan-500/15 border border-white/10 hover:border-teal-400/60 hover:shadow-[0_0_15px_rgba(20,184,166,0.2)] hover:translate-x-1'
+                  }`}
+                >
+                  <ImageIcon className="w-5 h-5 text-teal-400 group-hover:scale-110 transition-transform duration-300 shrink-0" />
+                  <span className="truncate">হিরো সেকশন</span>
+                </button>
+
+                <button
+                  onClick={() => handleNavSelect('upload')}
+                  className={`flex items-center gap-3 px-3.5 py-3 rounded-2xl font-bold transition-all duration-300 cursor-pointer text-sm group ${
+                    activeTab === 'upload'
+                      ? 'text-emerald-300 bg-gradient-to-r from-emerald-500/30 to-teal-500/30 border-2 border-emerald-400 shadow-[0_0_25px_rgba(16,185,129,0.35)] translate-x-1'
+                      : 'text-slate-200 hover:text-white hover:bg-gradient-to-r hover:from-emerald-500/15 hover:to-teal-500/15 border border-white/10 hover:border-emerald-400/60 hover:shadow-[0_0_15px_rgba(16,185,129,0.2)] hover:translate-x-1'
+                  }`}
+                >
+                  <Upload className="w-5 h-5 text-emerald-400 group-hover:scale-110 transition-transform duration-300 shrink-0" />
+                  <span className="truncate">আপলোড</span>
+                </button>
+
+                <button
+                  onClick={() => handleNavSelect('dashboard', 'settings')}
+                  className={`flex items-center gap-3 px-3.5 py-3 rounded-2xl font-bold transition-all duration-300 cursor-pointer text-sm group ${
+                    activeTab === 'dashboard' && dashSubTab === 'settings'
+                      ? 'text-amber-300 bg-gradient-to-r from-amber-500/30 to-orange-500/30 border-2 border-amber-400 shadow-[0_0_25px_rgba(245,158,11,0.35)] translate-x-1'
+                      : 'text-slate-200 hover:text-white hover:bg-gradient-to-r hover:from-amber-500/15 hover:to-orange-500/15 border border-white/10 hover:border-amber-400/60 hover:shadow-[0_0_15px_rgba(245,158,11,0.2)] hover:translate-x-1'
+                  }`}
+                >
+                  <SettingsIcon className="w-5 h-5 text-amber-400 group-hover:scale-110 transition-transform duration-300 shrink-0" />
+                  <span className="truncate">সেটিংস</span>
+                </button>
+
+                <button
+                  onClick={() => handleNavSelect('dashboard', 'routine')}
+                  className={`flex items-center gap-3 px-3.5 py-3 rounded-2xl font-bold transition-all duration-300 cursor-pointer text-sm group ${
+                    activeTab === 'dashboard' && dashSubTab === 'routine'
+                      ? 'text-rose-300 bg-gradient-to-r from-rose-500/30 to-pink-500/30 border-2 border-rose-400 shadow-[0_0_25px_rgba(244,63,94,0.35)] translate-x-1'
+                      : 'text-slate-200 hover:text-white hover:bg-gradient-to-r hover:from-rose-500/15 hover:to-pink-500/15 border border-white/10 hover:border-rose-400/60 hover:shadow-[0_0_15px_rgba(244,63,94,0.2)] hover:translate-x-1'
+                  }`}
+                >
+                  <Calendar className="w-5 h-5 text-rose-400 group-hover:scale-110 transition-transform duration-300 shrink-0" />
+                  <span className="truncate">ক্লাস রুটিন</span>
+                </button>
+
+                <button
+                  onClick={() => handleNavSelect('dashboard', 'courses')}
+                  className={`flex items-center gap-3 px-3.5 py-3 rounded-2xl font-bold transition-all duration-300 cursor-pointer text-sm group ${
+                    activeTab === 'dashboard' && dashSubTab === 'courses'
+                      ? 'text-violet-300 bg-gradient-to-r from-violet-500/30 to-purple-500/30 border-2 border-violet-400 shadow-[0_0_25px_rgba(139,92,246,0.35)] translate-x-1'
+                      : 'text-slate-200 hover:text-white hover:bg-gradient-to-r hover:from-violet-500/15 hover:to-purple-500/15 border border-white/10 hover:border-violet-400/60 hover:shadow-[0_0_15px_rgba(139,92,246,0.2)] hover:translate-x-1'
+                  }`}
+                >
+                  <BookOpen className="w-5 h-5 text-violet-400 group-hover:scale-110 transition-transform duration-300 shrink-0" />
+                  <span className="truncate">কোর্স পাবলিশ</span>
+                </button>
+
+                <button
+                  onClick={() => handleNavSelect('course-overview')}
+                  className={`flex items-center gap-3 px-3.5 py-3 rounded-2xl font-bold transition-all duration-300 cursor-pointer text-sm group ${
+                    activeTab === 'course-overview'
+                      ? 'text-cyan-300 bg-gradient-to-r from-cyan-500/30 to-blue-500/30 border-2 border-cyan-400 shadow-[0_0_25px_rgba(34,211,238,0.35)] translate-x-1'
+                      : 'text-slate-200 hover:text-white hover:bg-gradient-to-r hover:from-cyan-500/15 hover:to-blue-500/15 border border-white/10 hover:border-cyan-400/60 hover:shadow-[0_0_15px_rgba(34,211,238,0.2)] hover:translate-x-1'
+                  }`}
+                >
+                  <Layers className="w-5 h-5 text-cyan-400 group-hover:scale-110 transition-transform duration-300 shrink-0" />
+                  <span className="truncate">কোর্স ওভারভিউ</span>
+                </button>
+              </nav>
+
+              {/* Sidebar Bottom Profile Card */}
+              <div className="pt-3 mt-auto border-t border-cyan-500/20 shrink-0 flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-cyan-500/20 border border-cyan-400/40 flex items-center justify-center text-cyan-300 text-xs font-bold font-mono shrink-0">
+                  AD
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-bold text-white truncate">{user.name || 'অ্যাডমিনিস্ট্রেটর'}</p>
+                  <p className="text-[10px] text-cyan-400/80 font-mono truncate">{user.email}</p>
+                </div>
+              </div>
+
+            </div>
+          </aside>
+
+          {/* Right Main Content Area: Independently Scrollable */}
+          <main 
+            ref={mainContentRef} 
+            className="flex-1 min-w-0 h-full overflow-y-auto custom-scrollbar space-y-6 pr-0 lg:pr-2"
+          >
 
           {activeTab === 'dashboard' && (
             <>
@@ -2902,8 +3049,11 @@ export default function AdminDashboard({
           </div>
         ) : (
           <>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse text-xs">
+            <div className="sm:hidden px-3 py-1.5 mb-2 rounded-lg bg-cyan-500/10 border border-cyan-500/20 text-[11px] text-cyan-300 font-mono text-center flex items-center justify-center gap-1.5">
+              <span>↔ সম্পূর্ণ টেবিল দেখতে আঙুল দিয়ে ডানে-বামে সোয়াইপ করুন</span>
+            </div>
+            <div className="overflow-x-auto custom-scrollbar -mx-3 sm:mx-0 rounded-xl border border-white/5 sm:border-0">
+              <table className="min-w-[860px] w-full text-left border-collapse text-xs">
                 <thead>
                   <tr className="border-b border-white/10 font-mono text-slate-400 uppercase tracking-wider">
                     <th className="py-3 px-4">নাম (Name)</th>
@@ -2994,7 +3144,7 @@ export default function AdminDashboard({
                       <td className="py-3.5 px-4">
                         <button
                           onClick={() => handleToggleRole(item)}
-                          title="রোল পরিবর্তন করতে ক্লিক করুন (Admin <-> Student)"
+                          title="রোল পরিবর্তন করতে ক্লিক করুন (Admin ↔ Student)"
                           className="cursor-pointer transition-transform hover:scale-105"
                         >
                           {item.role === 'admin' ? (
@@ -5444,10 +5594,10 @@ export default function AdminDashboard({
               <div className="space-y-2 mb-4 max-h-60 overflow-y-auto pr-1">
                 {routine.map((item) => (
                   <div key={item.id} className="flex items-center justify-between p-2.5 bg-slate-900/60 rounded-lg border border-white/5 hover:border-emerald-500/20 transition-all text-[11px]">
-                    <div className="grid grid-cols-12 gap-2 flex-1">
-                      <div className="col-span-3 font-bold text-emerald-400">{item.day}</div>
-                      <div className="col-span-5 text-slate-200 font-semibold">{item.subject}</div>
-                      <div className="col-span-4 text-slate-400 font-mono">{item.time}</div>
+                    <div className="flex flex-col sm:grid sm:grid-cols-12 gap-1 sm:gap-2 flex-1">
+                      <div className="sm:col-span-3 font-bold text-emerald-400">{item.day}</div>
+                      <div className="sm:col-span-5 text-slate-200 font-semibold">{item.subject}</div>
+                      <div className="sm:col-span-4 text-slate-400 font-mono text-[10px] sm:text-[11px]">{item.time}</div>
                     </div>
                     <button
                       type="button"
@@ -5750,8 +5900,175 @@ export default function AdminDashboard({
         </div>
       )}
 
-        </div> {/* End col-span-10 */}
-      </div> {/* End grid-cols-12 */}
+            {/* Sleek Admin Bottom Bar & Status inside scrollable content */}
+            <div className="pt-8 pb-6 mt-8 border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-3 text-[11px] font-mono text-slate-400">
+              <div className="flex items-center gap-2">
+                <Zap className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
+                <span>© {new Date().getFullYear()} {(settings.academyName || "SCIENCE STUDIO").toUpperCase()} ADMIN CONSOLE</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="flex items-center gap-1.5 text-emerald-400">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                  সিস্টেম অনলাইন ও সুরক্ষিত
+                </span>
+                <span>•</span>
+                <span className="text-slate-400 font-sans">সংস্করণ v2.5.0 Pro</span>
+              </div>
+            </div>
+
+          </main> {/* End Main Content Area */}
+        </div> {/* End Two-Column Workspace */}
+      </div> {/* End max-w-[1920px] */}
+
+      {/* Mobile Slide-over Drawer for All Navigation Options */}
+      {mobileDrawerOpen && (
+        <div className="fixed inset-0 z-50 lg:hidden animate-fade-in flex">
+          <div 
+            className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm"
+            onClick={() => setMobileDrawerOpen(false)} 
+          />
+          <div className="relative w-[85vw] max-w-xs h-full bg-[#0a1122]/98 border-r-2 border-cyan-500/40 p-5 shadow-2xl flex flex-col z-10 animate-slide-in">
+            {/* Drawer Header */}
+            <div className="flex items-center justify-between pb-4 border-b border-cyan-500/20">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-full overflow-hidden border border-cyan-400 bg-slate-900 shrink-0">
+                  <img src={LogoImage} alt="Logo" className="w-full h-full object-cover" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-display font-bold text-white">SCIENCE STUDIO</h4>
+                  <p className="text-[10px] font-mono text-cyan-400">এডমিন কন্ট্রোল প্যানেল</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setMobileDrawerOpen(false)}
+                className="p-2 rounded-xl bg-white/5 border border-white/10 text-slate-400 hover:text-white cursor-pointer"
+                title="মেনু বন্ধ করুন"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Drawer Navigation List */}
+            <div className="flex-1 overflow-y-auto custom-scrollbar py-4 space-y-2">
+              <button
+                type="button"
+                onClick={() => handleNavSelect('dashboard', 'overview')}
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl font-bold text-sm transition-all cursor-pointer ${
+                  activeTab === 'dashboard' && dashSubTab === 'overview'
+                    ? 'text-cyan-300 bg-cyan-500/20 border-2 border-cyan-400 shadow-lg shadow-cyan-500/20'
+                    : 'text-slate-300 bg-white/5 border border-white/10 hover:bg-white/10'
+                }`}
+              >
+                <Activity className="w-5 h-5 text-cyan-400 shrink-0" />
+                <span>ড্যাশবোর্ড ও ওভারভিউ</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleNavSelect('dashboard', 'users')}
+                className={`w-full flex items-center justify-between px-4 py-3 rounded-2xl font-bold text-sm transition-all cursor-pointer ${
+                  activeTab === 'dashboard' && dashSubTab === 'users'
+                    ? 'text-emerald-300 bg-emerald-500/20 border-2 border-emerald-400 shadow-lg shadow-emerald-500/20'
+                    : 'text-slate-300 bg-white/5 border border-white/10 hover:bg-white/10'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <Users className="w-5 h-5 text-emerald-400 shrink-0" />
+                  <span>স্টুডেন্টস ডাটাবেস</span>
+                </div>
+                <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-mono">
+                  {userList.length}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleNavSelect('upload')}
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl font-bold text-sm transition-all cursor-pointer ${
+                  activeTab === 'upload'
+                    ? 'text-emerald-300 bg-emerald-500/20 border-2 border-emerald-400 shadow-lg shadow-emerald-500/20'
+                    : 'text-slate-300 bg-white/5 border border-white/10 hover:bg-white/10'
+                }`}
+              >
+                <Upload className="w-5 h-5 text-emerald-400 shrink-0" />
+                <span>ক্লাস ও শিট আপলোড</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleNavSelect('dashboard', 'courses')}
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl font-bold text-sm transition-all cursor-pointer ${
+                  activeTab === 'dashboard' && dashSubTab === 'courses'
+                    ? 'text-violet-300 bg-violet-500/20 border-2 border-violet-400 shadow-lg shadow-violet-500/20'
+                    : 'text-slate-300 bg-white/5 border border-white/10 hover:bg-white/10'
+                }`}
+              >
+                <BookOpen className="w-5 h-5 text-violet-400 shrink-0" />
+                <span>কোর্স পাবলিশ করুন</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleNavSelect('course-overview')}
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl font-bold text-sm transition-all cursor-pointer ${
+                  activeTab === 'course-overview'
+                    ? 'text-cyan-300 bg-cyan-500/20 border-2 border-cyan-400 shadow-lg shadow-cyan-500/20'
+                    : 'text-slate-300 bg-white/5 border border-white/10 hover:bg-white/10'
+                }`}
+              >
+                <Layers className="w-5 h-5 text-cyan-400 shrink-0" />
+                <span>কোর্স ওভারভিউ</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleNavSelect('dashboard', 'routine')}
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl font-bold text-sm transition-all cursor-pointer ${
+                  activeTab === 'dashboard' && dashSubTab === 'routine'
+                    ? 'text-rose-300 bg-rose-500/20 border-2 border-rose-400 shadow-lg shadow-rose-500/20'
+                    : 'text-slate-300 bg-white/5 border border-white/10 hover:bg-white/10'
+                }`}
+              >
+                <Calendar className="w-5 h-5 text-rose-400 shrink-0" />
+                <span>ক্লাস রুটিন এডিটর</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleNavSelect('dashboard', 'settings')}
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl font-bold text-sm transition-all cursor-pointer ${
+                  activeTab === 'dashboard' && dashSubTab === 'settings'
+                    ? 'text-amber-300 bg-amber-500/20 border-2 border-amber-400 shadow-lg shadow-amber-500/20'
+                    : 'text-slate-300 bg-white/5 border border-white/10 hover:bg-white/10'
+                }`}
+              >
+                <SettingsIcon className="w-5 h-5 text-amber-400 shrink-0" />
+                <span>ওয়েবসাইট সেটিংস</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleNavSelect('dashboard', 'hero-banners')}
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl font-bold text-sm transition-all cursor-pointer ${
+                  activeTab === 'dashboard' && dashSubTab === 'hero-banners'
+                    ? 'text-teal-300 bg-teal-500/20 border-2 border-teal-400 shadow-lg shadow-teal-500/20'
+                    : 'text-slate-300 bg-white/5 border border-white/10 hover:bg-white/10'
+                }`}
+              >
+                <ImageIcon className="w-5 h-5 text-teal-400 shrink-0" />
+                <span>হিরো ব্যানার ম্যানেজার</span>
+              </button>
+            </div>
+
+            {/* Drawer Footer */}
+            <div className="pt-4 border-t border-white/10 text-xs text-slate-400">
+              <p className="font-semibold text-white truncate">{user.name}</p>
+              <p className="text-[10px] font-mono text-cyan-400 truncate">{user.email}</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Hero Banner Add / Edit Modal */}
       {bannerModalOpen && (
@@ -6451,6 +6768,5 @@ export default function AdminDashboard({
       )}
 
       </div>
-    </div>
-  );
-}
+    );
+  }

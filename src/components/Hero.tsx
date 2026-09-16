@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   FileText, Video, Users, Sparkles, ChevronRight, ChevronLeft, ShieldCheck, CheckCircle2, Star, Zap, FlaskConical, Award,
   GraduationCap, BookOpen, MonitorPlay, MessageSquare, CheckCircle, ArrowRight, Atom, Dna, Compass, Activity, Play, Pause,
-  Clock, Tag, Layers, Stethoscope, Eye, RefreshCw, Cpu, Orbit, Globe2, Telescope, Lightbulb
+  Clock, Tag, Layers, Stethoscope, Eye, RefreshCw, Cpu, Orbit, Globe2, Telescope, Lightbulb, Calendar, Phone
 } from 'lucide-react';
 import CourseOrbitSection from './CourseOrbitSection';
 import AnnouncementBanner from './AnnouncementBanner';
@@ -516,6 +516,76 @@ export default function Hero({
   return (
     <div className="relative min-h-[calc(100vh-73px)] flex flex-col items-center justify-start px-3 sm:px-6 lg:px-8 xl:px-12 overflow-hidden py-4 sm:py-8">
       
+      {/* ==================== 0. MOBILE-ONLY DEDICATED ACADEMY BRANDING & LOGO HEADER ==================== */}
+      {/* Visible only on Mobile (lg:hidden), hidden on Computer/Desktop */}
+      <div className="w-full max-w-[1700px] mx-auto z-10 lg:hidden flex flex-col items-center justify-center text-center pt-1 pb-5 px-2 animate-fade-in">
+        
+        {/* Large Centered Circular Logo with Glowing Pulsing Neon Border */}
+        <div className="relative mx-auto flex items-center justify-center">
+          <div className="absolute -inset-2.5 rounded-full bg-gradient-to-tr from-cyan-500 via-teal-400 to-blue-600 opacity-60 blur-xl animate-pulse" />
+          
+          <div className="relative w-24 h-24 xs:w-28 xs:h-28 rounded-full p-1 bg-gradient-to-tr from-cyan-400 via-teal-300 to-blue-500 shadow-[0_0_35px_rgba(34,211,238,0.5)] border-2 border-white/30">
+            <div className="w-full h-full rounded-full overflow-hidden bg-slate-950 border border-cyan-400/60 shadow-inner flex items-center justify-center">
+              <img 
+                src={settings?.academyLogoUrl || scienceStudioLogo} 
+                alt="Science Studio Logo" 
+                className="w-full h-full object-cover"
+                referrerPolicy="no-referrer"
+                onError={(e) => {
+                  e.currentTarget.src = banner3DScienceStudio;
+                }}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Eye-catching English Display Typography across the mobile screen */}
+        <h1 className="mt-4 text-2xl xs:text-3xl sm:text-4xl font-display font-black tracking-wider uppercase text-transparent bg-clip-text bg-gradient-to-r from-white via-cyan-200 to-emerald-300 drop-shadow-[0_2px_20px_rgba(34,211,238,0.5)] leading-tight text-center w-full px-2">
+          {settings?.academyName || "SCIENCE STUDIO BY SAKIB"}
+        </h1>
+
+        {/* Elegant Futuristic Subtitle & Badges */}
+        <div className="mt-1.5 flex items-center justify-center gap-2 text-[11px] xs:text-xs font-mono tracking-widest text-emerald-400 font-extrabold uppercase">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping inline-block shrink-0" />
+          <span>Virtual Science Lab & Portal</span>
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping inline-block shrink-0" />
+        </div>
+
+        <p className="mt-1.5 text-xs sm:text-sm text-slate-300 font-sans max-w-md mx-auto text-center px-4 leading-relaxed">
+          HSC • SSC • Admission Science Care & 3D Interactive Lab
+        </p>
+
+        {/* Mobile Quick Action Navigation Options */}
+        <div className="flex items-center justify-center gap-2 mt-3.5 flex-wrap px-1">
+          <button
+            type="button"
+            onClick={onExploreLab}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-400/40 text-cyan-300 text-xs font-sans font-bold shadow-sm active:scale-95 transition-all cursor-pointer"
+          >
+            <Atom className="w-3.5 h-3.5 text-cyan-400 animate-spin-slow" />
+            <span>ভার্চুয়াল ল্যাব</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={onOpenRoutine}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-400/40 text-emerald-300 text-xs font-sans font-bold shadow-sm active:scale-95 transition-all cursor-pointer"
+          >
+            <Calendar className="w-3.5 h-3.5 text-emerald-400" />
+            <span>ক্লাস রুটিন</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={onOpenContact}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-400/40 text-amber-300 text-xs font-sans font-bold shadow-sm active:scale-95 transition-all cursor-pointer"
+          >
+            <Phone className="w-3.5 h-3.5 text-amber-400" />
+            <span>হেল্পলাইন</span>
+          </button>
+        </div>
+      </div>
+
       {/* ==================== 1. MAIN 3D ANIMATED HERO SHOWCASE WITH ROTATING SPACE & PHYSICS BANNERS ==================== */}
       <div 
         className="w-full max-w-[1700px] mx-auto z-10"

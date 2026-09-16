@@ -37,19 +37,21 @@ export default function AnnouncementBanner({
       >
         <div className="relative z-10 flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-2.5 sm:gap-4">
           
-          {/* Left: Megaphone Badge & Continuous Infinite Marquee Ticker */}
-          <div className="flex items-center gap-2 sm:gap-4 flex-1 min-w-0 w-full overflow-hidden">
+          {/* Megaphone Badge & Continuous Infinite Marquee Ticker */}
+          {/* Mobile: Stacked vertically with centered badge on top and full-width marquee below */}
+          {/* Desktop (sm+): Horizontal row with badge on the left and marquee on the right */}
+          <div className="flex flex-col sm:flex-row items-center gap-2 sm:gap-4 flex-1 min-w-0 w-full overflow-hidden">
             
-            {/* Animated Megaphone Badge */}
-            <div className="shrink-0 flex items-center gap-1.5 sm:gap-2.5 px-3 sm:px-5 py-1.5 sm:py-2.5 rounded-xl sm:rounded-2xl bg-amber-500/20 border border-amber-400/50 sm:border-2 text-amber-300 shadow-[0_0_15px_rgba(245,158,11,0.25)]">
+            {/* Animated Megaphone Badge - Centered in middle of screen on mobile */}
+            <div className="shrink-0 flex items-center justify-center gap-1.5 sm:gap-2.5 px-3.5 sm:px-5 py-1.5 sm:py-2.5 rounded-xl sm:rounded-2xl bg-amber-500/20 border border-amber-400/50 sm:border-2 text-amber-300 shadow-[0_0_15px_rgba(245,158,11,0.25)] mx-auto sm:mx-0">
               <Megaphone className="w-4 h-4 sm:w-6 sm:h-6 text-amber-400 animate-pulse shrink-0" />
-              <span className="text-xs sm:text-base md:text-lg font-mono font-black uppercase tracking-wide text-amber-300 whitespace-nowrap">
+              <span className="text-xs sm:text-base md:text-lg font-mono font-black uppercase tracking-wide text-amber-300 whitespace-nowrap text-center">
                 {settings?.announcementBadge || 'নির্দেশনা ও নোটিশ'}
               </span>
             </div>
 
-            {/* Seamless Infinite Marquee Ticker Wrapper */}
-            <div className="flex-1 overflow-hidden relative cursor-default mask-marquee py-1 min-w-0">
+            {/* Seamless Infinite Marquee Ticker Wrapper - Full Width across mobile screen */}
+            <div className="w-full sm:flex-1 overflow-hidden relative cursor-default mask-marquee py-1 min-w-0">
               <div className="animate-marquee-infinite flex items-center gap-8 sm:gap-14">
                 {/* First Set of Items */}
                 {marqueeItems.map((item, idx) => (
@@ -73,7 +75,7 @@ export default function AnnouncementBanner({
           </div>
 
           {/* Right: Interactive Quick Action Buttons */}
-          <div className="flex items-center justify-end gap-2 sm:gap-3 shrink-0 w-full lg:w-auto pt-1.5 lg:pt-0 border-t lg:border-t-0 border-white/10">
+          <div className="flex items-center justify-center sm:justify-end gap-2 sm:gap-3 shrink-0 w-full lg:w-auto pt-2 lg:pt-0 border-t lg:border-t-0 border-white/10">
             {onOpenContact && (
               <button
                 type="button"

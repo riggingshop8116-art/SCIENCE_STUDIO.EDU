@@ -91,6 +91,12 @@ export default function Hero3DCanvas({ className = '' }: Hero3DCanvasProps) {
     let globalRotation = 0;
 
     const render = () => {
+      // Pause 3D canvas rendering while modal is open or tab is hidden to give 100% CPU/GPU to input typing
+      if (document.hidden || document.body.classList.contains('auth-modal-open')) {
+        animationFrameId = requestAnimationFrame(render);
+        return;
+      }
+
       ctx.clearRect(0, 0, width, height);
 
       // Smooth mouse parallax

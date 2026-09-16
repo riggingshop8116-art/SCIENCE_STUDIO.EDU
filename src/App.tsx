@@ -239,7 +239,7 @@ export default function App() {
       />
 
       {/* Main Dynamic Workspace Section */}
-      <main className="flex-1 pb-28 lg:pb-0 w-full">
+      <main className={`flex-1 w-full ${currentTab === 'admin' || currentTab === 'admin-settings' ? 'pb-0' : 'pb-28 lg:pb-0'}`}>
         {currentTab === 'home' && (
           <Hero
             onJoinClick={() => {
@@ -290,25 +290,27 @@ export default function App() {
         )}
       </main>
 
-      {/* High-Fidelity Futuristic Footer */}
-      <Footer
-        settings={settings}
-        user={user}
-        currentTab={currentTab}
-        setCurrentTab={setCurrentTab}
-        onOpenAuth={() => {
-          setAuthModalIsAdmin(false);
-          setAuthModalInitialMode('login');
-          setAuthModalOpen(true);
-        }}
-        onOpenAdminAuth={() => {
-          setAuthModalIsAdmin(true);
-          setAuthModalInitialMode('login');
-          setAuthModalOpen(true);
-        }}
-        onOpenRoutine={() => setRoutineModalOpen(true)}
-        onOpenContact={() => setContactModalOpen(true)}
-      />
+      {/* High-Fidelity Futuristic Footer - Displayed on public & student views */}
+      {currentTab !== 'admin' && currentTab !== 'admin-settings' && (
+        <Footer
+          settings={settings}
+          user={user}
+          currentTab={currentTab}
+          setCurrentTab={setCurrentTab}
+          onOpenAuth={() => {
+            setAuthModalIsAdmin(false);
+            setAuthModalInitialMode('login');
+            setAuthModalOpen(true);
+          }}
+          onOpenAdminAuth={() => {
+            setAuthModalIsAdmin(true);
+            setAuthModalInitialMode('login');
+            setAuthModalOpen(true);
+          }}
+          onOpenRoutine={() => setRoutineModalOpen(true)}
+          onOpenContact={() => setContactModalOpen(true)}
+        />
+      )}
 
       {/* Auth Portal Dialog */}
       <AuthModal
