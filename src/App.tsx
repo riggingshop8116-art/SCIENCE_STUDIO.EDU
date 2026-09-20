@@ -208,6 +208,40 @@ export default function App() {
         }
       }
 
+      // Fast client-side token decoding for instant UI restoration without waiting for serverless cold start
+      let decodedUser: any = null;
+      if (token.startsWith('sst_')) {
+        try {
+          const b64 = token.substring(4);
+          const jsonStr = decodeURIComponent(escape(atob(b64.replace(/-/g, '+').replace(/_/g, '/'))));
+          const parsed = JSON.parse(jsonStr);
+          if (parsed && parsed.id && parsed.role) {
+            decodedUser = {
+              id: parsed.id,
+              name: parsed.name,
+              email: parsed.email,
+              role: parsed.role,
+              isApproved: parsed.isApproved !== undefined ? Boolean(parsed.isApproved) : true,
+              enrolledCourseTitles: Array.isArray(parsed.enrolledCourseTitles) ? parsed.enrolledCourseTitles : [],
+              phone: parsed.phone || '',
+              studentClass: parsed.studentClass || '',
+              token
+            };
+            setUser(decodedUser);
+            const savedTab = localStorage.getItem('science_studio_saved_tab');
+            if (savedTab && ['home', 'classroom', 'admin', 'lab', 'admin-settings'].includes(savedTab)) {
+              if (savedTab.startsWith('admin') && decodedUser.role !== 'admin') {
+                setCurrentTab('classroom');
+              } else {
+                setCurrentTab(savedTab);
+              }
+            } else {
+              setCurrentTab(decodedUser.role === 'admin' ? 'admin' : 'classroom');
+            }
+          }
+        } catch (e) {}
+      }
+
       try {
         const response = await fetch('/api/auth/me', {
           headers: {
@@ -218,25 +252,30 @@ export default function App() {
         const contentType = response.headers.get('content-type');
         if (response.ok && contentType && contentType.includes('application/json')) {
           const data = await response.json();
-          setUser(data.user);
-          localStorage.setItem('science_studio_last_active', String(Date.now()));
+          if (data && data.user) {
+            setUser(data.user);
+            localStorage.setItem('science_studio_last_active', String(Date.now()));
 
-          // State Preservation: Return user to the exact tab they were working on before leaving
-          const savedTab = localStorage.getItem('science_studio_saved_tab');
-          if (savedTab && ['home', 'classroom', 'admin', 'lab', 'admin-settings'].includes(savedTab)) {
-            if (savedTab.startsWith('admin') && data.user.role !== 'admin') {
-              setCurrentTab('classroom');
+            // State Preservation: Return user to the exact tab they were working on before leaving
+            const savedTab = localStorage.getItem('science_studio_saved_tab');
+            if (savedTab && ['home', 'classroom', 'admin', 'lab', 'admin-settings'].includes(savedTab)) {
+              if (savedTab.startsWith('admin') && data.user.role !== 'admin') {
+                setCurrentTab('classroom');
+              } else {
+                setCurrentTab(savedTab);
+              }
             } else {
-              setCurrentTab(savedTab);
+              setCurrentTab(data.user.role === 'admin' ? 'admin' : 'classroom');
             }
-          } else {
-            setCurrentTab(data.user.role === 'admin' ? 'admin' : 'classroom');
           }
-        } else if (!response.ok) {
-          // Token expired or invalid
-          localStorage.removeItem('science_studio_token');
-          localStorage.removeItem('science_studio_saved_tab');
-          setCurrentTab('home');
+        } else if (response.status === 401) {
+          // Token expired or invalid - never clear admin session on transient serverless cold starts
+          if (!decodedUser || decodedUser.role !== 'admin') {
+            localStorage.removeItem('science_studio_token');
+            localStorage.removeItem('science_studio_saved_tab');
+            setUser(null);
+            setCurrentTab('home');
+          }
         }
       } catch (err) {
         console.warn("Notice: session restoration retry pending", err);

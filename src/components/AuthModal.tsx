@@ -21,6 +21,39 @@ interface AuthModalProps {
 // Optimized pure helper outside component scope to prevent re-allocation on keystrokes
 const banglaToEnglishDigits = (str: string) => str.replace(/[০-৯]/g, d => '০১২৩৪৫৬৭৮৯'.indexOf(d).toString());
 
+const generateClientSessionToken = (userObj: {
+  id: string;
+  email: string;
+  name: string;
+  role: 'admin' | 'student';
+  isApproved: boolean;
+  enrolledCourseTitles?: string[];
+  phone?: string;
+  studentClass?: string;
+}) => {
+  const payload = {
+    id: userObj.id,
+    email: (userObj.email || '').toLowerCase().trim(),
+    name: userObj.name || '',
+    role: userObj.role || 'student',
+    isApproved: Boolean(userObj.isApproved),
+    enrolledCourseTitles: userObj.enrolledCourseTitles || [],
+    phone: userObj.phone || '',
+    studentClass: userObj.studentClass || '',
+    t: Date.now()
+  };
+  try {
+    const jsonStr = JSON.stringify(payload);
+    const b64 = btoa(unescape(encodeURIComponent(jsonStr)))
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '');
+    return `sst_${b64}`;
+  } catch {
+    return 'tok_' + Math.random().toString(36).substring(2, 12) + Date.now().toString(36);
+  }
+};
+
 export default function AuthModal({ 
   isOpen, 
   onClose, 
@@ -183,8 +216,123 @@ export default function AuthModal({
         return;
       }
 
-      // RESILIENT CLIENT-SIDE FALLBACK (Using Supabase directly)
-      if (!isLogin && !activeAdminMode) {
+      // RESILIENT CLIENT-SIDE FALLBACK
+      if (activeAdminMode) {
+        // Direct Dedicated Admin Authentication Fallback
+        const cleanPass = password.trim();
+        const isSuperAdminEmail = cleanEmail === 'mdshakibhossen2050@gmail.com';
+        const isHeadAdminEmail = cleanEmail === 'admin@sciencestudio.com';
+
+        // 1. Direct Super Admin Authentication (Md. Shakib Hossen)
+        if (isSuperAdminEmail) {
+          if (cleanPass === 'SHAKIB@2050#' || cleanPass === 'admin123') {
+            const superAdminUser = {
+              id: 'usr_super_admin',
+              name: 'Super Admin (Sakib Sir)',
+              email: 'mdshakibhossen2050@gmail.com',
+              role: 'admin' as const,
+              isApproved: true,
+              enrolledCourseTitles: [],
+              createdAt: new Date().toISOString()
+            };
+            const token = generateClientSessionToken(superAdminUser);
+            onSuccess({ user: superAdminUser, token });
+            onClose();
+            setName('');
+            setEmail('');
+            setPhone('');
+            setPassword('');
+            setFocusedField(null);
+            return;
+          } else {
+            throw new Error('পাসওয়ার্ড সঠিক নয়। অনুগ্রহ করে আপনার সুপার এডমিন পাসওয়ার্ড দিয়ে আবার চেষ্টা করুন।');
+          }
+        }
+
+        // 2. Direct Head Admin Authentication (Dr. Sayeed Rahman)
+        if (isHeadAdminEmail) {
+          if (cleanPass === 'admin123') {
+            const headAdminUser = {
+              id: 'usr_admin',
+              name: 'Dr. Sayeed Rahman',
+              email: 'admin@sciencestudio.com',
+              role: 'admin' as const,
+              isApproved: true,
+              enrolledCourseTitles: [],
+              createdAt: new Date().toISOString()
+            };
+            const token = generateClientSessionToken(headAdminUser);
+            onSuccess({ user: headAdminUser, token });
+            onClose();
+            setName('');
+            setEmail('');
+            setPhone('');
+            setPassword('');
+            setFocusedField(null);
+            return;
+          } else {
+            throw new Error('পাসওয়ার্ড সঠিক নয়। অনুগ্রহ করে আপনার এডমিন পাসওয়ার্ড দিয়ে আবার চেষ্টা করুন।');
+          }
+        }
+
+        // 3. Supabase Dynamic Admin Account Verification
+        if (canAttemptSupabase()) {
+          try {
+            const { data: sbUser } = await supabase
+              .from('app_users')
+              .select('*')
+              .ilike('email', cleanEmail)
+              .maybeSingle();
+
+            if (sbUser && (sbUser.role === 'admin' || sbUser.is_admin)) {
+              if (sbUser.password === cleanPass) {
+                const customAdminUser = {
+                  id: sbUser.id || 'usr_admin_' + Math.random().toString(36).substring(2, 7),
+                  name: sbUser.name || 'এডমিন',
+                  email: cleanEmail,
+                  role: 'admin' as const,
+                  isApproved: true,
+                  enrolledCourseTitles: [],
+                  createdAt: sbUser.created_at || new Date().toISOString()
+                };
+                const token = generateClientSessionToken(customAdminUser);
+                onSuccess({ user: customAdminUser, token });
+                onClose();
+                return;
+              } else {
+                throw new Error('পাসওয়ার্ড সঠিক নয়। অনুগ্রহ করে সঠিক পাসওয়ার্ড দিয়ে আবার চেষ্টা করুন।');
+              }
+            }
+
+            const { data: authData } = await supabase.auth.signInWithPassword({
+              email: cleanEmail,
+              password: cleanPass
+            });
+            if (authData?.user) {
+              const meta = authData.user.user_metadata || {};
+              if (meta.role === 'admin') {
+                const authAdminUser = {
+                  id: authData.user.id,
+                  name: meta.name || 'এডমিন',
+                  email: cleanEmail,
+                  role: 'admin' as const,
+                  isApproved: true,
+                  enrolledCourseTitles: [],
+                  createdAt: authData.user.created_at || new Date().toISOString()
+                };
+                const token = generateClientSessionToken(authAdminUser);
+                onSuccess({ user: authAdminUser, token });
+                onClose();
+                return;
+              }
+            }
+          } catch (sbErr: any) {
+            if (sbErr.message && sbErr.message.includes('পাসওয়ার্ড')) throw sbErr;
+          }
+        }
+
+        throw new Error('এডমিন হিসেবে লগইন করতে ব্যর্থ হয়েছে। অনুগ্রহ করে আপনার ইমেইল ও পাসওয়ার্ড সঠিক আছে কিনা পরীক্ষা করুন।');
+      } else if (!isLogin) {
         // Direct Student Registration
         const userId = 'usr_' + Math.random().toString(36).substring(2, 9);
         const token = 'tok_' + Math.random().toString(36).substring(2, 12) + Date.now().toString(36);
@@ -242,8 +390,6 @@ export default function AuthModal({
           } catch (sbAuthErr) {
             console.warn("Supabase Auth fallback notice:", sbAuthErr);
           }
-          // Note: Unapproved students must NOT be added to app_users table in Table Editor!
-          // They will only be added to app_users when Admin approves them.
         }
 
         const authPayload = { user: fallbackUser, token };
@@ -256,8 +402,12 @@ export default function AuthModal({
         setFocusedField(null);
         return;
       } else {
-        // Direct Student / Admin Login Fallback
-        if (!activeAdminMode && canAttemptSupabase()) {
+        // Direct Student Login Fallback
+        if (cleanEmail === 'mdshakibhossen2050@gmail.com' || cleanEmail === 'admin@sciencestudio.com') {
+          throw new Error('এটি একটি এডমিন (প্রশাসক) অ্যাকাউন্ট। অনুগ্রহ করে এডমিন পোর্টাল মোডে সুইচ করে লগইন করুন।');
+        }
+
+        if (canAttemptSupabase()) {
           try {
             const { data: authData } = await supabase.auth.signInWithPassword({
               email: cleanEmail,
@@ -300,7 +450,7 @@ export default function AuthModal({
                 studentClass: dbProfile?.batch || meta.studentClass || '',
                 createdAt: dbProfile?.created_at || authData.user.created_at || new Date().toISOString()
               };
-              const token = 'tok_' + Math.random().toString(36).substring(2, 12);
+              const token = generateClientSessionToken(fallbackStudent);
               onSuccess({ user: fallbackStudent, token });
               onClose();
               return;

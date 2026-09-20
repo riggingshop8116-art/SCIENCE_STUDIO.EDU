@@ -1528,6 +1528,14 @@ export default function AdminDashboard({
     setIsDeletingCourse(true);
     setDeleteCourseError('');
     try {
+      if (canAttemptSupabase() && courseToDelete.id) {
+        try {
+          await supabase.from('courses').delete().eq('id', courseToDelete.id);
+        } catch (sbErr) {
+          console.warn('Supabase course direct delete:', sbErr);
+        }
+      }
+
       const response = await fetch(`/api/courses/${courseToDelete.id}`, {
         method: 'DELETE',
         headers: getAdminHeaders(false)
@@ -1846,6 +1854,30 @@ export default function AdminDashboard({
     // Optimistically update status
     setUserList(prev => prev.map(u => u.id === targetUser.id ? { ...u, isApproved: newApprovalStatus } : u));
 
+    if (canAttemptSupabase() && targetUser.id) {
+      try {
+        await supabase
+          .from('app_users')
+          .upsert({
+            id: targetUser.id,
+            name: targetUser.name,
+            email: targetUser.email,
+            phone: targetUser.phone,
+            role: targetUser.role,
+            isApproved: newApprovalStatus,
+            is_approved: newApprovalStatus,
+            enrolledCourseTitles: targetUser.enrolledCourseTitles || [],
+            enrolled_courses: targetUser.enrolledCourseTitles || [],
+            transactionId: targetUser.transactionId || '',
+            paymentMethod: targetUser.paymentMethod || '',
+            senderPhone: targetUser.senderPhone || '',
+            updated_at: new Date().toISOString()
+          }, { onConflict: 'id' });
+      } catch (sbApproveErr) {
+        console.warn('Supabase approval sync notice:', sbApproveErr);
+      }
+    }
+
     try {
       const response = await fetch(`/api/admin/users/${targetUser.id}/approve`, {
         method: 'PUT',
@@ -1873,6 +1905,22 @@ export default function AdminDashboard({
     setActionError('');
     // Instant optimistic update so UI updates with zero delay
     setUserList(prev => prev.map(u => u.id === userId ? { ...u, enrolledCourseTitles: newCourseTitles } : u));
+
+    if (canAttemptSupabase()) {
+      try {
+        await supabase
+          .from('app_users')
+          .update({
+            enrolledCourseTitles: newCourseTitles,
+            enrolled_courses: newCourseTitles,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', userId);
+      } catch (sbCourseErr) {
+        console.warn('Supabase course sync notice:', sbCourseErr);
+      }
+    }
+
     try {
       const response = await fetch(`/api/admin/users/${userId}/courses`, {
         method: 'PUT',
@@ -1908,6 +1956,21 @@ export default function AdminDashboard({
     setUserList(prev => prev.map(u => u.id === targetUserId ? { ...u, transactionId: newTrx } : u));
     setUserToEditTrx(null);
     setIsUpdatingTrx(true);
+
+    if (canAttemptSupabase()) {
+      try {
+        await supabase
+          .from('app_users')
+          .update({
+            transactionId: newTrx,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', targetUserId);
+      } catch (sbTrxErr) {
+        console.warn('Supabase trx sync notice:', sbTrxErr);
+      }
+    }
+
     try {
       const response = await fetch(`/api/admin/users/${targetUserId}/transaction`, {
         method: 'PUT',
@@ -1922,8 +1985,7 @@ export default function AdminDashboard({
 
       fetchStatsAndUsers(false);
     } catch (err: any) {
-      alert(err.message || 'ট্রানজেকশন আইডি আপডেট করতে সমস্যা হয়েছে');
-      fetchStatsAndUsers(false);
+      setActionError(err.message || 'Error occurred while updating transaction ID');
     } finally {
       setIsUpdatingTrx(false);
     }
@@ -1996,6 +2058,19 @@ export default function AdminDashboard({
       if (targetId) tombstonedIdsRef.current.add(targetId);
       if (targetEmail) tombstonedIdsRef.current.add(targetEmail);
 
+      if (canAttemptSupabase()) {
+        try {
+          if (userToDelete.id) {
+            await supabase.from('app_users').delete().eq('id', userToDelete.id);
+          }
+          if (userToDelete.email) {
+            await supabase.from('app_users').delete().ilike('email', userToDelete.email);
+          }
+        } catch (sbErr) {
+          console.warn('Supabase user direct delete notice:', sbErr);
+        }
+      }
+
       const response = await fetch(`/api/admin/users/${userToDelete.id}`, {
         method: 'DELETE',
         headers: getAdminHeaders(false)
@@ -2037,6 +2112,14 @@ export default function AdminDashboard({
     setIsDeletingClass(true);
     setDeleteClassError('');
     try {
+      if (canAttemptSupabase() && classToDelete.id) {
+        try {
+          await supabase.from('classes').delete().eq('id', classToDelete.id);
+        } catch (sbErr) {
+          console.warn('Supabase class direct delete notice:', sbErr);
+        }
+      }
+
       const response = await fetch(`/api/classes/${classToDelete.id}`, {
         method: 'DELETE',
         headers: getAdminHeaders(false)
@@ -2070,6 +2153,14 @@ export default function AdminDashboard({
     setIsDeletingNote(true);
     setDeleteNoteError('');
     try {
+      if (canAttemptSupabase() && noteToDelete.id) {
+        try {
+          await supabase.from('notes').delete().eq('id', noteToDelete.id);
+        } catch (sbErr) {
+          console.warn('Supabase note direct delete notice:', sbErr);
+        }
+      }
+
       const response = await fetch(`/api/notes/${noteToDelete.id}`, {
         method: 'DELETE',
         headers: getAdminHeaders(false)
