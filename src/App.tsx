@@ -10,6 +10,7 @@ import InteractiveScience from './components/InteractiveScience';
 import RoutineContactModals from './components/RoutineContactModals';
 import Footer from './components/Footer';
 import { Atom, Compass, Mail, Phone, MapPin, Sparkles, Shield } from 'lucide-react';
+import { supabase, canAttemptSupabase } from './lib/supabase';
 
 const defaultSettings: Settings = {
   academyName: "SCIENCE STUDIO by Sakib",
@@ -90,6 +91,9 @@ export default function App() {
 
   // Fetch static website settings & courses
   const fetchSettingsAndCourses = async () => {
+    let coursesLoaded = false;
+    let settingsLoaded = false;
+
     try {
       const [settingsRes, coursesRes] = await Promise.all([
         fetch('/api/settings').catch(() => null),
@@ -102,6 +106,7 @@ export default function App() {
           const data = await settingsRes.json();
           if (data && typeof data === 'object') {
             setSettings(prev => ({ ...prev, ...data }));
+            settingsLoaded = true;
           }
         }
       }
@@ -110,21 +115,51 @@ export default function App() {
         const contentType = coursesRes.headers.get('content-type');
         if (contentType && contentType.includes('application/json')) {
           const courseData = await coursesRes.json();
-          if (Array.isArray(courseData)) {
+          if (Array.isArray(courseData) && courseData.length > 0) {
             setCourses(courseData);
+            coursesLoaded = true;
           }
         }
       }
+    } catch (err) {
+      console.warn("Notice: transient error fetching settings or courses");
+    }
 
-      // Also refetch current user info if logged in to keep profile in sync
-      const token = localStorage.getItem('science_studio_token');
-      if (token) {
+    // DIRECT SUPABASE FALLBACK: If API has latency, cold start or rewrite mismatch, load instantly from Supabase!
+    if (canAttemptSupabase()) {
+      if (!coursesLoaded) {
+        try {
+          const { data: sbCourses } = await supabase.from('app_courses').select('*');
+          if (Array.isArray(sbCourses) && sbCourses.length > 0) {
+            setCourses(sbCourses);
+          }
+        } catch (e) {
+          console.warn("Supabase courses client fetch notice:", e);
+        }
+      }
+
+      if (!settingsLoaded) {
+        try {
+          const { data: sbSettings } = await supabase.from('app_settings').select('*').limit(1);
+          if (Array.isArray(sbSettings) && sbSettings.length > 0 && sbSettings[0]) {
+            setSettings(prev => ({ ...prev, ...sbSettings[0] }));
+          }
+        } catch (e) {
+          console.warn("Supabase settings client fetch notice:", e);
+        }
+      }
+    }
+
+    // Also refetch current user info if logged in to keep profile in sync
+    const token = localStorage.getItem('science_studio_token');
+    if (token) {
+      try {
         const meResponse = await fetch('/api/auth/me', {
           headers: {
             'Authorization': `Bearer ${token}`
           }
         });
-        if (meResponse.ok) {
+        if (meResponse && meResponse.ok) {
           const meContentType = meResponse.headers.get('content-type');
           if (meContentType && meContentType.includes('application/json')) {
             const meData = await meResponse.json();
@@ -133,9 +168,7 @@ export default function App() {
             }
           }
         }
-      }
-    } catch (err) {
-      console.warn("Notice: transient error fetching settings or courses");
+      } catch {}
     }
   };
 
@@ -220,6 +253,9 @@ export default function App() {
     const token = localStorage.getItem('science_studio_token') || (user ? `token-${user.id}` : null);
     if (!token) return;
 
+    let classesLoaded = false;
+    let notesLoaded = false;
+
     try {
       // Fetch classes
       const classRes = await fetch('/api/classes', {
@@ -228,7 +264,10 @@ export default function App() {
       const classContentType = classRes.headers.get('content-type');
       if (classRes.ok && classContentType && classContentType.includes('application/json')) {
         const classData = await classRes.json();
-        setClasses(classData);
+        if (Array.isArray(classData)) {
+          setClasses(classData);
+          classesLoaded = true;
+        }
       }
 
       // Fetch notes
@@ -238,10 +277,38 @@ export default function App() {
       const noteContentType = noteRes.headers.get('content-type');
       if (noteRes.ok && noteContentType && noteContentType.includes('application/json')) {
         const noteData = await noteRes.json();
-        setNotes(noteData);
+        if (Array.isArray(noteData)) {
+          setNotes(noteData);
+          notesLoaded = true;
+        }
       }
     } catch (err) {
       console.warn("Notice: content fetch retry pending", err);
+    }
+
+    // Direct Supabase fallback for classes and notes
+    if (canAttemptSupabase()) {
+      if (!classesLoaded) {
+        try {
+          const { data: sbClasses } = await supabase.from('app_classes').select('*');
+          if (Array.isArray(sbClasses) && sbClasses.length > 0) {
+            setClasses(sbClasses);
+          }
+        } catch (e) {
+          console.warn("Supabase classes fetch notice:", e);
+        }
+      }
+
+      if (!notesLoaded) {
+        try {
+          const { data: sbNotes } = await supabase.from('app_notes').select('*');
+          if (Array.isArray(sbNotes) && sbNotes.length > 0) {
+            setNotes(sbNotes);
+          }
+        } catch (e) {
+          console.warn("Supabase notes fetch notice:", e);
+        }
+      }
     }
   };
 

@@ -4,7 +4,7 @@ import { downloadPdfFile, openPdfInBrowser } from '../utils/pdfHelper';
 import { formatVideoEmbedUrl, isIframeVideoUrl, getVideoBannerUrl, getDefaultSubjectBanner, getNoteBannerUrl } from '../utils/videoHelper';
 import StudentProfileModal from './StudentProfileModal';
 import PendingApprovalView from './PendingApprovalView';
-import { supabase } from '../lib/supabase';
+import { supabase, canAttemptSupabase } from '../lib/supabase';
 import { 
   Video, 
   FileText, 
@@ -177,14 +177,27 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
 
   useEffect(() => {
     const fetchCourses = async () => {
+      let loaded = false;
       try {
         const res = await fetch('/api/courses');
         if (res.ok) {
           const data: Course[] = await res.json();
-          setCoursesList(data);
+          if (Array.isArray(data) && data.length > 0) {
+            setCoursesList(data);
+            loaded = true;
+          }
         }
       } catch (err) {
         console.warn("Notice: loading courses retry pending", err);
+      }
+
+      if (!loaded && canAttemptSupabase()) {
+        try {
+          const { data: sbCourses } = await supabase.from('app_courses').select('*');
+          if (Array.isArray(sbCourses) && sbCourses.length > 0) {
+            setCoursesList(sbCourses);
+          }
+        } catch {}
       }
     };
     fetchCourses();

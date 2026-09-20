@@ -24,10 +24,10 @@ export default function handler(req: any, res: any) {
     const handlerApp = app || expressApp;
     return handlerApp(req, res);
   } catch (err: any) {
-    console.error("Vercel API Serverless Handler Error:", err);
+    console.error("Vercel API Catch-All Handler Error:", err);
     if (!res.headersSent) {
       return res.status(500).json({ 
-        error: err?.message || "সার্ভার প্রসেসিং করতে সাময়িক সমস্যা হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।" 
+        error: err?.message || "সার্ভার প্রসেসিং করতে সাময়িক সমস্যা হয়েছে।" 
       });
     }
   }

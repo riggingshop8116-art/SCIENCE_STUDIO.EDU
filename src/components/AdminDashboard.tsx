@@ -75,7 +75,7 @@ import {
 } from 'lucide-react';
 import { downloadPdfFile, openPdfInBrowser } from '../utils/pdfHelper';
 import { compressImageFile } from '../utils/imageHelper';
-import { supabase } from '../lib/supabase';
+import { supabase, canAttemptSupabase } from '../lib/supabase';
 
 interface AdminDashboardProps {
   user: User;
@@ -1275,17 +1275,33 @@ export default function AdminDashboard({
 
   // Fetch admin dashboard data
   const fetchCourses = async () => {
+    let loaded = false;
     try {
       const res = await fetch('/api/courses');
       if (res.ok) {
         const data = await res.json();
-        setCoursesList(prev => {
-          if (JSON.stringify(prev) === JSON.stringify(data)) return prev;
-          return data;
-        });
+        if (Array.isArray(data) && data.length > 0) {
+          setCoursesList(prev => {
+            if (JSON.stringify(prev) === JSON.stringify(data)) return prev;
+            return data;
+          });
+          loaded = true;
+        }
       }
     } catch (err) {
       console.warn("Notice: loading courses retry pending", err);
+    }
+
+    if (!loaded && canAttemptSupabase()) {
+      try {
+        const { data: sbCourses } = await supabase.from('app_courses').select('*');
+        if (Array.isArray(sbCourses) && sbCourses.length > 0) {
+          setCoursesList(prev => {
+            if (JSON.stringify(prev) === JSON.stringify(sbCourses)) return prev;
+            return sbCourses;
+          });
+        }
+      } catch {}
     }
   };
 
@@ -1293,6 +1309,7 @@ export default function AdminDashboard({
     if (showLoader) {
       setLoadingUsers(true);
     }
+    let usersLoaded = false;
     try {
       // 1. Fetch Stats
       const statsRes = await fetch('/api/admin/stats', {
@@ -1327,6 +1344,7 @@ export default function AdminDashboard({
               return (!uId || !tombstoneSet.has(uId)) && (!uEmail || !tombstoneSet.has(uEmail));
             })
           : [];
+        usersLoaded = true;
         setUserList(prev => {
           if (prev.length === validUsers.length) {
             let unchanged = true;
@@ -1357,6 +1375,21 @@ export default function AdminDashboard({
     } catch (err) {
       console.warn("Notice: loading admin info retry pending", err);
     } finally {
+      // Supabase Direct Fallback for Admin Users
+      if (!usersLoaded && canAttemptSupabase()) {
+        try {
+          const { data: sbUsers } = await supabase.from('app_users').select('*');
+          if (Array.isArray(sbUsers) && sbUsers.length > 0) {
+            const tombstoneSet = tombstonedIdsRef.current;
+            const validUsers = sbUsers.filter((u: any) => {
+              const uId = String(u.id || '').trim().toLowerCase();
+              const uEmail = (u.email || '').trim().toLowerCase();
+              return (!uId || !tombstoneSet.has(uId)) && (!uEmail || !tombstoneSet.has(uEmail));
+            });
+            setUserList(validUsers);
+          }
+        } catch {}
+      }
       setLoadingUsers(false);
     }
   };
