@@ -325,15 +325,6 @@ export async function upsertUserToSupabase(u: any) {
   try {
     const isApproved = u.isApproved !== undefined ? Boolean(u.isApproved) : (u.is_approved !== undefined ? Boolean(u.is_approved) : false);
 
-    // Rule: Unapproved students must NOT be added to app_users table until admin approves!
-    // They remain in Supabase Authentication until approved.
-    if (u.role !== 'admin' && !isApproved) {
-      try {
-        await supabaseServer.from('app_users').delete().eq('id', u.id);
-      } catch (delErr) {}
-      return;
-    }
-
     const enrolledList = Array.isArray(u.enrolledCourseTitles) 
       ? u.enrolledCourseTitles 
       : (u.course ? [u.course] : (Array.isArray(u.enrolled_courses) ? u.enrolled_courses : []));
@@ -346,12 +337,20 @@ export async function upsertUserToSupabase(u: any) {
       phone: u.phone || '',
       password: u.password || '',
       role: u.role || 'student',
-      isApproved: true,
+      isApproved: isApproved,
+      is_approved: isApproved,
       course: enrolledList.length > 0 ? enrolledList[0] : (u.course || ''),
       batch: u.studentClass || u.batch || '',
+      student_class: u.studentClass || u.batch || '',
       enrolledCourseTitles: enrolledList,
+      enrolled_courses: enrolledList,
       enrolledCourseIds: Array.isArray(u.enrolledCourseIds) ? u.enrolledCourseIds : [],
       transactionId: u.transactionId || u.transaction_id || '',
+      transaction_id: u.transactionId || u.transaction_id || '',
+      paymentMethod: u.paymentMethod || u.payment_method || '',
+      payment_method: u.paymentMethod || u.payment_method || '',
+      senderPhone: u.senderPhone || u.sender_phone || '',
+      sender_phone: u.senderPhone || u.sender_phone || '',
       joinedAt: u.joinedAt || u.createdAt || u.created_at || new Date().toISOString(),
       updated_at: new Date().toISOString()
     };
@@ -835,20 +834,36 @@ export async function syncToSupabase(data: any) {
       );
     }
 
-    // 2. Sync Users - ONLY approved students and admins are saved in app_users table
+    // 2. Sync Users - Both approved and registered students and admins are saved in app_users table
     if (Array.isArray(data.users)) {
       promises.push(
         (async () => {
           if (!canAttemptSupabase()) return;
           try {
-            // Strict requirement: Unapproved students stay in Supabase Auth until admin approval!
-            const approvedUsers = data.users.filter((u: any) => 
-              u.role === 'admin' || 
-              (u.isApproved !== undefined ? Boolean(u.isApproved) : (u.is_approved !== undefined ? Boolean(u.is_approved) : false))
-            );
+            const tombstoneSet = new Set<string>((data.deletedUserIds || []).map((x: any) => String(x).toLowerCase().trim()));
+            
+            // Purge tombstones immediately from Supabase app_users table
+            if (tombstoneSet.size > 0 && canAttemptSupabase()) {
+              for (const tid of Array.from(tombstoneSet)) {
+                if (typeof tid === 'string' && tid.includes('@')) {
+                  await supabaseServer.from('app_users').delete().ilike('email', tid);
+                } else if (typeof tid === 'string') {
+                  await supabaseServer.from('app_users').delete().eq('id', tid);
+                }
+              }
+            }
 
-            if (approvedUsers.length > 0) {
-              const usersPayload = approvedUsers.map((u: any) => {
+            const activeUsers = data.users.filter((u: any) => {
+              const uId = String(u.id || '').toLowerCase().trim();
+              const uEmail = (u.email || '').toLowerCase().trim();
+              if (uId && tombstoneSet.has(uId)) return false;
+              if (uEmail && tombstoneSet.has(uEmail)) return false;
+              return true;
+            });
+
+            if (activeUsers.length > 0) {
+              const usersPayload = activeUsers.map((u: any) => {
+                const isApprovedVal = u.isApproved !== undefined ? Boolean(u.isApproved) : (u.is_approved !== undefined ? Boolean(u.is_approved) : false);
                 const enrolledList = Array.isArray(u.enrolledCourseTitles) 
                   ? u.enrolledCourseTitles 
                   : (u.course ? [u.course] : (Array.isArray(u.enrolled_courses) ? u.enrolled_courses : []));
@@ -859,12 +874,20 @@ export async function syncToSupabase(data: any) {
                   phone: u.phone || '',
                   password: u.password || '',
                   role: u.role || 'student',
-                  isApproved: true,
+                  isApproved: isApprovedVal,
+                  is_approved: isApprovedVal,
                   course: enrolledList.length > 0 ? enrolledList[0] : (u.course || ''),
                   batch: u.studentClass || u.batch || '',
+                  student_class: u.studentClass || u.batch || '',
                   enrolledCourseTitles: enrolledList,
+                  enrolled_courses: enrolledList,
                   enrolledCourseIds: Array.isArray(u.enrolledCourseIds) ? u.enrolledCourseIds : [],
                   transactionId: u.transactionId || u.transaction_id || '',
+                  transaction_id: u.transactionId || u.transaction_id || '',
+                  paymentMethod: u.paymentMethod || u.payment_method || '',
+                  payment_method: u.paymentMethod || u.payment_method || '',
+                  senderPhone: u.senderPhone || u.sender_phone || '',
+                  sender_phone: u.senderPhone || u.sender_phone || '',
                   avatar: u.photoUrl || u.avatarUrl || u.avatar || '',
                   joinedAt: u.joinedAt || u.createdAt || u.created_at || new Date().toISOString(),
                   updated_at: new Date().toISOString()
@@ -879,15 +902,6 @@ export async function syncToSupabase(data: any) {
                 markSupabaseOffline(upsertErr);
                 return;
               }
-
-              const currentApprovedIds = approvedUsers.map((u: any) => u.id).filter(Boolean);
-              if (currentApprovedIds.length > 0 && canAttemptSupabase()) {
-                const filterStr = `(${currentApprovedIds.map((i: string) => `"${i}"`).join(',')})`;
-                await supabaseServer.from('app_users').delete().not('id', 'in', filterStr);
-              }
-            } else if (canAttemptSupabase()) {
-              // If no approved users, ensure app_users has no remaining rows
-              await supabaseServer.from('app_users').delete().neq('id', '');
             }
           } catch (e: any) {
             if (isNetworkError(e)) markSupabaseOffline(e);
@@ -1194,6 +1208,13 @@ export async function loadFromSupabase(defaultData: any) {
         paymentInstructions: getVal(['paymentInstructions', 'payment_instructions', 'paymentInstruction', 'payment_instruction', 'paymentInfo', 'payment_info', 'instructions'], defaultData.settings?.paymentInstructions || ''),
         routine: getArray(['routine', 'classRoutine', 'class_routine', 'schedule'], defaultData.settings?.routine || [])
       };
+
+      // Load and harmonize deletedUserIds tombstones
+      const configDeleted = (configObj && Array.isArray(configObj.deletedUserIds)) ? configObj.deletedUserIds : [];
+      const localDeleted = Array.isArray(defaultData.deletedUserIds) ? defaultData.deletedUserIds : [];
+      const combinedDeleted = Array.from(new Set([...localDeleted, ...configDeleted].map((x: any) => String(x).trim().toLowerCase()))).filter(Boolean);
+      loadedData.deletedUserIds = combinedDeleted;
+
       hasLoadedAny = true;
     }
 
@@ -1201,11 +1222,30 @@ export async function loadFromSupabase(defaultData: any) {
 
     // Load Users
     try {
+      const tombstoneSet = new Set(Array.isArray(loadedData.deletedUserIds) ? loadedData.deletedUserIds : []);
       const { data: usersRows, error: userErr } = await supabaseServer.from('app_users').select('*');
       if (userErr && isNetworkError(userErr)) {
         markSupabaseOffline(userErr);
       } else if (Array.isArray(usersRows) && usersRows.length > 0) {
-        const approvedFromSb = usersRows.map(r => {
+        // Proactively purge any tombstoned users that might still exist in Supabase
+        usersRows.forEach(r => {
+          const rId = String(r.id || '').trim().toLowerCase();
+          const rEmail = String(r.email || '').trim().toLowerCase();
+          if ((rId && tombstoneSet.has(rId)) || (rEmail && tombstoneSet.has(rEmail))) {
+            if (r.id) supabaseServer.from('app_users').delete().eq('id', r.id).then();
+            if (r.email) supabaseServer.from('app_users').delete().ilike('email', r.email).then();
+          }
+        });
+
+        const approvedFromSb = usersRows
+          .filter(r => {
+            const rId = String(r.id || '').trim().toLowerCase();
+            const rEmail = String(r.email || '').trim().toLowerCase();
+            if (rId && tombstoneSet.has(rId)) return false;
+            if (rEmail && tombstoneSet.has(rEmail)) return false;
+            return true;
+          })
+          .map(r => {
           const nested = (r.data && typeof r.data === 'object') ? r.data : {};
           const enrolledCourses = Array.isArray(r.enrolled_courses) && r.enrolled_courses.length > 0
             ? r.enrolled_courses
@@ -1220,6 +1260,7 @@ export async function loadFromSupabase(defaultData: any) {
             id: r.id,
             name: r.name || nested.name || 'User',
             email: r.email ? r.email.toLowerCase().trim() : (nested.email || ''),
+            password: r.password || nested.password || '',
             role: r.role || nested.role || 'student',
             isApproved,
             phone: r.phone || nested.phone || '',
@@ -1234,18 +1275,21 @@ export async function loadFromSupabase(defaultData: any) {
           };
         });
 
-        // CRITICAL: Preserve all unapproved students and local pending enrollments from defaultData.users
-        // Unapproved students are kept in local storage and Supabase Auth until approved, so they must NEVER be wiped out.
+        // CRITICAL: Preserve all unapproved students and local pending enrollments from defaultData.users,
+        // while strictly respecting tombstones
         const existingUnapproved = Array.isArray(defaultData.users)
           ? defaultData.users.filter((u: any) => {
               if (u.role === 'admin') return false;
               const uEmail = (u.email || '').toLowerCase().trim();
-              const uId = String(u.id || '').trim();
+              const uId = String(u.id || '').trim().toLowerCase();
+              if (uId && tombstoneSet.has(uId)) return false;
+              if (uEmail && tombstoneSet.has(uEmail)) return false;
+
               // Check if this student is already in approvedFromSb
               const isApprovedInSb = approvedFromSb.some((sb: any) => {
                 const sbEmail = (sb.email || '').toLowerCase().trim();
                 const sbId = String(sb.id || '').trim();
-                return (sbId && uId && sbId === uId) || (sbEmail && uEmail && sbEmail === uEmail);
+                return (sbId && uId && sbId.toLowerCase() === uId) || (sbEmail && uEmail && sbEmail === uEmail);
               });
               return !isApprovedInSb;
             })
@@ -1268,18 +1312,25 @@ export async function loadFromSupabase(defaultData: any) {
             ]));
             return {
               ...sb,
+              password: localMatch.password || sb.password || '',
               enrolledCourseTitles: mergedCourses,
-              transactionId: sb.transactionId || localMatch.transactionId || '',
-              paymentMethod: sb.paymentMethod || localMatch.paymentMethod || '',
-              senderPhone: sb.senderPhone || localMatch.senderPhone || '',
-              studentClass: sb.studentClass || localMatch.studentClass || '',
-              phone: sb.phone || localMatch.phone || ''
+              transactionId: localMatch.transactionId || sb.transactionId || '',
+              paymentMethod: localMatch.paymentMethod || sb.paymentMethod || '',
+              senderPhone: localMatch.senderPhone || sb.senderPhone || '',
+              studentClass: localMatch.studentClass || sb.studentClass || '',
+              phone: localMatch.phone || sb.phone || ''
             };
           }
           return sb;
         });
 
-        loadedData.users = [...mergedApproved, ...existingUnapproved];
+        loadedData.users = [...mergedApproved, ...existingUnapproved].filter((u: any) => {
+          const uId = String(u.id || '').trim().toLowerCase();
+          const uEmail = (u.email || '').toLowerCase().trim();
+          if (uId && tombstoneSet.has(uId)) return false;
+          if (uEmail && tombstoneSet.has(uEmail)) return false;
+          return true;
+        });
         hasLoadedAny = true;
       }
     } catch (e: any) {

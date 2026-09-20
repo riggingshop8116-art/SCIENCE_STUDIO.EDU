@@ -8,6 +8,7 @@ export interface User {
   id: string;
   name: string;
   email: string;
+  password?: string;
   phone?: string;
   role: UserRole;
   token?: string;
@@ -120,6 +121,7 @@ export interface Settings {
   rocketNumber?: string;
   paymentInstructions?: string;
   adminCredentials?: { email?: string; password?: string };
+  sessionInactivityTimeoutMinutes?: number;
 
   // Orbit & Ecosystem Section Settings
   orbitSectionBadge?: string;

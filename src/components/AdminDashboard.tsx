@@ -53,6 +53,9 @@ import {
   Image as ImageIcon,
   Search,
   Eye,
+  EyeOff,
+  Copy,
+  Key,
   Play,
   Filter,
   Layers,
@@ -67,7 +70,8 @@ import {
   Sun,
   Moon,
   Menu,
-  Zap
+  Zap,
+  Edit3
 } from 'lucide-react';
 import { downloadPdfFile, openPdfInBrowser } from '../utils/pdfHelper';
 import { compressImageFile } from '../utils/imageHelper';
@@ -96,6 +100,7 @@ export default function AdminDashboard({
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [userList, setUserList] = useState<User[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
+  const tombstonedIdsRef = React.useRef<Set<string>>(new Set());
   const getAuthToken = () => {
     const stored = localStorage.getItem('science_studio_token');
     if (stored && stored.trim()) return stored.trim();
@@ -220,6 +225,36 @@ export default function AdminDashboard({
   const [editTrxInput, setEditTrxInput] = useState('');
   const [isUpdatingTrx, setIsUpdatingTrx] = useState(false);
 
+  // Modal State for Enrolled Courses Management
+  const [userToEditCourses, setUserToEditCourses] = useState<{ id: string; name: string; courses: string[] } | null>(null);
+  const [selectedCoursesInput, setSelectedCoursesInput] = useState<string[]>([]);
+  const [customCourseInput, setCustomCourseInput] = useState('');
+  const [isUpdatingCourses, setIsUpdatingCourses] = useState(false);
+
+  // Student credentials visibility & copy state
+  const [revealedPasswords, setRevealedPasswords] = useState<Record<string, boolean>>({});
+  const [copiedField, setCopiedField] = useState<string | null>(null);
+
+  const handleCopyText = (text: string, fieldId: string) => {
+    if (!text) return;
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text);
+      } else {
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+      }
+      setCopiedField(fieldId);
+      setTimeout(() => setCopiedField(null), 2000);
+    } catch (e) {
+      console.error("Copy failed:", e);
+    }
+  };
+
   // Filtered and Paginated User List
   const filteredUserList = useMemo(() => {
     const list = userList.filter(u => {
@@ -253,8 +288,8 @@ export default function AdminDashboard({
       return matchesSearch && matchesStatus && matchesDate;
     });
 
-    // Sorting: Admin ID always on top, then sorted by most recent date (newest students at the top)
-    return list.sort((a, b) => {
+    // Sorting: Admin ID always on top, then sorted by most recent date (newest students at the top) with deterministic tie-breaker
+    return list.slice().sort((a, b) => {
       const aIsPrimaryAdmin = a.id === 'usr_admin' || (a.email && a.email.toLowerCase() === 'admin@sciencestudio.com');
       const bIsPrimaryAdmin = b.id === 'usr_admin' || (b.email && b.email.toLowerCase() === 'admin@sciencestudio.com');
       if (aIsPrimaryAdmin && !bIsPrimaryAdmin) return -1;
@@ -267,7 +302,8 @@ export default function AdminDashboard({
 
       const timeA = new Date(a.createdAt || (a as any).joinedAt || 0).getTime();
       const timeB = new Date(b.createdAt || (b as any).joinedAt || 0).getTime();
-      return timeB - timeA;
+      if (timeB !== timeA) return timeB - timeA;
+      return String(a.id || a.email || '').localeCompare(String(b.id || b.email || ''));
     });
   }, [userList, userSearchQuery, userStatusFilter, userStartDate, userEndDate]);
 
@@ -1243,7 +1279,10 @@ export default function AdminDashboard({
       const res = await fetch('/api/courses');
       if (res.ok) {
         const data = await res.json();
-        setCoursesList(data);
+        setCoursesList(prev => {
+          if (JSON.stringify(prev) === JSON.stringify(data)) return prev;
+          return data;
+        });
       }
     } catch (err) {
       console.warn("Notice: loading courses retry pending", err);
@@ -1261,7 +1300,17 @@ export default function AdminDashboard({
       });
       if (statsRes.ok) {
         const statsData = await statsRes.json();
-        setStats(statsData);
+        setStats(prev => {
+          if (
+            prev &&
+            prev.totalStudents === statsData.totalStudents &&
+            prev.totalClasses === statsData.totalClasses &&
+            prev.totalNotes === statsData.totalNotes
+          ) {
+            return prev;
+          }
+          return statsData;
+        });
       }
 
       // 2. Fetch Users
@@ -1270,7 +1319,40 @@ export default function AdminDashboard({
       });
       if (usersRes.ok) {
         const usersData = await usersRes.json();
-        setUserList(usersData);
+        const tombstoneSet = tombstonedIdsRef.current;
+        const validUsers = Array.isArray(usersData)
+          ? usersData.filter((u: any) => {
+              const uId = String(u.id || '').trim().toLowerCase();
+              const uEmail = (u.email || '').trim().toLowerCase();
+              return (!uId || !tombstoneSet.has(uId)) && (!uEmail || !tombstoneSet.has(uEmail));
+            })
+          : [];
+        setUserList(prev => {
+          if (prev.length === validUsers.length) {
+            let unchanged = true;
+            for (let i = 0; i < prev.length; i++) {
+              const a = prev[i];
+              const b = validUsers[i];
+              if (
+                a.id !== b.id ||
+                a.name !== b.name ||
+                a.email !== b.email ||
+                a.phone !== b.phone ||
+                a.transactionId !== b.transactionId ||
+                a.isApproved !== b.isApproved ||
+                a.role !== b.role ||
+                a.studentClass !== b.studentClass ||
+                (a.photoUrl || a.avatarUrl) !== (b.photoUrl || b.avatarUrl) ||
+                JSON.stringify(a.enrolledCourseTitles || []) !== JSON.stringify(b.enrolledCourseTitles || [])
+              ) {
+                unchanged = false;
+                break;
+              }
+            }
+            if (unchanged) return prev;
+          }
+          return validUsers;
+        });
       }
     } catch (err) {
       console.warn("Notice: loading admin info retry pending", err);
@@ -1814,6 +1896,52 @@ export default function AdminDashboard({
     }
   };
 
+  // Open Manage Enrolled Courses Modal
+  const handleOpenCoursesModal = (userItem: User) => {
+    setUserToEditCourses({
+      id: userItem.id,
+      name: userItem.name,
+      courses: Array.isArray(userItem.enrolledCourseTitles) ? [...userItem.enrolledCourseTitles] : []
+    });
+    setSelectedCoursesInput(Array.isArray(userItem.enrolledCourseTitles) ? [...userItem.enrolledCourseTitles] : []);
+    setCustomCourseInput('');
+  };
+
+  // Confirm Update Enrolled Courses
+  const handleConfirmUpdateCourses = async () => {
+    if (!userToEditCourses) return;
+    const targetUserId = userToEditCourses.id;
+    const finalCourses = [...selectedCoursesInput];
+    if (customCourseInput.trim() && !finalCourses.includes(customCourseInput.trim())) {
+      finalCourses.push(customCourseInput.trim());
+    }
+
+    setIsUpdatingCourses(true);
+    // Instant optimistic update
+    setUserList(prev => prev.map(u => u.id === targetUserId ? { ...u, enrolledCourseTitles: finalCourses } : u));
+    setUserToEditCourses(null);
+
+    try {
+      const response = await fetch(`/api/admin/users/${targetUserId}/courses`, {
+        method: 'PUT',
+        headers: getAdminHeaders(true),
+        body: JSON.stringify({ enrolledCourseTitles: finalCourses })
+      });
+
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to update user courses');
+      }
+
+      fetchStatsAndUsers(false);
+    } catch (err: any) {
+      alert(err.message || 'কোর্স আপডেট করতে সমস্যা হয়েছে');
+      fetchStatsAndUsers(false);
+    } finally {
+      setIsUpdatingCourses(false);
+    }
+  };
+
   // Open Delete User Modal
   const handleOpenDeleteModal = (userItem: User) => {
     if (userItem.id === 'usr_admin') {
@@ -1830,6 +1958,11 @@ export default function AdminDashboard({
     setIsDeletingUser(true);
     setDeleteUserError('');
     try {
+      const targetId = String(userToDelete.id || '').trim().toLowerCase();
+      const targetEmail = (userToDelete.email || '').trim().toLowerCase();
+      if (targetId) tombstonedIdsRef.current.add(targetId);
+      if (targetEmail) tombstonedIdsRef.current.add(targetEmail);
+
       const response = await fetch(`/api/admin/users/${userToDelete.id}`, {
         method: 'DELETE',
         headers: getAdminHeaders(false)
@@ -1840,7 +1973,15 @@ export default function AdminDashboard({
         throw new Error(data.error || 'Failed to delete user');
       }
 
-      setUserList(prev => prev.filter(u => u.id !== userToDelete.id));
+      setUserList(prev => prev.filter(u => {
+        const uId = String(u.id || '').trim().toLowerCase();
+        const uEmail = (u.email || '').trim().toLowerCase();
+        return uId !== targetId && uEmail !== targetEmail;
+      }));
+      setStats(prev => prev ? {
+        ...prev,
+        totalStudents: Math.max(0, prev.totalStudents - 1)
+      } : null);
       setUserToDelete(null);
       fetchStatsAndUsers();
     } catch (err: any) {
@@ -2248,7 +2389,9 @@ export default function AdminDashboard({
                     <div>
                       <span className="text-xs font-mono font-bold tracking-wider text-cyan-400 uppercase">মোট স্টুডেন্ট (Students)</span>
                       <h2 className="text-3xl font-display font-bold text-white mt-1 group-hover:text-cyan-300 transition-colors">
-                        {stats ? stats.totalStudents : '...'}
+                        {userList.length > 0
+                          ? userList.filter(u => u.role !== 'admin').length
+                          : (stats ? stats.totalStudents : '...')}
                       </h2>
                     </div>
                     <div className="p-3.5 rounded-2xl bg-cyan-500/20 border border-cyan-400/40 text-cyan-300 shadow-[0_0_15px_rgba(34,211,238,0.25)] group-hover:scale-110 transition-transform">
@@ -3053,10 +3196,11 @@ export default function AdminDashboard({
               <span>↔ সম্পূর্ণ টেবিল দেখতে আঙুল দিয়ে ডানে-বামে সোয়াইপ করুন</span>
             </div>
             <div className="overflow-x-auto custom-scrollbar -mx-3 sm:mx-0 rounded-xl border border-white/5 sm:border-0">
-              <table className="min-w-[860px] w-full text-left border-collapse text-xs">
+              <table className="min-w-[980px] w-full text-left border-collapse text-xs">
                 <thead>
                   <tr className="border-b border-white/10 font-mono text-slate-400 uppercase tracking-wider">
                     <th className="py-3 px-4">নাম (Name)</th>
+                    <th className="py-3 px-4">ইউজার আইডি ও পাসওয়ার্ড</th>
                     <th className="py-3 px-4">ইমেইল ও মোবাইল</th>
                     <th className="py-3 px-4">ট্রানজেকশন আইডি (TrxID)</th>
                     <th className="py-3 px-4">এনরোলকৃত কোর্স</th>
@@ -3087,6 +3231,73 @@ export default function AdminDashboard({
                             {item.id === 'usr_admin' && (
                               <span className="text-[10px] text-amber-400 font-mono font-bold">★ প্রধান অ্যাডমিন</span>
                             )}
+                          </div>
+                        </div>
+                      </td>
+                      <td className="py-3.5 px-4 font-mono">
+                        <div className="flex flex-col gap-1.5 max-w-[210px]">
+                          {/* Student ID */}
+                          <div className="flex items-center justify-between gap-1 bg-white/5 hover:bg-white/10 border border-white/10 px-2 py-1 rounded text-[11px] transition-colors">
+                            <div className="flex items-center gap-1.5 truncate">
+                              <span className="text-cyan-400 font-bold text-[10px]">ID:</span>
+                              <span className="text-white truncate select-all" title={item.id}>{item.id}</span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleCopyText(item.id, `id_${item.id}`)}
+                              className="text-slate-400 hover:text-cyan-300 transition-colors p-0.5 shrink-0 cursor-pointer"
+                              title="ইউজার আইডি কপি করুন"
+                            >
+                              {copiedField === `id_${item.id}` ? (
+                                <Check className="w-3.5 h-3.5 text-emerald-400" />
+                              ) : (
+                                <Copy className="w-3.5 h-3.5" />
+                              )}
+                            </button>
+                          </div>
+
+                          {/* Student Password */}
+                          <div className="flex items-center justify-between gap-1 bg-amber-500/10 border border-amber-500/30 px-2 py-1 rounded text-[11px]">
+                            <div className="flex items-center gap-1.5 truncate">
+                              <Key className="w-3 h-3 text-amber-400 shrink-0" />
+                              {item.password ? (
+                                <span className="text-amber-200 font-mono select-all truncate">
+                                  {revealedPasswords[item.id] ? item.password : '••••••••'}
+                                </span>
+                              ) : (
+                                <span className="text-slate-500 italic text-[10px]">এনক্রিপ্টেড / N/A</span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-1 shrink-0">
+                              {item.password ? (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => setRevealedPasswords(prev => ({ ...prev, [item.id]: !prev[item.id] }))}
+                                    className="text-amber-400 hover:text-white transition-colors p-0.5 cursor-pointer"
+                                    title={revealedPasswords[item.id] ? "পাসওয়ার্ড লুকান" : "পাসওয়ার্ড দেখুন"}
+                                  >
+                                    {revealedPasswords[item.id] ? (
+                                      <EyeOff className="w-3.5 h-3.5" />
+                                    ) : (
+                                      <Eye className="w-3.5 h-3.5" />
+                                    )}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleCopyText(item.password || '', `pwd_${item.id}`)}
+                                    className="text-amber-400 hover:text-white transition-colors p-0.5 cursor-pointer"
+                                    title="পাসওয়ার্ড কপি করুন"
+                                  >
+                                    {copiedField === `pwd_${item.id}` ? (
+                                      <Check className="w-3.5 h-3.5 text-emerald-400" />
+                                    ) : (
+                                      <Copy className="w-3.5 h-3.5" />
+                                    )}
+                                  </button>
+                                </>
+                              ) : null}
+                            </div>
                           </div>
                         </div>
                       </td>
@@ -3139,6 +3350,15 @@ export default function AdminDashboard({
                           ) : (
                             <span className="text-slate-500 text-[11px] italic">কোনো কোর্স এনরোল করা নেই</span>
                           )}
+                          <button
+                            type="button"
+                            onClick={() => handleOpenCoursesModal(item)}
+                            className="mt-1 flex items-center gap-1.5 text-[10px] font-sans font-semibold text-cyan-400 hover:text-cyan-300 bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 rounded-md px-2 py-1 transition-all cursor-pointer w-fit"
+                            title="কোর্স নির্ধারণ বা পরিবর্তন করুন"
+                          >
+                            <Edit3 className="w-3 h-3" />
+                            <span>কোর্স পরিবর্তন / ম্যানেজ</span>
+                          </button>
                         </div>
                       </td>
                       <td className="py-3.5 px-4">
@@ -6761,6 +6981,151 @@ export default function AdminDashboard({
                 className="flex-1 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 text-xs font-bold transition-all cursor-pointer disabled:opacity-50"
               >
                 {isUpdatingTrx ? 'সেভ হচ্ছে...' : 'সেভ করুন'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Enrolled Courses Modal */}
+      {userToEditCourses && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-slate-900 border-2 border-cyan-500/40 rounded-2xl max-w-lg w-full p-6 shadow-2xl relative max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between pb-3 mb-4 border-b border-white/10 shrink-0">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                📚 কোর্স নির্ধারণ ও পরিবর্তন (Course Enrollment)
+              </h3>
+              <button
+                onClick={() => setUserToEditCourses(null)}
+                className="p-1.5 rounded-xl bg-slate-800 border border-white/10 text-slate-400 hover:text-cyan-300 hover:bg-cyan-500/10 hover:border-cyan-400/50 transition-all cursor-pointer group"
+                title="বন্ধ করুন (Close)"
+              >
+                <X className="w-4 h-4 group-hover:scale-110 group-hover:rotate-90 transition-transform duration-300" />
+              </button>
+            </div>
+
+            <div className="mb-3 text-xs text-slate-300 shrink-0">
+              স্টুডেন্ট: <span className="text-cyan-400 font-bold">{userToEditCourses.name}</span>
+            </div>
+
+            <div className="overflow-y-auto flex-1 pr-1 mb-4 space-y-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-300 mb-2">
+                  বিদ্যমান কোর্স তালিকা থেকে নির্বাচন করুন:
+                </label>
+                <div className="space-y-1.5 max-h-48 overflow-y-auto bg-slate-950/60 p-2.5 rounded-xl border border-white/10">
+                  {coursesList.length === 0 ? (
+                    <p className="text-xs text-slate-500 italic">কোনো কোর্স পাওয়া যায়নি</p>
+                  ) : (
+                    coursesList.map((course) => {
+                      const isSelected = selectedCoursesInput.includes(course.title);
+                      return (
+                        <label
+                          key={course.id}
+                          className={`flex items-center gap-2.5 p-2 rounded-lg text-xs cursor-pointer transition-colors border ${
+                            isSelected
+                              ? 'bg-cyan-500/15 border-cyan-500/40 text-cyan-200'
+                              : 'hover:bg-slate-800/60 border-transparent text-slate-300'
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedCoursesInput(prev => [...prev, course.title]);
+                              } else {
+                                setSelectedCoursesInput(prev => prev.filter(c => c !== course.title));
+                              }
+                            }}
+                            className="rounded border-slate-700 text-cyan-500 focus:ring-cyan-400 w-4 h-4 cursor-pointer"
+                          />
+                          <span className="font-medium flex-1">{course.title}</span>
+                          <span className="text-[11px] text-amber-300 font-mono">৳{course.price}</span>
+                        </label>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-300 mb-1">
+                  অথবা নতুন/কাস্টম কোর্সের নাম লিখুন:
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={customCourseInput}
+                    onChange={(e) => setCustomCourseInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && customCourseInput.trim()) {
+                        e.preventDefault();
+                        if (!selectedCoursesInput.includes(customCourseInput.trim())) {
+                          setSelectedCoursesInput(prev => [...prev, customCourseInput.trim()]);
+                        }
+                        setCustomCourseInput('');
+                      }
+                    }}
+                    placeholder="কোর্সের নাম লিখুন (e.g. HSC Physics)"
+                    className="flex-1 px-3 py-2 bg-slate-950 border border-white/10 rounded-xl text-white text-xs outline-none focus:border-cyan-400"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (customCourseInput.trim() && !selectedCoursesInput.includes(customCourseInput.trim())) {
+                        setSelectedCoursesInput(prev => [...prev, customCourseInput.trim()]);
+                        setCustomCourseInput('');
+                      }
+                    }}
+                    className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-cyan-400 text-xs font-bold rounded-xl border border-cyan-500/30 cursor-pointer"
+                  >
+                    যোগ করুন
+                  </button>
+                </div>
+              </div>
+
+              {selectedCoursesInput.length > 0 && (
+                <div>
+                  <span className="text-[11px] text-slate-400 block mb-1.5">বর্তমানে নির্ধারিত কোর্সসমূহ:</span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {selectedCoursesInput.map((title, idx) => (
+                      <span
+                        key={idx}
+                        className="inline-flex items-center gap-1.5 bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-[11px] px-2.5 py-1 rounded-lg"
+                      >
+                        <span>📚 {title}</span>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedCoursesInput(prev => prev.filter(c => c !== title))}
+                          className="text-slate-400 hover:text-rose-400 cursor-pointer"
+                          title="মুছে ফেলুন"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center gap-3 pt-3 border-t border-white/10 shrink-0">
+              <button
+                type="button"
+                onClick={() => setUserToEditCourses(null)}
+                disabled={isUpdatingCourses}
+                className="flex-1 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white font-bold text-xs transition-all duration-300 cursor-pointer border-2 border-white/10 hover:border-white/30 shadow-sm"
+              >
+                বাতিল (Cancel)
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmUpdateCourses}
+                disabled={isUpdatingCourses}
+                className="flex-1 py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 text-xs font-bold transition-all cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5 shadow-lg shadow-cyan-500/20"
+              >
+                {isUpdatingCourses ? 'সংরক্ষণ হচ্ছে...' : 'সংরক্ষণ করুন (Save)'}
               </button>
             </div>
           </div>

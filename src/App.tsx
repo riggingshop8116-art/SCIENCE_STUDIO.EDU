@@ -24,6 +24,9 @@ const defaultSettings: Settings = {
   footerDescription: "সাকিব স্যারের তত্ত্ববধানে পরিচালিত একটি আধুনিক ও প্রযুক্তিনির্ভর বিজ্ঞান শিক্ষা কেন্দ্র। আমরা প্রতিটি স্টুডেন্টের মেধা বিকাশে এবং বিজ্ঞানকে সহজভাবে বোঝার সুব্যবস্থা নিশ্চিত করি।"
 };
 
+// 30 Minutes Inactivity Timeout in milliseconds
+const INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000;
+
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [classes, setClasses] = useState<Class[]>([]);
@@ -37,6 +40,53 @@ export default function App() {
   const [contactModalOpen, setContactModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [settings, setSettings] = useState<Settings>(defaultSettings);
+  const [sessionExpiredMessage, setSessionExpiredMessage] = useState<string | null>(null);
+
+  // User activity tracker: records last interaction timestamp in localStorage
+  useEffect(() => {
+    let lastSaved = 0;
+    const recordActivity = () => {
+      const now = Date.now();
+      if (now - lastSaved > 5000) {
+        lastSaved = now;
+        localStorage.setItem('science_studio_last_active', String(now));
+      }
+    };
+
+    const events = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll', 'click'];
+    events.forEach(evt => window.addEventListener(evt, recordActivity, { passive: true }));
+
+    return () => {
+      events.forEach(evt => window.removeEventListener(evt, recordActivity));
+    };
+  }, []);
+
+  // Save current active tab so user can resume exactly where they left off before timeout
+  useEffect(() => {
+    if (user && currentTab) {
+      localStorage.setItem('science_studio_saved_tab', currentTab);
+    }
+  }, [currentTab, user]);
+
+  // Periodic inactivity monitor: auto logouts user if idle for more than 30 minutes
+  useEffect(() => {
+    if (!user) return;
+
+    const inactivityInterval = setInterval(() => {
+      const lastActiveStr = localStorage.getItem('science_studio_last_active');
+      if (lastActiveStr) {
+        const lastActive = parseInt(lastActiveStr, 10);
+        if (!isNaN(lastActive) && Date.now() - lastActive > INACTIVITY_TIMEOUT_MS) {
+          handleLogout();
+          setSessionExpiredMessage("নিরাপত্তার স্বার্থে দীর্ঘক্ষণ নিষ্ক্রিয় থাকার কারণে আপনার আইডিটি স্বয়ংক্রিয়ভাবে লগআউট করা হয়েছে। ক্লাসরুমে প্রবেশ করতে পুনরায় লগইন করুন।");
+          setAuthModalInitialMode('login');
+          setAuthModalOpen(true);
+        }
+      }
+    }, 10000);
+
+    return () => clearInterval(inactivityInterval);
+  }, [user]);
 
   // Fetch static website settings & courses
   const fetchSettingsAndCourses = async () => {
@@ -97,13 +147,32 @@ export default function App() {
     return () => clearInterval(settingsInterval);
   }, []);
 
-  // Authentication & session recovery
+  // Authentication & session recovery with inactivity validation
   useEffect(() => {
     const restoreSession = async () => {
       const token = localStorage.getItem('science_studio_token');
+      // Rule: New device or unauthenticated visitor always starts on Homepage ('home')
       if (!token) {
+        setCurrentTab('home');
         setLoading(false);
         return;
+      }
+
+      // Check if session has expired due to inactivity
+      const lastActiveStr = localStorage.getItem('science_studio_last_active');
+      const now = Date.now();
+      if (lastActiveStr) {
+        const lastActive = parseInt(lastActiveStr, 10);
+        if (!isNaN(lastActive) && now - lastActive > INACTIVITY_TIMEOUT_MS) {
+          localStorage.removeItem('science_studio_token');
+          localStorage.removeItem('science_studio_last_active');
+          localStorage.removeItem('science_studio_saved_tab');
+          setUser(null);
+          setCurrentTab('home');
+          setSessionExpiredMessage("নিরাপত্তার স্বার্থে দীর্ঘক্ষণ নিষ্ক্রিয় থাকার কারণে আপনার আইডিটি স্বয়ংক্রিয়ভাবে লগআউট করা হয়েছে। ক্লাসরুমে প্রবেশ করতে পুনরায় লগইন করুন।");
+          setLoading(false);
+          return;
+        }
       }
 
       try {
@@ -117,15 +186,24 @@ export default function App() {
         if (response.ok && contentType && contentType.includes('application/json')) {
           const data = await response.json();
           setUser(data.user);
-          // Auto route to active area
-          if (data.user.role === 'admin') {
-            setCurrentTab('admin');
+          localStorage.setItem('science_studio_last_active', String(Date.now()));
+
+          // State Preservation: Return user to the exact tab they were working on before leaving
+          const savedTab = localStorage.getItem('science_studio_saved_tab');
+          if (savedTab && ['home', 'classroom', 'admin', 'lab', 'admin-settings'].includes(savedTab)) {
+            if (savedTab.startsWith('admin') && data.user.role !== 'admin') {
+              setCurrentTab('classroom');
+            } else {
+              setCurrentTab(savedTab);
+            }
           } else {
-            setCurrentTab('classroom');
+            setCurrentTab(data.user.role === 'admin' ? 'admin' : 'classroom');
           }
         } else if (!response.ok) {
           // Token expired or invalid
           localStorage.removeItem('science_studio_token');
+          localStorage.removeItem('science_studio_saved_tab');
+          setCurrentTab('home');
         }
       } catch (err) {
         console.warn("Notice: session restoration retry pending", err);
@@ -180,18 +258,23 @@ export default function App() {
   const handleAuthSuccess = (authData: AuthResponse) => {
     setUser(authData.user);
     localStorage.setItem('science_studio_token', authData.token);
+    localStorage.setItem('science_studio_last_active', String(Date.now()));
+    setSessionExpiredMessage(null);
     
-    // Success redirect logic
-    if (authData.user.role === 'admin') {
-      setCurrentTab('admin');
+    // Resume preserved tab if available, else route to default
+    const savedTab = localStorage.getItem('science_studio_saved_tab');
+    if (savedTab && savedTab !== 'home' && (!savedTab.startsWith('admin') || authData.user.role === 'admin')) {
+      setCurrentTab(savedTab);
     } else {
-      setCurrentTab('classroom');
+      setCurrentTab(authData.user.role === 'admin' ? 'admin' : 'classroom');
     }
   };
 
   const handleLogout = () => {
     setUser(null);
     localStorage.removeItem('science_studio_token');
+    localStorage.removeItem('science_studio_last_active');
+    localStorage.removeItem('science_studio_saved_tab');
     setClasses([]);
     setNotes([]);
     setCurrentTab('home');
@@ -221,6 +304,37 @@ export default function App() {
       {/* Immersive Science Ambient Background Layer */}
       <ScienceBackground />
       
+      {/* Session Expired Inactivity Notification Banner */}
+      {sessionExpiredMessage && (
+        <div className="bg-amber-500/15 border-b border-amber-500/30 text-amber-200 px-4 py-2.5 flex items-center justify-between gap-3 text-xs sm:text-sm font-sans z-50 backdrop-blur-md">
+          <div className="flex items-center gap-2 max-w-4xl mx-auto">
+            <Shield className="w-4 h-4 text-amber-400 shrink-0" />
+            <span>{sessionExpiredMessage}</span>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => {
+                setAuthModalIsAdmin(false);
+                setAuthModalInitialMode('login');
+                setAuthModalOpen(true);
+                setSessionExpiredMessage(null);
+              }}
+              className="px-3 py-1 bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold rounded-lg text-xs transition-colors cursor-pointer"
+            >
+              পুনরায় লগইন
+            </button>
+            <button 
+              type="button"
+              onClick={() => setSessionExpiredMessage(null)}
+              className="p-1 hover:bg-white/10 rounded-md text-amber-400 cursor-pointer"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Top Navigation */}
       <Navbar
         user={user}
@@ -247,7 +361,15 @@ export default function App() {
               setAuthModalInitialMode('register');
               setAuthModalOpen(true);
             }}
-            onExploreClick={() => setCurrentTab(user?.role === 'admin' ? 'admin' : 'classroom')}
+            onExploreClick={() => {
+              if (!user) {
+                setAuthModalIsAdmin(false);
+                setAuthModalInitialMode('login');
+                setAuthModalOpen(true);
+              } else {
+                setCurrentTab(user?.role === 'admin' ? 'admin' : 'classroom');
+              }
+            }}
             isLoggedIn={!!user}
             settings={settings}
             courses={courses}

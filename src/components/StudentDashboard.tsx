@@ -69,40 +69,8 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
   const [activeVideo, setActiveVideo] = useState<Class | null>(classes[0] || null);
   const [isPlayingVideo, setIsPlayingVideo] = useState(false);
   const [activeNote, setActiveNote] = useState<Note | null>(null);
+  const [classroomContentType, setClassroomContentType] = useState<'video' | 'pdf'>('video');
   const [bookmarkedIds, setBookmarkedIds] = useState<string[]>([]);
-  const notesScrollRef = useRef<HTMLDivElement>(null);
-
-  const [canScrollNotesLeft, setCanScrollNotesLeft] = useState(false);
-  const [canScrollNotesRight, setCanScrollNotesRight] = useState(false);
-
-  const checkNotesScroll = () => {
-    if (notesScrollRef.current) {
-      const { scrollLeft, scrollWidth, clientWidth } = notesScrollRef.current;
-      setCanScrollNotesLeft(scrollLeft > 10);
-      setCanScrollNotesRight(scrollLeft < scrollWidth - clientWidth - 10);
-    }
-  };
-
-  useEffect(() => {
-    checkNotesScroll();
-    const el = notesScrollRef.current;
-    if (el) {
-      el.addEventListener('scroll', checkNotesScroll, { passive: true });
-      window.addEventListener('resize', checkNotesScroll);
-    }
-    return () => {
-      if (el) el.removeEventListener('scroll', checkNotesScroll);
-      window.removeEventListener('resize', checkNotesScroll);
-    };
-  }, [notes]);
-
-  const scrollNotes = (direction: 'left' | 'right') => {
-    if (notesScrollRef.current) {
-      const scrollAmount = direction === 'left' ? -360 : 360;
-      notesScrollRef.current.scrollBy({ left: scrollAmount, behavior: 'smooth' });
-      setTimeout(checkNotesScroll, 350);
-    }
-  };
 
   // Video Player Ref & Settings state
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -464,10 +432,13 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
   // Filter video classes and notes: ONLY show content matching student's enrolled course(s) and class level if selected
   const filteredClasses = React.useMemo(() => {
     return classes.filter(cls => {
-      const belongsToEnrolledCourse = userEnrolledTitles.length === 0 || 
-                                     !cls.courseTitle || 
-                                     userEnrolledTitles.some(t => t.trim().toLowerCase() === cls.courseTitle?.trim().toLowerCase());
-      if (!belongsToEnrolledCourse) return false;
+      // Strict Classroom Isolation: A student CANNOT access or peek into other course classrooms
+      if (cls.courseTitle) {
+        const isEnrolled = userEnrolledTitles.some(t => t.trim().toLowerCase() === cls.courseTitle?.trim().toLowerCase());
+        if (!isEnrolled) return false;
+      } else if (userEnrolledTitles.length > 0) {
+        // If student is enrolled in courses, prefer their course-specific content
+      }
 
       if (selectedClassFilter !== 'All') {
         const parentCourse = coursesList.find(c => c.title.trim().toLowerCase() === cls.courseTitle?.trim().toLowerCase());
@@ -487,10 +458,13 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
 
   const filteredNotes = React.useMemo(() => {
     return notes.filter(note => {
-      const belongsToEnrolledCourse = userEnrolledTitles.length === 0 || 
-                                     !note.courseTitle || 
-                                     userEnrolledTitles.some(t => t.trim().toLowerCase() === note.courseTitle?.trim().toLowerCase());
-      if (!belongsToEnrolledCourse) return false;
+      // Strict Classroom Isolation: A student CANNOT access lecture notes of courses they are not enrolled in
+      if (note.courseTitle) {
+        const isEnrolled = userEnrolledTitles.some(t => t.trim().toLowerCase() === note.courseTitle?.trim().toLowerCase());
+        if (!isEnrolled) return false;
+      } else if (userEnrolledTitles.length > 0) {
+        // General orientation notes
+      }
 
       if (selectedClassFilter !== 'All') {
         const parentCourse = coursesList.find(c => c.title.trim().toLowerCase() === note.courseTitle?.trim().toLowerCase());
@@ -698,7 +672,7 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
         <>
           {/* Eligibility / Status Banner */}
           {user.isApproved ? (
-            <div className="p-3 sm:p-3.5 rounded-xl bg-gradient-to-r from-emerald-950/80 via-slate-900/90 to-cyan-950/80 border border-emerald-500/40 text-emerald-300 text-xs font-semibold flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 shadow-xl mb-3.5 sm:mb-4">
+            <div className="p-3 sm:p-3.5 rounded-xl bg-gradient-to-r from-emerald-950/80 via-slate-900/90 to-cyan-950/80 border border-emerald-500/40 text-emerald-300 text-xs font-semibold flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 shadow-xl mb-2 sm:mb-2.5">
               <div className="flex items-center gap-2.5 sm:gap-3">
                 <div className="p-1.5 sm:p-2 rounded-lg bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 shrink-0">
                   <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5" />
@@ -1127,7 +1101,7 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
           {user.isApproved && (
             <>
               {/* Control Panel: Search & Subject/Course Filters */}
-              <div className="bg-white/5 backdrop-blur-md rounded-xl border border-white/10 p-3 sm:p-3.5 mb-3.5 sm:mb-4 space-y-2.5">
+              <div className="bg-white/5 backdrop-blur-md rounded-xl border border-white/10 p-2.5 sm:p-3 mb-2.5 sm:mb-3 space-y-2">
                 <div className="flex flex-col lg:flex-row gap-3 lg:gap-4 items-center justify-between">
                   {/* Search bar */}
                   <div className="relative w-full lg:w-80">
@@ -1180,14 +1154,14 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
                 </div>
               </div>
 
-      {/* Main Grid: Interactive Video Player & PDF Notes on Left (Desktop), Uploaded Classes Playlist on Right */}
-      {/* On Mobile: Single column in order: 1. Video Player -> 2. Video Classes -> 3. PDF Notes */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-x-4 lg:gap-x-6 gap-y-2.5 sm:gap-y-3 mb-6 sm:mb-8 items-stretch">
+      {/* Main Grid: Interactive Video Player on Left (Desktop), Uploaded Materials (Videos & PDFs) on Right (Desktop) */}
+      {/* On Mobile: Single column in order: 1. Video Player -> 2. Unified Materials Panel (Videos/PDFs tabs) */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-6 mb-6 sm:mb-8 items-start">
         
-        {/* Item 1: Active Lecture Video Player Card (Order 1 on Mobile, Row 1 Col 1..8 on Desktop) */}
+        {/* Active Lecture Video Player Card (Order 1 on Mobile, Left Column on Desktop) */}
         <div 
           id="active-video-player-container"
-          className="order-1 lg:order-none lg:col-start-1 lg:col-span-7 xl:col-span-8 lg:row-start-1 border border-white/10 rounded-2xl bg-white/5 overflow-hidden shadow-2xl"
+          className="w-full lg:col-span-7 xl:col-span-8 border border-white/10 rounded-2xl bg-white/5 overflow-hidden shadow-2xl"
         >
             <div className="p-4 border-b border-white/10 bg-white/5 flex items-center justify-between gap-2 flex-wrap">
               <div className="flex items-center gap-2 text-cyan-400">
@@ -1581,9 +1555,12 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
 
                       {relatedNotes.length > 0 && (
                         <span 
-                          onClick={() => notesScrollRef.current?.scrollIntoView({ behavior: 'smooth' })}
+                          onClick={() => {
+                            setClassroomContentType('pdf');
+                            document.getElementById('classroom-materials-panel')?.scrollIntoView({ behavior: 'smooth' });
+                          }}
                           className="flex items-center gap-1 text-rose-300 bg-rose-500/10 border border-rose-400/20 px-2 py-0.5 rounded cursor-pointer hover:bg-rose-500/20 transition-colors"
-                          title="পিডিএফ নোটস সেকশনে যান"
+                          title="পিডিএফ নোটস দেখতে ক্লিক করুন"
                         >
                           <FileText className="w-3 h-3 text-rose-400" />
                           {relatedNotes.length}টি লেকচার শিট সংযুক্ত
@@ -1600,32 +1577,72 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
             })()}
         </div>
 
-        {/* Item 2: Uploaded Classes Playlist (Order 2 on Mobile - directly below Player; Right Column spanning Rows 1 & 2 on Desktop) */}
-        <div className="order-2 lg:order-none lg:col-start-8 xl:col-start-9 lg:col-span-5 xl:col-span-4 lg:row-start-1 lg:row-span-2 lg:relative flex flex-col">
-          <div className="lg:absolute lg:inset-0 flex flex-col space-y-3">
+        {/* Unified Classroom Materials Panel (Right Column on Desktop, Below Player on Mobile) */}
+        <div id="classroom-materials-panel" className="w-full lg:col-span-5 xl:col-span-4 flex flex-col space-y-3">
           
-          {/* Playlist Header */}
-          <div className="px-4 py-3 sm:px-4.5 sm:py-3.5 rounded-2xl bg-[#091326]/90 backdrop-blur-md border border-cyan-500/25 shadow-lg flex items-center justify-between gap-3 shrink-0">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-cyan-500/15 border border-cyan-400/30 flex items-center justify-center text-cyan-400 shrink-0">
-                <Video className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="font-display font-bold text-sm sm:text-base text-white flex items-center gap-1.5">
-                  আপলোডকৃত ক্লাস তালিকা
-                </h3>
-                <p className="text-slate-400 text-[11px] font-sans">
-                  উপরে থেকে নিচে স্ক্রল করে ক্লাস নির্বাচন করুন
-                </p>
-              </div>
+          {/* Header Switcher: Video Classes & PDF Notes Tabs */}
+          <div className="p-3 sm:p-3.5 rounded-2xl bg-[#091326]/90 backdrop-blur-md border border-white/10 shadow-lg flex flex-col gap-2.5 shrink-0">
+            {/* Tab Buttons */}
+            <div className="flex items-center p-1 bg-slate-950/80 border border-white/10 rounded-xl w-full">
+              {/* Video Tab Button */}
+              <button
+                type="button"
+                onClick={() => setClassroomContentType('video')}
+                className={`flex-1 py-2 px-2.5 sm:px-3 rounded-lg text-xs sm:text-sm font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                  classroomContentType === 'video'
+                    ? 'bg-cyan-500 text-slate-950 shadow-[0_0_15px_rgba(6,182,212,0.4)] border border-cyan-300'
+                    : 'text-slate-300 hover:text-white hover:bg-white/5'
+                }`}
+              >
+                <Video className={`w-4 h-4 ${classroomContentType === 'video' ? 'text-slate-950' : 'text-cyan-400'}`} />
+                <span>ভিডিও ক্লাস</span>
+                <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
+                  classroomContentType === 'video'
+                    ? 'bg-slate-950 text-cyan-300'
+                    : 'bg-white/10 text-slate-300'
+                }`}>
+                  {filteredClasses.length}
+                </span>
+              </button>
+
+              {/* PDF Tab Button */}
+              <button
+                type="button"
+                onClick={() => setClassroomContentType('pdf')}
+                className={`flex-1 py-2 px-2.5 sm:px-3 rounded-lg text-xs sm:text-sm font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                  classroomContentType === 'pdf'
+                    ? 'bg-gradient-to-r from-rose-500 to-pink-500 text-white shadow-[0_0_15px_rgba(244,63,94,0.4)] border border-rose-300'
+                    : 'text-slate-300 hover:text-white hover:bg-white/5'
+                }`}
+              >
+                <FileText className={`w-4 h-4 ${classroomContentType === 'pdf' ? 'text-white' : 'text-rose-400'}`} />
+                <span>পিডিএফ ও নোটস</span>
+                <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
+                  classroomContentType === 'pdf'
+                    ? 'bg-slate-950/80 text-rose-300'
+                    : 'bg-white/10 text-slate-300'
+                }`}>
+                  {filteredNotes.length}
+                </span>
+              </button>
             </div>
-            <span className="px-3 py-1 rounded-full bg-cyan-500/15 text-cyan-300 border border-cyan-400/30 text-xs font-mono font-bold shrink-0 shadow-sm">
-              {filteredClasses.length} Classes
-            </span>
+
+            {/* Sub-label explaining current view */}
+            <div className="flex items-center justify-between text-[11px] text-slate-400 px-1">
+              <span>
+                {classroomContentType === 'video' 
+                  ? 'উপরে থেকে নিচে স্ক্রল করে ক্লাস নির্বাচন করুন' 
+                  : 'লেকচার শিট পড়তে ক্লিক করুন বা ডাউনলোড করুন'}
+              </span>
+              <span className="font-mono text-cyan-400 text-[10px] uppercase font-bold">
+                {classroomContentType === 'video' ? `${filteredClasses.length} Videos` : `${filteredNotes.length} PDFs`}
+              </span>
+            </div>
           </div>
 
-          {/* Top-to-Bottom Playlist with Large Banners - Constrained height on mobile and desktop */}
-          <div className="space-y-3 sm:space-y-3.5 flex-1 min-h-0 max-h-[460px] sm:max-h-[520px] lg:max-h-none overflow-y-auto pr-1.5 custom-scrollbar overscroll-contain rounded-2xl">
+          {/* Tab 1 Content: Uploaded Classes Playlist */}
+          {classroomContentType === 'video' && (
+            <div className="space-y-3 sm:space-y-3.5 max-h-[580px] lg:max-h-[720px] overflow-y-auto pr-1.5 custom-scrollbar overscroll-contain rounded-2xl">
             {filteredClasses.length > 0 ? (
               filteredClasses.map((cls, idx) => {
                 const isActive = activeVideo?.id === cls.id;
@@ -1752,91 +1769,41 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
               </div>
             )}
           </div>
+        )}
 
-          </div>
-        </div>
-
-        {/* Item 3: PDF Lecture Notes Section (Order 3 on Mobile - below Classes; Row 2 Col 1..8 on Desktop - below Player) */}
-        <div className="order-3 lg:order-none lg:col-start-1 lg:col-span-7 xl:col-span-8 lg:row-start-2 space-y-3">
-          {/* PDF Section Header matching Right-Side Playlist Header */}
-          <div className="px-4 py-3 sm:px-4.5 sm:py-3.5 rounded-2xl bg-[#091326]/90 backdrop-blur-md border border-rose-500/25 shadow-lg flex items-center justify-between gap-3 flex-wrap">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-rose-500/15 border border-rose-400/30 flex items-center justify-center text-rose-400 shrink-0">
-                <FileText className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="font-display font-bold text-sm sm:text-base text-white flex items-center gap-1.5">
-                  আপলোডকৃত পিডিএফ ও লেকচার শিট তালিকা
-                </h3>
-                <p className="text-slate-400 text-[11px] font-sans">
-                  বাম থেকে ডানে স্ক্রল করে লেকচার শিট পড়ুন ও ডাউনলোড করুন
-                </p>
-              </div>
-            </div>
-
-            {/* Counter and Navigation Arrows */}
-            <div className="flex items-center gap-2">
-              <span className="px-3 py-1 rounded-full bg-rose-500/15 text-rose-300 border border-rose-400/30 text-xs font-mono font-bold shrink-0 shadow-sm">
-                {filteredNotes.length} PDFs
-              </span>
-
-              <div className="flex items-center gap-1.5 ml-1">
-                <button
-                  type="button"
-                  onClick={() => scrollNotes('left')}
-                  className={`p-2 rounded-xl border text-xs font-semibold flex items-center justify-center transition-all cursor-pointer shadow-sm active:scale-95 ${
-                    canScrollNotesLeft
-                      ? 'bg-rose-500/20 text-rose-300 border-rose-400/60 hover:bg-rose-500/30'
-                      : 'bg-white/5 text-slate-400 border-white/10 hover:bg-white/10 hover:text-slate-200'
-                  }`}
-                  title="বাম দিকে স্ক্রল করুন (Previous)"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => scrollNotes('right')}
-                  className={`p-2 rounded-xl border text-xs font-semibold flex items-center justify-center transition-all cursor-pointer shadow-sm active:scale-95 ${
-                    canScrollNotesRight
-                      ? 'bg-rose-500/20 text-rose-300 border-rose-400/60 hover:bg-rose-500/30'
-                      : 'bg-white/5 text-slate-400 border-white/10 hover:bg-white/10 hover:text-slate-200'
-                  }`}
-                  title="ডান দিকে স্ক্রল করুন (Next)"
-                >
-                  <ChevronRight className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* Horizontal Scrollable Slider of PDFs (Left to Right) */}
-          <div 
-            ref={notesScrollRef}
-            className="flex gap-3.5 sm:gap-4 overflow-x-auto pb-3.5 pt-1 custom-scrollbar snap-x scroll-smooth overscroll-x-contain"
-            style={{ scrollSnapType: 'x mandatory' }}
-          >
+        {/* Tab 2 Content: PDF Lecture Notes & Sheets */}
+        {classroomContentType === 'pdf' && (
+          <div className="space-y-3 sm:space-y-3.5 max-h-[580px] lg:max-h-[720px] overflow-y-auto pr-1.5 custom-scrollbar overscroll-contain rounded-2xl">
             {filteredNotes.length > 0 ? (
               filteredNotes.map((note, idx) => {
                 const bannerUrl = getNoteBannerUrl(note, coursesList);
+                const isRelatedToActiveVideo = activeVideo && (
+                  (activeVideo.courseId && note.courseId === activeVideo.courseId) ||
+                  (activeVideo.subject && note.subject?.trim().toLowerCase() === activeVideo.subject?.trim().toLowerCase())
+                );
 
                 return (
-                  <div 
-                    key={note.id} 
-                    className="w-[260px] sm:w-[300px] md:w-[320px] shrink-0 snap-start rounded-2xl border transition-all duration-300 overflow-hidden group relative bg-[#091326]/90 hover:bg-[#0d1d36]/90 border-white/10 hover:border-rose-500/40 hover:shadow-[0_0_20px_rgba(244,63,94,0.15)] flex flex-col justify-between"
+                  <div
+                    key={note.id}
+                    className={`rounded-2xl border transition-all duration-300 overflow-hidden group relative ${
+                      isRelatedToActiveVideo
+                        ? 'bg-gradient-to-br from-[#1a0f26] via-[#120d22] to-[#0a0718] border-rose-500/40 shadow-[0_0_20px_rgba(244,63,94,0.2)] ring-1 ring-rose-500/30'
+                        : 'bg-[#091326]/90 hover:bg-[#0d1d36]/90 border-white/10 hover:border-rose-500/40 hover:shadow-[0_0_20px_rgba(244,63,94,0.15)]'
+                    }`}
                   >
-                    {/* 1. Large 16:9 Banner Image Header (Identical to Right-Side Playlist Cards) */}
-                    <div 
+                    {/* 1. Large 16:9 Banner Image Header */}
+                    <div
                       onClick={() => handleOpenPDF(note)}
                       className="w-full aspect-[16/9] relative overflow-hidden bg-slate-950 border-b border-white/10 select-none cursor-pointer"
                     >
-                      <img 
-                        src={bannerUrl} 
-                        alt={note.title} 
+                      <img
+                        src={bannerUrl}
+                        alt={note.title}
                         referrerPolicy="no-referrer"
                         onError={(e) => {
                           e.currentTarget.src = getDefaultSubjectBanner(note.subject);
                         }}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                       />
 
                       {/* Top Overlay Badges */}
@@ -1846,13 +1813,13 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
                             {note.subject}
                           </span>
                           {note.courseTitle && (
-                            <span className="text-[10px] font-mono font-semibold bg-purple-950/85 backdrop-blur-md text-purple-300 border border-purple-400/40 px-2.5 py-0.5 rounded-lg truncate max-w-[140px] shadow-sm">
+                            <span className="text-[10px] font-mono font-semibold bg-purple-950/85 backdrop-blur-md text-purple-300 border border-purple-400/40 px-2.5 py-0.5 rounded-lg truncate max-w-[150px] shadow-sm">
                               📚 {note.courseTitle}
                             </span>
                           )}
                         </div>
 
-                        {/* Bookmark / PDF Button */}
+                        {/* Bookmark Button */}
                         <button
                           type="button"
                           onClick={(e) => {
@@ -1866,10 +1833,10 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
                         </button>
                       </div>
 
-                      {/* Center Read Indicator / Hover Overlay */}
+                      {/* Center Action Overlay */}
                       <div className="absolute inset-0 bg-slate-950/35 group-hover:bg-slate-950/15 transition-all flex items-center justify-center">
-                        <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-slate-950/85 backdrop-blur-md border border-white/30 text-white flex items-center justify-center shadow-xl group-hover:scale-110 group-hover:bg-rose-500 group-hover:text-white group-hover:border-rose-300 transition-all">
-                          <BookOpen className="w-5 h-5 ml-0.5 fill-current" />
+                        <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-rose-500/90 hover:bg-rose-500 text-white flex items-center justify-center shadow-[0_0_20px_rgba(244,63,94,0.6)] group-hover:scale-110 transition-all border border-rose-300">
+                          <FileText className="w-5 h-5 ml-0.5 fill-current" />
                         </div>
                       </div>
 
@@ -1879,36 +1846,34 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
                           <Clock className="w-3 h-3 text-rose-400" />
                           {new Date(note.createdAt).toLocaleDateString()}
                         </span>
-                        <span className="font-bold text-rose-300">পিডিএফ #{idx + 1}</span>
+                        <span className="font-bold text-rose-300">নোট #{idx + 1}</span>
                       </div>
                     </div>
 
                     {/* 2. Card Content Body */}
-                    <div className="p-4 sm:p-4.5 space-y-2.5 flex-1 flex flex-col justify-between">
-                      <div>
-                        <h4 
-                          onClick={() => handleOpenPDF(note)}
-                          className="font-display font-bold text-sm sm:text-[15px] line-clamp-2 leading-snug text-white group-hover:text-rose-300 transition-colors cursor-pointer"
-                        >
-                          {note.title}
-                        </h4>
+                    <div className="p-4 space-y-2.5">
+                      <h4
+                        onClick={() => handleOpenPDF(note)}
+                        className="font-display font-bold text-sm sm:text-[15px] line-clamp-2 leading-snug text-white hover:text-rose-300 transition-colors cursor-pointer"
+                      >
+                        {note.title}
+                      </h4>
 
-                        {note.description && (
-                          <p className="text-slate-300 text-xs line-clamp-2 font-sans leading-relaxed mt-1">
-                            {note.description}
-                          </p>
-                        )}
-                      </div>
+                      {note.description && (
+                        <p className="text-slate-300 text-xs line-clamp-2 font-sans leading-relaxed">
+                          {note.description}
+                        </p>
+                      )}
 
-                      {/* Action & Status Row */}
-                      <div className="flex items-center justify-between pt-3 border-t border-white/10 text-xs gap-2">
+                      {/* Action Row: Read, Download, Open */}
+                      <div className="flex items-center justify-between pt-3 border-t border-white/10 gap-2">
                         <button
                           type="button"
                           onClick={() => handleOpenPDF(note)}
-                          className="flex-1 py-2 px-3 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 bg-rose-500/15 group-hover:bg-rose-500 text-rose-300 group-hover:text-white border border-rose-400/30 transition-all cursor-pointer shadow-sm active:scale-95"
+                          className="flex-1 py-1.5 px-2.5 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-200 border border-rose-500/40 text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-sm active:scale-95"
                         >
-                          <BookOpen className="w-3.5 h-3.5" />
-                          <span>নোট পড়ুন (Read)</span>
+                          <BookOpen className="w-3.5 h-3.5 text-rose-300" />
+                          <span>পিডিএফ পড়ুন</span>
                         </button>
 
                         <button
@@ -1917,8 +1882,8 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
                             e.stopPropagation();
                             handleDownloadPDF(note);
                           }}
-                          className="p-2 rounded-lg bg-white/5 hover:bg-emerald-500/20 text-slate-300 hover:text-emerald-300 border border-white/10 hover:border-emerald-400/40 transition-all cursor-pointer shrink-0 active:scale-95"
-                          title="সরাসরি ডাউনলোড করুন"
+                          className="p-1.5 rounded-lg bg-white/5 hover:bg-emerald-500/20 text-slate-300 hover:text-emerald-300 border border-white/10 hover:border-emerald-400/40 transition-all cursor-pointer shrink-0 active:scale-95"
+                          title="পিডিএফ ফাইল ডাউনলোড করুন"
                         >
                           <Download className="w-4 h-4" />
                         </button>
@@ -1929,7 +1894,7 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
                             e.stopPropagation();
                             openPdfInBrowser(note.pdfUrl);
                           }}
-                          className="p-2 rounded-lg bg-white/5 hover:bg-purple-500/20 text-slate-300 hover:text-purple-300 border border-white/10 hover:border-purple-400/40 transition-all cursor-pointer shrink-0 active:scale-95"
+                          className="p-1.5 rounded-lg bg-white/5 hover:bg-purple-500/20 text-slate-300 hover:text-purple-300 border border-white/10 hover:border-purple-400/40 transition-all cursor-pointer shrink-0 active:scale-95"
                           title="ব্রাউজারে নতুন ট্যাবে খুলুন"
                         >
                           <ExternalLink className="w-4 h-4" />
@@ -1940,11 +1905,13 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
                 );
               })
             ) : (
-              <div className="w-full p-8 rounded-2xl border border-dashed border-white/10 text-center text-slate-400 text-sm">
+              <div className="p-8 rounded-2xl border border-dashed border-white/10 text-center text-slate-400 text-sm">
                 বর্তমান ফিল্টারে কোনো পিডিএফ লেকচার নোট পাওয়া যায়নি।
               </div>
             )}
           </div>
+        )}
+
         </div>
 
       </div>

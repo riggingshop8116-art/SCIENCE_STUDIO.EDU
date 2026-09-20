@@ -21,14 +21,22 @@ import {
   canAttemptSupabase,
   isNetworkError,
   markSupabaseOffline
-} from './src/lib/supabaseSync.js';
+} from './src/lib/supabaseSync.ts';
 
 dotenv.config();
 
 const appDir = typeof __dirname !== 'undefined' ? __dirname : process.cwd();
 const isVercel = !!process.env.VERCEL || !!process.env.AWS_LAMBDA_FUNCTION_NAME || !!process.env.NOW_REGION;
-const DB_PATH = isVercel ? path.join('/tmp', 'db.json') : path.join(appDir, 'db.json');
-const PORT = 3000;
+let DB_PATH = isVercel ? path.join('/tmp', 'db.json') : path.join(appDir, 'db.json');
+
+// Detect if running inside the AI Studio dev sandbox container with internal nginx reverse proxy
+const isDevSandbox = Boolean(process.env.CONTROL_PLANE_PORT || process.env.DEFAULT_APP_PORT);
+
+// In Cloud Run standalone production deployment, Cloud Run injects PORT (typically 8080) and expects listening on $PORT.
+// In the AI Studio dev sandbox, internal nginx reverse-proxies port 8080 -> 3000, so the app must bind to 3000.
+const PORT = isDevSandbox 
+  ? 3000 
+  : (process.env.PORT ? parseInt(process.env.PORT, 10) : 3000);
 
 // Initialize Database structure
 interface DBStructure {
@@ -37,6 +45,9 @@ interface DBStructure {
   notes: any[];
   courses?: any[];
   deletedUserIds?: string[];
+  deletedCourseIds?: string[];
+  deletedClassIds?: string[];
+  deletedNoteIds?: string[];
   settings?: {
     academyName: string;
     announcement: string;
@@ -365,19 +376,34 @@ const defaultDB: DBStructure = {
       features: ["লাইভ প্রোগ্রামিং ল্যাব", "এইচএসসি প্র্যাকটিক্যাল সলভ", "শর্টকাট নোটস", "২৪/৭ ডাউট সলভ"],
       createdAt: "2026-08-16T00:00:00.000Z"
     }
-  ]
+  ],
+  deletedUserIds: []
 };
 
 // Database helper functions
 function readDB(): DBStructure {
   try {
     if (!fs.existsSync(DB_PATH)) {
-      fs.writeFileSync(DB_PATH, JSON.stringify(defaultDB, null, 2));
+      try {
+        fs.writeFileSync(DB_PATH, JSON.stringify(defaultDB, null, 2));
+      } catch (writeErr: any) {
+        if (writeErr && (writeErr.code === 'EACCES' || writeErr.code === 'EROFS')) {
+          DB_PATH = path.join('/tmp', 'db.json');
+          try {
+            fs.writeFileSync(DB_PATH, JSON.stringify(defaultDB, null, 2));
+          } catch {}
+        }
+      }
       return defaultDB;
     }
     const data = fs.readFileSync(DB_PATH, 'utf8');
     const parsed = JSON.parse(data);
     let updated = false;
+
+    if (!Array.isArray(parsed.deletedUserIds)) {
+      parsed.deletedUserIds = [];
+      updated = true;
+    }
 
     if (!parsed.courses) {
       parsed.courses = defaultDB.courses;
@@ -442,7 +468,16 @@ function readDB(): DBStructure {
     }
 
     if (updated) {
-      fs.writeFileSync(DB_PATH, JSON.stringify(parsed, null, 2));
+      try {
+        fs.writeFileSync(DB_PATH, JSON.stringify(parsed, null, 2));
+      } catch (saveErr: any) {
+        if (saveErr && (saveErr.code === 'EACCES' || saveErr.code === 'EROFS')) {
+          DB_PATH = path.join('/tmp', 'db.json');
+          try {
+            fs.writeFileSync(DB_PATH, JSON.stringify(parsed, null, 2));
+          } catch {}
+        }
+      }
     }
     return parsed;
   } catch (err) {
@@ -454,7 +489,13 @@ function readDB(): DBStructure {
 function writeDB(data: DBStructure) {
   try {
     fs.writeFileSync(DB_PATH, JSON.stringify(data, null, 2));
-  } catch (err) {
+  } catch (err: any) {
+    if (err && (err.code === 'EACCES' || err.code === 'EROFS')) {
+      DB_PATH = path.join('/tmp', 'db.json');
+      try {
+        fs.writeFileSync(DB_PATH, JSON.stringify(data, null, 2));
+      } catch {}
+    }
     console.warn("Notice: Local DB file write skipped:", err);
   }
   // Asynchronously push updates to Supabase
@@ -481,6 +522,20 @@ export async function ensureDBSyncedWithSupabase(force = false): Promise<DBStruc
     try {
       const remoteData = await loadFromSupabase(currentDB);
       if (remoteData) {
+        // Ensure tombstones from currentDB and remoteData are merged and never lost
+        const localDeleted = Array.isArray(currentDB.deletedUserIds) ? currentDB.deletedUserIds : [];
+        const remoteDeleted = Array.isArray(remoteData.deletedUserIds) ? remoteData.deletedUserIds : [];
+        const combinedDeleted = Array.from(new Set([...localDeleted, ...remoteDeleted]));
+        remoteData.deletedUserIds = combinedDeleted;
+
+        // Ensure users in remoteData do not contain any tombstoned users
+        const tombstoneSet = new Set(combinedDeleted.map(x => String(x).toLowerCase().trim()));
+        remoteData.users = (remoteData.users || []).filter(u => {
+          const uId = String(u.id || '').toLowerCase().trim();
+          const uEmail = (u.email || '').toLowerCase().trim();
+          return (!uId || !tombstoneSet.has(uId)) && (!uEmail || !tombstoneSet.has(uEmail));
+        });
+
         try {
           fs.writeFileSync(DB_PATH, JSON.stringify(remoteData, null, 2));
         } catch (e) {}
@@ -668,9 +723,20 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
             ? Boolean(sbUser.isApproved)
             : (nested.isApproved !== undefined ? Boolean(nested.isApproved) : Boolean(u.isApproved || false)));
         
-        const enrolledList = Array.isArray(sbUser.enrolledCourseTitles) 
-          ? sbUser.enrolledCourseTitles 
-          : (Array.isArray(sbUser.enrolled_courses) ? sbUser.enrolled_courses : (Array.isArray(nested.enrolledCourseTitles) ? nested.enrolledCourseTitles : u.enrolledCourseTitles));
+        const rawSbCourses = (Array.isArray(sbUser.enrolled_courses) && sbUser.enrolled_courses.length > 0)
+          ? sbUser.enrolled_courses
+          : ((Array.isArray(sbUser.enrolledCourseTitles) && sbUser.enrolledCourseTitles.length > 0)
+            ? sbUser.enrolledCourseTitles
+            : ((Array.isArray(nested.enrolledCourseTitles) && nested.enrolledCourseTitles.length > 0)
+              ? nested.enrolledCourseTitles
+              : (sbUser.course && typeof sbUser.course === 'string' && sbUser.course.trim()
+                ? [sbUser.course.trim()]
+                : [])));
+
+        const mergedEnrolled = Array.from(new Set([
+          ...(Array.isArray(u.enrolledCourseTitles) ? u.enrolledCourseTitles : []),
+          ...rawSbCourses
+        ]));
 
         u.isApproved = isApprovedVal;
         
@@ -686,12 +752,12 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
           u.name = emailDerivedName;
         }
 
-        u.phone = sbUser.phone || nested.phone || u.phone;
+        u.phone = sbUser.phone || nested.phone || sbUser.sender_phone || nested.senderPhone || u.phone;
         u.studentClass = sbUser.batch || sbUser.student_class || nested.studentClass || u.studentClass;
-        u.enrolledCourseTitles = enrolledList;
-        u.transactionId = sbUser.transactionId || sbUser.transaction_id || nested.transactionId || u.transactionId;
-        u.paymentMethod = sbUser.payment_method || nested.paymentMethod || u.paymentMethod;
-        u.senderPhone = sbUser.sender_phone || nested.senderPhone || u.senderPhone;
+        u.enrolledCourseTitles = mergedEnrolled.length > 0 ? mergedEnrolled : (u.enrolledCourseTitles || []);
+        u.transactionId = sbUser.transactionId || sbUser.transaction_id || nested.transactionId || u.transactionId || '';
+        u.paymentMethod = sbUser.payment_method || sbUser.paymentMethod || nested.paymentMethod || u.paymentMethod || '';
+        u.senderPhone = sbUser.sender_phone || sbUser.senderPhone || nested.senderPhone || u.senderPhone || '';
         if (sbUser.role) u.role = sbUser.role;
 
         // Preserve profile picture / avatar across approval and refreshes
@@ -1151,8 +1217,13 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
       db.users.push(newUser);
       writeDB(db);
 
-      // Register user in Supabase Authentication (auth.users)
-      // Per requirements: Data is saved to Supabase Auth. It will be added to app_users (Table Editor) once admin approves.
+      // Persist new user directly to Supabase app_users table and Supabase Auth
+      try {
+        await upsertUserToSupabase(newUser).catch(() => {});
+      } catch (upsertErr) {
+        console.log("Supabase direct user upsert notice:", upsertErr);
+      }
+
       try {
         await Promise.race([
           registerUserInSupabaseAuth(cleanEmail, password, studentName, cleanPhone, newUser),
@@ -1548,10 +1619,32 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
     }
   });
 
-  // Classes: Get all video classes (accessible to both students and admins)
+  // Classes: Get all video classes (accessible to both students and admins, with strict enrollment isolation)
   app.get('/api/classes', requireAuth, (req, res) => {
     const db = readDB();
-    const formattedClasses = (db.classes || []).map(c => ({
+    const requestingUser = (req as any).user;
+    const deletedClassSet = new Set(Array.isArray(db.deletedClassIds) ? db.deletedClassIds : []);
+    let list = (db.classes || []).filter(c => !deletedClassSet.has(c.id));
+
+    // Strict Classroom Isolation: Students can ONLY access classes of courses they are enrolled in and approved for!
+    if (requestingUser && requestingUser.role !== 'admin') {
+      if (!requestingUser.isApproved) {
+        return res.status(403).json({ 
+          error: "আপনার অ্যাকাউন্টটি এখনও এডমিন কর্তৃক অনুমোদিত হয়নি। অনুমোদনের পর আপনি আপনার ক্লাসরুমে প্রবেশ করতে পারবেন।" 
+        });
+      }
+      
+      const enrolled = Array.isArray(requestingUser.enrolledCourseTitles) 
+        ? requestingUser.enrolledCourseTitles.map((t: string) => t.trim().toLowerCase()) 
+        : [];
+      
+      list = list.filter(c => {
+        if (!c.courseTitle) return true;
+        return enrolled.includes(c.courseTitle.trim().toLowerCase());
+      });
+    }
+
+    const formattedClasses = list.map(c => ({
       ...c,
       videoUrl: serverFormatVideoEmbedUrl(c.videoUrl)
     }));
@@ -1636,6 +1729,12 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
     }
 
     db.classes.splice(index, 1);
+    if (!Array.isArray(db.deletedClassIds)) {
+      db.deletedClassIds = [];
+    }
+    if (!db.deletedClassIds.includes(id)) {
+      db.deletedClassIds.push(id);
+    }
     writeDB(db);
 
     try {
@@ -1653,10 +1752,32 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
     res.json({ message: "Class successfully deleted." });
   });
 
-  // Notes: Get all lecture notes (accessible to both students and admins)
+  // Notes: Get all lecture notes (accessible to both students and admins, with strict enrollment isolation)
   app.get('/api/notes', requireAuth, (req, res) => {
     const db = readDB();
-    res.json(db.notes);
+    const requestingUser = (req as any).user;
+    const deletedNoteSet = new Set(Array.isArray(db.deletedNoteIds) ? db.deletedNoteIds : []);
+    let list = (db.notes || []).filter(n => !deletedNoteSet.has(n.id));
+
+    // Strict Classroom Isolation: Students can ONLY access lecture notes of courses they are enrolled in and approved for!
+    if (requestingUser && requestingUser.role !== 'admin') {
+      if (!requestingUser.isApproved) {
+        return res.status(403).json({ 
+          error: "আপনার অ্যাকাউন্টটি এখনও এডমিন কর্তৃক অনুমোদিত হয়নি।" 
+        });
+      }
+      
+      const enrolled = Array.isArray(requestingUser.enrolledCourseTitles) 
+        ? requestingUser.enrolledCourseTitles.map((t: string) => t.trim().toLowerCase()) 
+        : [];
+      
+      list = list.filter(n => {
+        if (!n.courseTitle) return true;
+        return enrolled.includes(n.courseTitle.trim().toLowerCase());
+      });
+    }
+
+    res.json(list);
   });
 
   // Notes: Create a new note (Admin only)
@@ -1718,6 +1839,12 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 
     const noteToDelete = db.notes[index];
     db.notes.splice(index, 1);
+    if (!Array.isArray(db.deletedNoteIds)) {
+      db.deletedNoteIds = [];
+    }
+    if (!db.deletedNoteIds.includes(id)) {
+      db.deletedNoteIds.push(id);
+    }
     writeDB(db);
 
     try {
@@ -1746,6 +1873,7 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
     try {
       const db = readDB();
       if (!db.courses) db.courses = [];
+      const deletedCourseSet = new Set(Array.isArray(db.deletedCourseIds) ? db.deletedCourseIds : []);
 
       // Fetch live courses from Supabase with timeout if available
       if (canAttemptSupabase()) {
@@ -1761,6 +1889,11 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
           if (Array.isArray(sbResponse?.data) && sbResponse.data.length > 0) {
             let updated = false;
             sbResponse.data.forEach((r: any) => {
+              if (r.id && deletedCourseSet.has(r.id)) {
+                // Course was deleted by admin; purge from Supabase if still present
+                supabaseServer.from('app_courses').delete().eq('id', r.id).then();
+                return;
+              }
               const existingIndex = db.courses!.findIndex(c => c.id === r.id);
               const courseObj = {
                 id: r.id,
@@ -1800,7 +1933,8 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
         }
       }
 
-      res.json(db.courses);
+      const activeCourses = (db.courses || []).filter(c => !deletedCourseSet.has(c.id));
+      res.json(activeCourses);
     } catch (err: any) {
       console.error("Get courses error:", err);
       res.status(500).json({ error: "কোর্স তালিকা পেতে সমস্যা হয়েছে।" });
@@ -1921,6 +2055,13 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
       const courseToDelete = db.courses[index];
       db.courses.splice(index, 1);
 
+      if (!Array.isArray(db.deletedCourseIds)) {
+        db.deletedCourseIds = [];
+      }
+      if (!db.deletedCourseIds.includes(id)) {
+        db.deletedCourseIds.push(id);
+      }
+
       // Collect IDs of classes and notes to remove
       const deletedClassIds: string[] = [];
       if (db.classes && Array.isArray(db.classes)) {
@@ -1934,6 +2075,12 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
         });
         db.classes = remainingClasses;
       }
+      if (!Array.isArray(db.deletedClassIds)) {
+        db.deletedClassIds = [];
+      }
+      deletedClassIds.forEach(cId => {
+        if (!db.deletedClassIds.includes(cId)) db.deletedClassIds.push(cId);
+      });
 
       const deletedNoteIds: string[] = [];
       if (db.notes && Array.isArray(db.notes)) {
@@ -1947,6 +2094,12 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
         });
         db.notes = remainingNotes;
       }
+      if (!Array.isArray(db.deletedNoteIds)) {
+        db.deletedNoteIds = [];
+      }
+      deletedNoteIds.forEach(nId => {
+        if (!db.deletedNoteIds.includes(nId)) db.deletedNoteIds.push(nId);
+      });
 
       if (db.users && Array.isArray(db.users)) {
         db.users.forEach(u => {
@@ -1989,6 +2142,7 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
   app.get('/api/admin/stats', requireAdmin, async (req, res) => {
     try {
       const db = readDB();
+      const tombstoneSet = new Set((db.deletedUserIds || []).map((x: any) => String(x).toLowerCase().trim()));
 
       // Ensure users are synced from Supabase for accurate student count if online
       if (canAttemptSupabase()) {
@@ -2004,9 +2158,18 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
           if (Array.isArray(sbResponse?.data) && sbResponse.data.length > 0) {
             let updated = false;
             sbResponse.data.forEach((r: any) => {
-              const existing = db.users.find(u => (u.id && r.id && u.id === r.id) || (u.email && r.email && u.email.toLowerCase() === r.email.toLowerCase()));
+              const rId = String(r.id || '').toLowerCase().trim();
+              const userEmail = r.email ? r.email.toLowerCase().trim() : '';
+
+              // STRICT: If user is tombstoned, NEVER add back to db.users, and purge from Supabase!
+              if ((rId && tombstoneSet.has(rId)) || (userEmail && tombstoneSet.has(userEmail))) {
+                if (r.id) supabaseServer.from('app_users').delete().eq('id', r.id).then();
+                if (r.email) supabaseServer.from('app_users').delete().ilike('email', r.email).then();
+                return;
+              }
+
+              const existing = db.users.find(u => (u.id && r.id && u.id === r.id) || (u.email && userEmail && u.email.toLowerCase().trim() === userEmail));
               if (!existing) {
-                const userEmail = r.email ? r.email.toLowerCase().trim() : '';
                 const emailDerivedName = userEmail.includes('@') 
                   ? userEmail.split('@')[0].charAt(0).toUpperCase() + userEmail.split('@')[0].slice(1) 
                   : 'শিক্ষার্থী';
@@ -2043,7 +2206,15 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
         }
       }
 
-      const students = db.users.filter(u => u.role === 'student');
+      // Filter out any tombstoned users before counting
+      const activeStudents = db.users.filter(u => {
+        if (u.role !== 'student') return false;
+        const uId = String(u.id || '').toLowerCase().trim();
+        const uEmail = (u.email || '').toLowerCase().trim();
+        if (uId && tombstoneSet.has(uId)) return false;
+        if (uEmail && tombstoneSet.has(uEmail)) return false;
+        return true;
+      });
       
       // Calculate subject distributions
       const subjects = ['Physics', 'Chemistry', 'Biology', 'Mathematics', 'General Science'];
@@ -2058,7 +2229,7 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
       });
 
       res.json({
-        totalStudents: students.length,
+        totalStudents: activeStudents.length,
         totalClasses: db.classes.length,
         totalNotes: db.notes.length,
         subjectDistribution
@@ -2102,13 +2273,19 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 
               // Extract nested or column data
               const nested = (r.data && typeof r.data === 'object') ? r.data : {};
-              const sbCourses = Array.isArray(r.enrolled_courses) && r.enrolled_courses.length > 0
+              const sbCourses = (Array.isArray(r.enrolled_courses) && r.enrolled_courses.length > 0)
                 ? r.enrolled_courses
-                : (Array.isArray(r.enrolledCourseTitles) ? r.enrolledCourseTitles : (Array.isArray(nested.enrolledCourseTitles) ? nested.enrolledCourseTitles : []));
+                : ((Array.isArray(r.enrolledCourseTitles) && r.enrolledCourseTitles.length > 0)
+                  ? r.enrolledCourseTitles
+                  : ((Array.isArray(nested.enrolledCourseTitles) && nested.enrolledCourseTitles.length > 0)
+                    ? nested.enrolledCourseTitles
+                    : (r.course && typeof r.course === 'string' && r.course.trim()
+                      ? [r.course.trim()]
+                      : (nested.course && typeof nested.course === 'string' && nested.course.trim() ? [nested.course.trim()] : []))));
               const sbTrx = r.transaction_id || r.transactionId || nested.transactionId || '';
               const sbPayment = r.payment_method || r.paymentMethod || nested.paymentMethod || '';
               const sbSender = r.sender_phone || r.senderPhone || nested.senderPhone || '';
-              const sbPhone = r.phone || nested.phone || '';
+              const sbPhone = r.phone || nested.phone || r.sender_phone || r.senderPhone || nested.senderPhone || '';
               const sbApproved = r.is_approved !== undefined && r.is_approved !== null
                 ? Boolean(r.is_approved)
                 : (r.isApproved !== undefined && r.isApproved !== null ? Boolean(r.isApproved) : (nested.isApproved !== undefined ? Boolean(nested.isApproved) : false));
@@ -2137,6 +2314,7 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
                   ...localUser,
                   name: rawName || emailDerived,
                   email: localUser.email || cleanSupabaseEmail || nested.email || '',
+                  password: localUser.password || r.password || nested.password || '',
                   role: localUser.role || r.role || nested.role || 'student',
                   phone: localUser.phone || sbPhone || '',
                   studentClass: localUser.studentClass || r.student_class || nested.studentClass || '',
@@ -2164,6 +2342,7 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
                   id: r.id || 'usr_' + Math.random().toString(36).substring(2, 9),
                   name: rawNewName || emailDerived,
                   email: cleanSupabaseEmail || nested.email || '',
+                  password: r.password || nested.password || '',
                   role: r.role || nested.role || 'student',
                   isApproved: sbApproved,
                   phone: sbPhone,
@@ -2197,7 +2376,10 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
           if (u.email && tombstoneFilter.has(u.email.toLowerCase().trim())) return false;
           return true;
         })
-        .map(({ password: _, ...u }) => u);
+        .map((u: any) => ({
+          ...u,
+          password: u.password || ''
+        }));
 
       // Sort: Admin ID always on top, then sorted by most recent registration date (newest students first)
       cleanUsers.sort((a: any, b: any) => {
@@ -2213,7 +2395,8 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 
         const timeA = new Date(a.createdAt || a.joinedAt || 0).getTime();
         const timeB = new Date(b.createdAt || b.joinedAt || 0).getTime();
-        return timeB - timeA;
+        if (timeB !== timeA) return timeB - timeA;
+        return String(a.id || a.email || '').localeCompare(String(b.id || b.email || ''));
       });
 
       res.json(cleanUsers);
@@ -2365,20 +2548,16 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
       writeDB(db);
 
       // Immediate synchronous sync to Supabase database
-      // If approved: add to app_users table (Table Editor)
-      // If unapproved: remove from app_users table (remains in Supabase Auth)
+      // Preserves all user data (name, phone, trxID, enrolled courses, approval status)
       if (canAttemptSupabase()) {
         try {
-          if (user.isApproved) {
-            await upsertUserToSupabase(user);
-          } else {
-            await supabaseServer.from('app_users').delete().eq('id', user.id);
-          }
+          await upsertUserToSupabase(user);
           if (user.email) {
             updateUserInSupabaseAuth(user.email, user.password, {
               isApproved: user.isApproved,
               enrolledCourseTitles: user.enrolledCourseTitles,
-              transactionId: user.transactionId || ''
+              transactionId: user.transactionId || '',
+              phone: user.phone || ''
             }).catch(() => {});
           }
         } catch (e) {
@@ -2457,9 +2636,13 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
       user.enrolledCourseTitles.push(courseTitle);
     }
 
-    if (transactionId !== undefined && transactionId !== null) user.transactionId = String(transactionId).trim();
-    if (paymentMethod !== undefined && paymentMethod !== null) user.paymentMethod = String(paymentMethod).trim();
-    if (senderPhone !== undefined && senderPhone !== null) user.senderPhone = String(senderPhone).trim();
+    const cleanTrx = transactionId !== undefined && transactionId !== null ? String(transactionId).trim() : '';
+    const cleanPayMethod = paymentMethod !== undefined && paymentMethod !== null ? String(paymentMethod).trim() : '';
+    const cleanSender = senderPhone !== undefined && senderPhone !== null ? String(senderPhone).trim() : '';
+
+    if (cleanTrx) user.transactionId = cleanTrx;
+    if (cleanPayMethod) user.paymentMethod = cleanPayMethod;
+    if (cleanSender) user.senderPhone = cleanSender;
 
     const token = generateSessionToken(user);
     user.token = token;
@@ -2481,8 +2664,11 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
       }
     }
 
-    if (user.isApproved) {
+    // Always persist updated user to Supabase app_users table
+    try {
       await upsertUserToSupabase(user).catch(() => {});
+    } catch (upsertErr) {
+      console.log("Supabase enrollment user upsert notice:", upsertErr);
     }
 
     const { password: _, ...userWithoutPassword } = user;
@@ -2591,40 +2777,55 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
   app.delete('/api/admin/users/:id', requireAdmin, async (req, res) => {
     const { id } = req.params;
     const db = readDB();
-    const index = db.users.findIndex(u => u.id === id);
-    if (index === -1) {
-      return res.status(404).json({ error: "User not found." });
-    }
+    const cleanParam = id.trim().toLowerCase();
 
-    if (id === 'usr_admin') {
+    // Find by either ID or Email
+    const index = db.users.findIndex(u => 
+      (u.id && u.id === id) || 
+      (u.email && u.email.toLowerCase().trim() === cleanParam)
+    );
+
+    if (id === 'usr_admin' || cleanParam === 'admin@sciencestudio.com' || cleanParam === 'mdshakibhossen2050@gmail.com') {
       return res.status(400).json({ error: "Cannot delete the primary administrator." });
     }
 
-    const deletedUser = db.users[index];
-    db.users.splice(index, 1);
+    const targetUser = index !== -1 ? db.users[index] : null;
+    const targetEmail = targetUser?.email || (cleanParam.includes('@') ? cleanParam : '');
+    const targetId = targetUser?.id || id;
+
+    if (index !== -1) {
+      db.users.splice(index, 1);
+    }
+
     if (!Array.isArray(db.deletedUserIds)) {
       db.deletedUserIds = [];
     }
-    if (id && !db.deletedUserIds.includes(id)) {
-      db.deletedUserIds.push(id);
+    if (targetId && !db.deletedUserIds.includes(targetId)) {
+      db.deletedUserIds.push(targetId);
     }
-    if (deletedUser?.email) {
-      const cleanEmail = deletedUser.email.trim().toLowerCase();
-      if (!db.deletedUserIds.includes(cleanEmail)) {
-        db.deletedUserIds.push(cleanEmail);
+    if (targetEmail) {
+      const lower = targetEmail.trim().toLowerCase();
+      if (!db.deletedUserIds.includes(lower)) {
+        db.deletedUserIds.push(lower);
       }
     }
     writeDB(db);
 
-    // Concurrently await both remote deletion and sync before returning response
-    // to prevent race condition where GET /api/admin/users re-imports the user from Supabase
+    // Concurrently purge from Supabase app_users table and Auth RPC
     try {
       await Promise.race([
         Promise.allSettled([
-          deleteUserFromSupabase(id, deletedUser?.email),
+          deleteUserFromSupabase(targetId, targetEmail),
+          (async () => {
+            if (canAttemptSupabase()) {
+              if (targetId) await supabaseServer.from('app_users').delete().eq('id', targetId);
+              if (targetEmail) await supabaseServer.from('app_users').delete().ilike('email', targetEmail);
+              if (targetEmail) await supabaseServer.rpc('delete_auth_user', { target_email: targetEmail });
+            }
+          })(),
           syncToSupabase(readDB())
         ]),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Deletion timeout')), 3000))
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Deletion timeout')), 3500))
       ]);
     } catch (e) {
       console.log('Delete user Supabase sync note:', e);
@@ -2905,26 +3106,83 @@ async function startServer() {
     ensureSupabaseBucket('course-images').catch(() => {});
     ensureSupabaseBucket('pdf-materials').catch(() => {});
 
-    if (process.env.NODE_ENV !== 'production') {
-      const { createServer: createViteServer } = await import('vite');
-      const vite = await createViteServer({
-        server: { middlewareMode: true },
-        appType: 'spa',
+    const isProduction = process.env.NODE_ENV === 'production';
+
+    const serveStaticBuild = () => {
+      const possiblePaths = [
+        path.join(process.cwd(), 'dist'),
+        typeof __dirname !== 'undefined' ? __dirname : '',
+        typeof __dirname !== 'undefined' ? path.join(__dirname, 'dist') : '',
+      ].filter(Boolean);
+
+      const distPath = possiblePaths.find((p) => fs.existsSync(path.join(p, 'index.html'))) || path.join(process.cwd(), 'dist');
+
+      if (fs.existsSync(distPath)) {
+        app.use(express.static(distPath));
+      }
+
+      app.get('*', (req, res, next) => {
+        if (req.path.startsWith('/api/')) {
+          return next();
+        }
+        const indexPath = path.join(distPath, 'index.html');
+        if (fs.existsSync(indexPath)) {
+          return res.sendFile(indexPath);
+        }
+        for (const p of possiblePaths) {
+          const candidate = path.join(p, 'index.html');
+          if (fs.existsSync(candidate)) {
+            return res.sendFile(candidate);
+          }
+        }
+        const rootIndex = path.join(process.cwd(), 'index.html');
+        if (fs.existsSync(rootIndex)) {
+          return res.sendFile(rootIndex);
+        }
+        res.status(404).send('<!DOCTYPE html><html><body><h3>Application build not found. Please build the application.</h3></body></html>');
       });
-      app.use(vite.middlewares);
-      console.log("Starting in Development mode with Vite middleware.");
+
+      console.log("Serving static build from", distPath);
+    };
+
+    if (!isProduction) {
+      try {
+        const { createServer: createViteServer } = await import('vite');
+        const vite = await createViteServer({
+          server: { middlewareMode: true },
+          appType: 'spa',
+        });
+        app.use(vite.middlewares);
+        console.log("Starting in Development mode with Vite middleware.");
+      } catch (viteErr) {
+        console.error("Failed to start Vite middleware, falling back to static server:", viteErr);
+        serveStaticBuild();
+      }
     } else {
-      const distPath = path.join(process.cwd(), 'dist');
-      app.use(express.static(distPath));
-      app.get('*', (req, res) => {
-        res.sendFile(path.join(distPath, 'index.html'));
-      });
-      console.log("Starting in Production mode, serving static build.");
+      serveStaticBuild();
     }
 
-    app.listen(PORT, '0.0.0.0', () => {
+    const server = app.listen(PORT, '0.0.0.0', () => {
       console.log(`Science Studio server running at http://0.0.0.0:${PORT}`);
     });
+
+    server.on('error', (err: any) => {
+      console.error(`Server listener error on port ${PORT}:`, err);
+    });
+
+    // In Cloud Run standalone deployment, also bind to port 3000 if PORT !== 3000
+    if (!isDevSandbox && PORT !== 3000) {
+      try {
+        const secondary = app.listen(3000, '0.0.0.0', () => {
+          console.log(`Science Studio secondary listener active at http://0.0.0.0:3000`);
+        });
+        secondary.on('error', (err: any) => {
+          console.log(`Secondary port 3000 listener notice: ${err.message}`);
+        });
+      } catch (err: any) {
+        console.log(`Secondary port 3000 notice:`, err);
+      }
+    }
   }
 }
 
