@@ -385,16 +385,28 @@ function readDB(): DBStructure {
   try {
     if (!fs.existsSync(DB_PATH)) {
       try {
-        fs.writeFileSync(DB_PATH, JSON.stringify(defaultDB, null, 2));
+        const repoDbPath = path.join(appDir, 'db.json');
+        const initialSeed = fs.existsSync(repoDbPath)
+          ? fs.readFileSync(repoDbPath, 'utf8')
+          : JSON.stringify(defaultDB, null, 2);
+        fs.writeFileSync(DB_PATH, initialSeed);
       } catch (writeErr: any) {
         if (writeErr && (writeErr.code === 'EACCES' || writeErr.code === 'EROFS')) {
           DB_PATH = path.join('/tmp', 'db.json');
           try {
-            fs.writeFileSync(DB_PATH, JSON.stringify(defaultDB, null, 2));
+            const repoDbPath = path.join(appDir, 'db.json');
+            const initialSeed = fs.existsSync(repoDbPath)
+              ? fs.readFileSync(repoDbPath, 'utf8')
+              : JSON.stringify(defaultDB, null, 2);
+            fs.writeFileSync(DB_PATH, initialSeed);
           } catch {}
         }
       }
-      return defaultDB;
+      try {
+        return JSON.parse(fs.readFileSync(DB_PATH, 'utf8'));
+      } catch {
+        return defaultDB;
+      }
     }
     const data = fs.readFileSync(DB_PATH, 'utf8');
     const parsed = JSON.parse(data);
