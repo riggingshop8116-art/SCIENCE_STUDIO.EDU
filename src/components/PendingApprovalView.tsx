@@ -29,7 +29,7 @@ import {
   Layers
 } from 'lucide-react';
 import { User, Course, Settings } from '../types';
-import { supabase } from '../lib/supabase';
+import { supabase, canAttemptSupabase } from '../lib/supabase';
 
 interface PendingApprovalViewProps {
   user: User;
@@ -78,6 +78,44 @@ export default function PendingApprovalView({
     if (isManual) setCheckingStatus(true);
 
     try {
+      // 1. Check Supabase app_users table directly (Highest Reliability & Immediate)
+      if (canAttemptSupabase()) {
+        try {
+          const { data: sbUser } = await supabase
+            .from('app_users')
+            .select('*')
+            .or(`id.eq.${user.id},email.ilike.${user.email}`)
+            .maybeSingle();
+
+          if (sbUser) {
+            const approved = sbUser.isApproved !== undefined 
+              ? Boolean(sbUser.isApproved) 
+              : Boolean(sbUser.is_approved);
+
+            if (approved) {
+              setStatusMessage({
+                type: 'success',
+                text: '🎉 অভিনন্দন! আপনার অ্যাকাউন্টটি সফলভাবে অনুমোদিত হয়েছে। ক্লাসরুম আনলক করা হচ্ছে...'
+              });
+              if (onUpdateUser) {
+                onUpdateUser({
+                  ...user,
+                  ...sbUser,
+                  isApproved: true,
+                  enrolledCourseTitles: Array.isArray(sbUser.enrolledCourseTitles) && sbUser.enrolledCourseTitles.length > 0
+                    ? sbUser.enrolledCourseTitles
+                    : (user.enrolledCourseTitles || [])
+                });
+              }
+              return;
+            }
+          }
+        } catch (sbErr) {
+          console.warn("Supabase direct status check notice:", sbErr);
+        }
+      }
+
+      // 2. Also check backend session API /api/auth/me
       const token = localStorage.getItem('science_studio_token') || `token-${user.id}`;
       const res = await fetch('/api/auth/me', {
         headers: {
@@ -104,20 +142,23 @@ export default function PendingApprovalView({
                 type: 'info',
                 text: '⏳ আপনার অ্যাকাউন্টটি এখনো অ্যাডমিন পর্যালোচনায় রয়েছে। সাধারণত ১৫-৩০ মিনিটের মধ্যে ভেরিফিকেশন সম্পন্ন হয়।'
               });
+              return;
             }
           }
         }
-      } else if (isManual) {
+      }
+
+      if (isManual) {
         setStatusMessage({
-          type: 'error',
-          text: 'স্ট্যাটাস পরীক্ষা করতে সমস্যা হচ্ছে। ইন্টারনেট সংযোগ পরীক্ষা করুন।'
+          type: 'info',
+          text: '⏳ আপনার তথ্য যাচাই করা হচ্ছে। অনুগ্রহ করে কিছুক্ষণ অপেক্ষা করুন।'
         });
       }
     } catch (err) {
       if (isManual) {
         setStatusMessage({
-          type: 'error',
-          text: 'সার্ভারে সংযোগ পেতে সমস্যা হয়েছে।'
+          type: 'info',
+          text: '⏳ আপনার অ্যাকাউন্টটি অ্যাডমিন পর্যালোচনায় রয়েছে।'
         });
       }
     } finally {
@@ -142,7 +183,24 @@ export default function PendingApprovalView({
           { event: '*', schema: 'public', table: 'app_users' },
           (payload: any) => {
             if (payload?.new && (payload.new.id === user.id || payload.new.email?.toLowerCase() === user.email?.toLowerCase())) {
-              handleCheckStatus(false);
+              const approved = payload.new.isApproved !== undefined 
+                ? Boolean(payload.new.isApproved) 
+                : Boolean(payload.new.is_approved);
+              if (approved) {
+                setStatusMessage({
+                  type: 'success',
+                  text: '🎉 অভিনন্দন! আপনার অ্যাকাউন্টটি অনুমোদিত হয়েছে। ক্লাসরুম আনলক করা হচ্ছে...'
+                });
+                if (onUpdateUser) {
+                  onUpdateUser({
+                    ...user,
+                    ...payload.new,
+                    isApproved: true
+                  });
+                }
+              } else {
+                handleCheckStatus(false);
+              }
             }
           }
         )
@@ -184,6 +242,24 @@ export default function PendingApprovalView({
     setEditSubmitting(true);
 
     try {
+      // Sync update directly to Supabase app_users table
+      if (canAttemptSupabase()) {
+        try {
+          await supabase
+            .from('app_users')
+            .update({
+              transactionId: editTrxId.trim(),
+              transaction_id: editTrxId.trim(),
+              paymentMethod: editPaymentMethod,
+              senderPhone: editSenderPhone.trim(),
+              updated_at: new Date().toISOString()
+            })
+            .or(`id.eq.${user.id},email.ilike.${user.email}`);
+        } catch (sbErr) {
+          console.warn("Supabase trx update notice:", sbErr);
+        }
+      }
+
       const token = localStorage.getItem('science_studio_token') || `token-${user.id}`;
       const res = await fetch('/api/user/enroll', {
         method: 'POST',
@@ -319,19 +395,19 @@ export default function PendingApprovalView({
         {/* Header Block: Animated Pending Badge & Title */}
         <div className="relative z-10 flex flex-col items-center text-center space-y-4 mb-8">
           
-          {/* Animated Pulsing Icon */}
+          {/* Icon */}
           <div className="relative">
-            <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-3xl bg-gradient-to-br from-amber-500/20 via-orange-500/15 to-transparent border-2 border-amber-400/50 flex items-center justify-center text-amber-400 shadow-[0_0_30px_rgba(245,158,11,0.3)] animate-pulse">
-              <Hourglass className="w-10 h-10 sm:w-12 sm:h-12 animate-spin-slow" />
+            <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-gradient-to-br from-amber-500/20 via-orange-500/10 to-transparent border border-amber-400/40 flex items-center justify-center text-amber-400 shadow-sm">
+              <Hourglass className="w-8 h-8 sm:w-10 sm:h-10 animate-spin-slow" />
             </div>
-            <div className="absolute -bottom-1 -right-1 p-1.5 rounded-full bg-slate-900 border-2 border-amber-400 text-amber-300">
-              <Clock className="w-4 h-4" />
+            <div className="absolute -bottom-1 -right-1 p-1 rounded-full bg-slate-900 border border-amber-400/80 text-amber-300">
+              <Clock className="w-3.5 h-3.5" />
             </div>
           </div>
 
           {/* Pending Status Chip */}
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-amber-500/15 border border-amber-400/50 text-amber-300 font-mono text-xs sm:text-sm font-bold uppercase tracking-wider shadow-[0_0_20px_rgba(245,158,11,0.2)]">
-            <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping inline-block" />
+          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-amber-500/15 border border-amber-400/30 text-amber-300 font-mono text-xs sm:text-sm font-semibold uppercase tracking-wider shadow-sm">
+            <Clock className="w-3.5 h-3.5 text-amber-400 shrink-0" />
             <span>অ্যাডমিন অনুমোদনের অপেক্ষায় রয়েছে (Approval Pending)</span>
           </div>
 
@@ -399,7 +475,7 @@ export default function PendingApprovalView({
             </div>
 
             {/* Step 3 - Active */}
-            <div className="flex items-center sm:flex-col sm:items-center sm:text-center gap-3 p-3 rounded-xl bg-amber-500/20 border-2 border-amber-400 shadow-[0_0_15px_rgba(245,158,11,0.3)] animate-pulse">
+            <div className="flex items-center sm:flex-col sm:items-center sm:text-center gap-3 p-3 rounded-xl bg-amber-500/15 border border-amber-400/50 shadow-sm">
               <div className="w-8 h-8 rounded-full bg-amber-400 text-slate-950 font-bold flex items-center justify-center shrink-0">
                 <Clock className="w-4 h-4" />
               </div>

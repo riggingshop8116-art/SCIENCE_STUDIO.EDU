@@ -78,6 +78,8 @@ export interface Course {
   title: string;
   subject: string;
   classLevel?: string;
+  instructor?: string;
+  supervisor?: string;
   imageUrl?: string;
   price: number;
   originalPrice?: number;

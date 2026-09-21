@@ -264,7 +264,52 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
           console.error("Error registering course enrollment:", err);
         });
 
-        // Also sync directly with Supabase Auth metadata if client session exists
+        // Also sync directly with Supabase app_users table and Auth metadata
+        if (canAttemptSupabase()) {
+          try {
+            const { error: sbUpErr } = await supabase
+              .from('app_users')
+              .update({
+                enrolledCourseTitles: updatedEnrolled,
+                enrolled_courses: updatedEnrolled,
+                course: courseTitle,
+                transactionId: transactionId.trim(),
+                transaction_id: transactionId.trim(),
+                paymentMethod: paymentMethod,
+                senderPhone: senderPhone.trim(),
+                isApproved: false,
+                is_approved: false,
+                updated_at: new Date().toISOString()
+              })
+              .or(`id.eq.${user.id},email.ilike.${user.email}`);
+
+            if (sbUpErr) {
+              await supabase
+                .from('app_users')
+                .upsert({
+                  id: user.id,
+                  name: user.name || '',
+                  email: user.email || '',
+                  phone: user.phone || '',
+                  password: (user as any).password || 'student123',
+                  role: 'student',
+                  enrolledCourseTitles: updatedEnrolled,
+                  enrolled_courses: updatedEnrolled,
+                  course: courseTitle,
+                  transactionId: transactionId.trim(),
+                  transaction_id: transactionId.trim(),
+                  paymentMethod: paymentMethod,
+                  senderPhone: senderPhone.trim(),
+                  isApproved: false,
+                  is_approved: false,
+                  updated_at: new Date().toISOString()
+                }, { onConflict: 'id' });
+            }
+          } catch (sbErr) {
+            console.warn("Supabase direct enrollment update notice:", sbErr);
+          }
+        }
+
         if (supabase) {
           supabase.auth.updateUser({
             data: {
@@ -721,19 +766,18 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
                   <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/10 rounded-full blur-2xl pointer-events-none" />
                   
                   <div className="space-y-4 w-full flex flex-col items-center">
-                    {/* Centered Large Lock Icon with pulse & ping aura */}
+                    {/* Centered Large Lock Icon */}
                     <div className="relative mx-auto mb-1">
-                      <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-3xl bg-gradient-to-br from-amber-500/30 via-orange-500/20 to-amber-500/10 border-2 border-amber-400/70 flex items-center justify-center text-amber-300 shadow-[0_0_35px_rgba(245,158,11,0.5)]">
-                        <Lock className="w-10 h-10 sm:w-12 sm:h-12 animate-pulse text-amber-300" />
+                      <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-gradient-to-br from-amber-500/25 via-orange-500/15 to-amber-500/10 border border-amber-400/50 flex items-center justify-center text-amber-300 shadow-sm">
+                        <Lock className="w-8 h-8 sm:w-10 sm:h-10 text-amber-300" />
                       </div>
-                      <span className="absolute -top-1 -right-1 flex h-4 w-4">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-4 w-4 bg-amber-500"></span>
+                      <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5">
+                        <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-amber-400 border-2 border-slate-900 shadow-sm"></span>
                       </span>
                     </div>
 
                     <div className="flex flex-col items-center">
-                      <span className="text-[10px] font-mono font-extrabold uppercase px-3 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-400/40 inline-block tracking-wider mb-1.5">
+                      <span className="text-[10px] font-mono font-bold uppercase px-3 py-1 rounded-full bg-amber-500/15 text-amber-300 border border-amber-400/30 inline-block tracking-wider mb-1.5">
                         ACCESS RESTRICTED
                       </span>
                       <h2 className="text-xl sm:text-2xl font-display font-extrabold text-white leading-tight">
@@ -760,7 +804,7 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
                           ডানের ৩টি ধাপ সম্পন্ন করুন
                         </span>
                       </div>
-                      <div className="flex items-center gap-1 text-cyan-300 font-mono text-xs font-bold animate-pulse">
+                      <div className="flex items-center gap-1 text-cyan-300 font-mono text-xs font-bold">
                         <span className="hidden xs:inline">ধাপসমূহ</span>
                         <ChevronRight className="w-4 h-4 text-cyan-300" />
                         <ChevronRight className="w-4 h-4 text-cyan-300 -ml-2.5" />
@@ -786,7 +830,7 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
                   <div className="flex items-center justify-between border-b border-white/10 pb-4 mb-6">
                     <div className="flex items-center gap-2.5">
                       <div className="p-2 rounded-xl bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">
-                        <Key className="w-5 h-5 animate-pulse" />
+                        <Key className="w-5 h-5" />
                       </div>
                       <div>
                         <h3 className="text-base sm:text-lg font-display font-extrabold text-white">
@@ -1720,8 +1764,8 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
                       {/* Center Play Overlay / Now Playing Status Indicator */}
                       <div className="absolute inset-0 bg-slate-950/35 group-hover:bg-slate-950/15 transition-all flex items-center justify-center">
                         {isActive ? (
-                          <div className="px-3.5 py-1.5 rounded-full bg-cyan-500 text-slate-950 font-bold text-xs flex items-center gap-2 shadow-[0_0_20px_rgba(6,182,212,0.8)] border border-cyan-300 animate-pulse">
-                            <span className="w-2 h-2 rounded-full bg-slate-950 animate-ping" />
+                          <div className="px-3.5 py-1.5 rounded-full bg-cyan-400 text-slate-950 font-bold text-xs flex items-center gap-2 shadow-md border border-cyan-200">
+                            <span className="w-2 h-2 rounded-full bg-slate-950" />
                             <span>▶ চলমান ক্লাস (Playing)</span>
                           </div>
                         ) : (
@@ -2102,14 +2146,11 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
                   : 'bg-white/5 border-white/10 text-slate-400 hover:text-white hover:border-pink-500/40 hover:bg-pink-500/10'
               }`}
             >
-              <div className="w-8 h-8 rounded-full bg-pink-500/20 border border-pink-400/50 flex items-center justify-center text-pink-400 font-black text-xs group-hover:scale-110 transition-transform">
+                <div className="w-8 h-8 rounded-full bg-pink-500/20 border border-pink-400/50 flex items-center justify-center text-pink-400 font-black text-xs group-hover:scale-110 transition-transform">
                 bK
               </div>
               <span className="text-xs font-bold text-white">bKash</span>
               <span className="text-[9px] opacity-80 font-mono">বিকাশ (Personal)</span>
-              {paymentMethod === 'bkash' && (
-                <div className="absolute top-1 right-1.5 w-2 h-2 rounded-full bg-pink-400 animate-ping" />
-              )}
             </button>
 
             {/* Nagad */}
@@ -2121,7 +2162,7 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
               }}
               className={`p-3 sm:p-3.5 rounded-2xl border-2 flex flex-col items-center justify-center gap-1.5 cursor-pointer transition-all duration-300 relative overflow-hidden group ${
                 paymentMethod === 'nagad' 
-                  ? 'bg-gradient-to-br from-amber-500/25 via-orange-600/15 to-orange-950/40 border-amber-500 text-amber-300 font-bold shadow-[0_0_20px_rgba(245,158,11,0.35)] scale-[1.02]' 
+                  ? 'bg-gradient-to-br from-amber-500/25 via-orange-600/15 to-orange-950/40 border-amber-500 text-amber-300 font-bold shadow-lg scale-[1.02]' 
                   : 'bg-white/5 border-white/10 text-slate-400 hover:text-white hover:border-amber-500/40 hover:bg-amber-500/10'
               }`}
             >
@@ -2130,9 +2171,6 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
               </div>
               <span className="text-xs font-bold text-white">Nagad</span>
               <span className="text-[9px] opacity-80 font-mono">নগদ (Personal)</span>
-              {paymentMethod === 'nagad' && (
-                <div className="absolute top-1 right-1.5 w-2 h-2 rounded-full bg-amber-400 animate-ping" />
-              )}
             </button>
 
             {/* Rocket */}
@@ -2144,7 +2182,7 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
               }}
               className={`p-3 sm:p-3.5 rounded-2xl border-2 flex flex-col items-center justify-center gap-1.5 cursor-pointer transition-all duration-300 relative overflow-hidden group ${
                 paymentMethod === 'rocket' 
-                  ? 'bg-gradient-to-br from-purple-500/25 via-purple-600/15 to-purple-950/40 border-purple-500 text-purple-300 font-bold shadow-[0_0_20px_rgba(168,85,247,0.35)] scale-[1.02]' 
+                  ? 'bg-gradient-to-br from-purple-500/25 via-purple-600/15 to-purple-950/40 border-purple-500 text-purple-300 font-bold shadow-lg scale-[1.02]' 
                   : 'bg-white/5 border-white/10 text-slate-400 hover:text-white hover:border-purple-500/40 hover:bg-purple-500/10'
               }`}
             >
@@ -2153,9 +2191,6 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
               </div>
               <span className="text-xs font-bold text-white">Rocket</span>
               <span className="text-[9px] opacity-80 font-mono">রকেট / Upay</span>
-              {paymentMethod === 'rocket' && (
-                <div className="absolute top-1 right-1.5 w-2 h-2 rounded-full bg-purple-400 animate-ping" />
-              )}
             </button>
           </div>
         </div>

@@ -48,20 +48,17 @@ export function HeroLabShowcase({ onExploreLab }: HeroLabShowcaseProps) {
 
   return (
     <div 
-      className="w-full max-w-md lg:max-w-[420px] mx-auto rounded-2xl bg-[#091224]/95 border border-cyan-500/30 p-3.5 sm:p-4 shadow-2xl backdrop-blur-2xl relative overflow-hidden group hover:border-cyan-400/50 transition-all duration-500 text-left" 
+      className="w-full max-w-md lg:max-w-[420px] mx-auto rounded-2xl bg-[#091224]/95 border border-white/10 p-4 sm:p-5 shadow-xl backdrop-blur-2xl relative overflow-hidden group hover:border-cyan-500/30 transition-all duration-300 text-left" 
       id="hero-unified-lab-card"
     >
       {/* Background ambient glow */}
-      <div className="absolute -top-20 -right-20 w-48 h-48 bg-cyan-500/15 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute -bottom-20 -left-20 w-48 h-48 bg-blue-500/15 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute -top-20 -right-20 w-48 h-48 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute -bottom-20 -left-20 w-48 h-48 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
 
       {/* Top Header Row with Live Telemetry & Control */}
-      <div className="flex items-center justify-between gap-2 border-b border-white/10 pb-2.5 mb-3 relative z-10">
-        <div className="flex items-center gap-1.5">
-          <span className="relative flex h-2 w-2">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-cyan-500"></span>
-          </span>
+      <div className="flex items-center justify-between gap-2 border-b border-white/10 pb-3 mb-3.5 relative z-10">
+        <div className="flex items-center gap-2">
+          <Activity className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
           <span className="text-[11px] font-mono font-bold tracking-wider text-cyan-300 uppercase">
             LIVE SIMULATION LAB
           </span>
@@ -193,7 +190,6 @@ export function HeroLabShowcase({ onExploreLab }: HeroLabShowcaseProps) {
 
                     return (
                       <g>
-                        <circle cx={focalX1} cy={focalY1} r="9" fill="#06b6d4" className="animate-ping opacity-50" />
                         <circle cx={focalX1} cy={focalY1} r="5" fill="#ffffff" stroke="#0891b2" strokeWidth="2" />
                         <circle cx={focalX2} cy={focalY2} r="5" fill="#38bdf8" stroke="#ffffff" strokeWidth="1.5" />
                       </g>
@@ -268,7 +264,7 @@ export function HeroLabShowcase({ onExploreLab }: HeroLabShowcaseProps) {
 
                   {/* Nucleus Core Cluster with Protons & Neutrons */}
                   <g transform="translate(88, 88)">
-                    <circle cx="0" cy="0" r="16" fill="#ef4444" className="opacity-25 animate-ping" />
+                    <circle cx="0" cy="0" r="14" fill="#ef4444" className="opacity-15" />
                     <circle cx="-4" cy="-4" r="5.5" fill="#ef4444" stroke="#090d16" strokeWidth="0.8" />
                     <circle cx="5" cy="-3" r="5.5" fill="#94a3b8" stroke="#090d16" strokeWidth="0.8" />
                     <circle cx="1" cy="5" r="5.5" fill="#ef4444" stroke="#090d16" strokeWidth="0.8" />
@@ -331,8 +327,8 @@ export function HeroLabShowcase({ onExploreLab }: HeroLabShowcaseProps) {
                         <line x1={x} y1={88} x2={x} y2={y1} stroke={isEven ? '#10b981' : '#38bdf8'} strokeWidth="3" />
                         <line x1={x} y1={88} x2={x} y2={y2} stroke={isEven ? '#ef4444' : '#a855f7'} strokeWidth="3" />
                         
-                        <circle cx={x} cy={y1} r="5" fill={isEven ? '#10b981' : '#38bdf8'} stroke="#ffffff" strokeWidth="1" className="animate-pulse" />
-                        <circle cx={x} cy={y2} r="5" fill={isEven ? '#ef4444' : '#a855f7'} stroke="#ffffff" strokeWidth="1" className="animate-pulse" />
+                        <circle cx={x} cy={y1} r="5" fill={isEven ? '#10b981' : '#38bdf8'} stroke="#ffffff" strokeWidth="1" />
+                        <circle cx={x} cy={y2} r="5" fill={isEven ? '#ef4444' : '#a855f7'} stroke="#ffffff" strokeWidth="1" />
                       </g>
                     );
                   })}

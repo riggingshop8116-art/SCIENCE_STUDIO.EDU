@@ -206,6 +206,34 @@ export default function AuthModal({
           } catch (e) {}
         }
 
+        // Ensure newly registered student is instantly persisted to Supabase app_users table
+        if (!isLogin && !activeAdminMode && canAttemptSupabase() && data.user?.id) {
+          try {
+            await supabase.from('app_users').upsert({
+              id: data.user.id,
+              name: name.trim(),
+              email: cleanEmail,
+              phone: formattedPhone,
+              password: password.trim(),
+              role: 'student',
+              isApproved: false,
+              is_approved: false,
+              course: '',
+              batch: '',
+              enrolledCourseTitles: [],
+              enrolled_courses: [],
+              transactionId: '',
+              paymentMethod: '',
+              senderPhone: '',
+              joinedAt: new Date().toISOString(),
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            }, { onConflict: 'id' });
+          } catch (sbSyncErr) {
+            console.warn("Supabase student registration sync notice:", sbSyncErr);
+          }
+        }
+
         onSuccess(data);
         onClose();
         setName('');
@@ -373,6 +401,28 @@ export default function AuthModal({
           }
 
           try {
+            // Persist student profile directly to Supabase app_users table
+            await supabase.from('app_users').upsert({
+              id: userId,
+              name: name.trim(),
+              email: cleanEmail,
+              phone: formattedPhone,
+              password: password.trim(),
+              role: 'student',
+              isApproved: false,
+              is_approved: false,
+              course: '',
+              batch: '',
+              enrolledCourseTitles: [],
+              enrolled_courses: [],
+              transactionId: '',
+              paymentMethod: '',
+              senderPhone: '',
+              joinedAt: new Date().toISOString(),
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            }, { onConflict: 'id' });
+
             await supabase.auth.signUp({
               email: cleanEmail,
               password: password.trim(),
@@ -388,7 +438,7 @@ export default function AuthModal({
               }
             });
           } catch (sbAuthErr) {
-            console.warn("Supabase Auth fallback notice:", sbAuthErr);
+            console.warn("Supabase registration fallback notice:", sbAuthErr);
           }
         }
 
@@ -408,6 +458,52 @@ export default function AuthModal({
         }
 
         if (canAttemptSupabase()) {
+          // 1. Check directly from app_users table
+          try {
+            const { data: dbProfile } = await supabase
+              .from('app_users')
+              .select('*')
+              .ilike('email', cleanEmail)
+              .maybeSingle();
+
+            if (dbProfile) {
+              if (dbProfile.password && dbProfile.password.trim() !== password.trim()) {
+                throw new Error('পাসওয়ার্ড সঠিক নয়। অনুগ্রহ করে সঠিক পাসওয়ার্ড দিয়ে আবার চেষ্টা করুন।');
+              }
+              const approvedValue = dbProfile.isApproved !== undefined 
+                ? Boolean(dbProfile.isApproved) 
+                : (dbProfile.is_approved !== undefined ? Boolean(dbProfile.is_approved) : false);
+
+              const enrolledList = Array.isArray(dbProfile.enrolledCourseTitles) && dbProfile.enrolledCourseTitles.length > 0
+                ? dbProfile.enrolledCourseTitles
+                : (Array.isArray(dbProfile.enrolled_courses) && dbProfile.enrolled_courses.length > 0
+                  ? dbProfile.enrolled_courses
+                  : (dbProfile.course ? [dbProfile.course] : []));
+
+              const studentUser = {
+                id: dbProfile.id,
+                name: (dbProfile.name && dbProfile.name !== 'Student' && dbProfile.name !== 'স্টুডেন্ট') ? dbProfile.name : 'শিক্ষার্থী',
+                email: cleanEmail,
+                phone: dbProfile.phone || '',
+                role: 'student' as const,
+                isApproved: approvedValue,
+                enrolledCourseTitles: enrolledList,
+                transactionId: dbProfile.transactionId || dbProfile.transaction_id || '',
+                paymentMethod: dbProfile.paymentMethod || dbProfile.payment_method || '',
+                senderPhone: dbProfile.senderPhone || dbProfile.sender_phone || '',
+                studentClass: dbProfile.batch || dbProfile.studentClass || '',
+                createdAt: dbProfile.joinedAt || dbProfile.created_at || new Date().toISOString()
+              };
+              const token = generateClientSessionToken(studentUser);
+              onSuccess({ user: studentUser, token });
+              onClose();
+              return;
+            }
+          } catch (sbErr: any) {
+            if (sbErr.message && sbErr.message.includes('পাসওয়ার্ড')) throw sbErr;
+          }
+
+          // 2. Also try Supabase Auth signInWithPassword
           try {
             const { data: authData } = await supabase.auth.signInWithPassword({
               email: cleanEmail,

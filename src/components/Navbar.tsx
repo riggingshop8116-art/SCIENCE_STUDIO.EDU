@@ -68,15 +68,12 @@ export default function Navbar({
   })();
 
   return (
-    <header className="w-full z-50 sticky top-0 backdrop-blur-2xl bg-[#060b18]/90 border-b border-cyan-500/20 shadow-[0_4px_30px_rgba(0,0,0,0.6)] transition-all duration-300" id="app-header">
-      {/* High-visibility glowing neon accent divider line at the very bottom of header */}
-      <div className="absolute bottom-[-1px] left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-cyan-400 to-transparent shadow-[0_2px_12px_rgba(34,211,238,0.7)]" />
-
-      {/* Floating Glassmorphism Navbar (Responsive Full-Width & Balanced Spacing) */}
-      <div className="w-full max-w-[1920px] mx-auto px-3 sm:px-6 lg:px-8 xl:px-12 py-3 sm:py-3.5">
+    <header className="w-full z-50 sticky top-0 backdrop-blur-2xl bg-[#060b18]/95 border-b border-white/10 shadow-lg transition-all duration-300" id="app-header">
+      {/* Floating Navbar with Balanced Spacing */}
+      <div className="w-full max-w-[1920px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-12 py-3 sm:py-3.5">
         <nav className="flex items-center justify-between gap-4 lg:gap-6 w-full">
             
-            {/* Brand Logo with Rounded Frame & Glow */}
+            {/* Brand Logo with Rounded Frame */}
             <div 
               onClick={() => {
                 if (user?.role === 'admin') {
@@ -90,7 +87,7 @@ export default function Navbar({
               className="flex items-center gap-3 sm:gap-4 cursor-pointer group py-0.5 shrink-0"
               id="nav-logo"
             >
-              <div className="relative w-11 h-11 sm:w-14 sm:h-14 rounded-full overflow-hidden border-2 border-cyan-400 shadow-[0_0_20px_rgba(34,211,238,0.4)] group-hover:scale-105 group-hover:border-emerald-400 group-hover:shadow-[0_0_25px_rgba(16,185,129,0.5)] transition-all duration-300 bg-slate-900 shrink-0">
+              <div className="relative w-11 h-11 sm:w-13 sm:h-13 rounded-full overflow-hidden border border-cyan-400/60 shadow-md group-hover:scale-105 group-hover:border-cyan-300 transition-all duration-300 bg-slate-900 shrink-0">
                 <img 
                   src={settings?.academyLogoUrl || LogoImage} 
                   alt="Science Studio Logo" 
@@ -102,8 +99,8 @@ export default function Navbar({
                 <span className="font-display font-black text-sm sm:text-lg md:text-xl lg:text-2xl tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-white via-cyan-200 to-emerald-300 flex items-center gap-1.5 leading-tight uppercase drop-shadow-[0_2px_10px_rgba(34,211,238,0.3)] truncate max-w-[160px] xs:max-w-[220px] sm:max-w-none">
                   {settings?.academyName || "SCIENCE STUDIO by Sakib"}
                 </span>
-                <div className="text-[10px] sm:text-xs font-mono tracking-wider sm:tracking-widest text-emerald-400 font-bold uppercase mt-0.5 flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping inline-block shrink-0" />
+                <div className="text-[10px] sm:text-xs font-mono tracking-wider text-emerald-400 font-semibold uppercase mt-0.5 flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0"></span>
                   <span className="truncate">by Sakib Sir • Science Portal</span>
                 </div>
               </div>
@@ -180,7 +177,7 @@ export default function Navbar({
                 >
                   {user.role === 'admin' ? (
                     <>
-                      <Shield className="w-5.5 h-5.5 text-rose-400 animate-pulse shrink-0" />
+                      <Shield className="w-5.5 h-5.5 text-rose-400 shrink-0" />
                       <span className="whitespace-nowrap">অ্যাডমিন প্যানেল</span>
                     </>
                   ) : (
@@ -411,7 +408,7 @@ export default function Navbar({
             onClick={() => onOpenContact?.()}
             className="flex flex-col items-center justify-center gap-0.5 w-full min-h-[48px] py-1 rounded-xl transition-all duration-200 text-amber-400 hover:text-amber-300 hover:bg-amber-500/10 active:scale-95 cursor-pointer"
           >
-            <Phone className="w-4 h-4 shrink-0 text-amber-400 animate-pulse" />
+            <Phone className="w-4 h-4 shrink-0 text-amber-400" />
             <span className="text-[9.5px] font-sans font-bold leading-none">হেল্পলাইন</span>
           </button>
 
@@ -455,7 +452,7 @@ export default function Navbar({
               onClick={onOpenAuth}
               className="flex flex-col items-center justify-center gap-0.5 w-full min-h-[48px] py-1 rounded-xl transition-all duration-200 text-cyan-300 bg-cyan-500/15 border border-cyan-500/30 active:scale-95 cursor-pointer"
             >
-              <UserIcon className="w-4 h-4 shrink-0 text-cyan-300 animate-pulse" />
+              <UserIcon className="w-4 h-4 shrink-0 text-cyan-300" />
               <span className="text-[9.5px] font-sans font-bold leading-none">লগইন</span>
             </button>
           )}

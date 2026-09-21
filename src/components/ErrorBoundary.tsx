@@ -44,7 +44,7 @@ export class ErrorBoundary extends Component<Props, State> {
 
           <div className="relative max-w-lg w-full bg-slate-900/90 border border-rose-500/30 rounded-2xl p-6 sm:p-8 shadow-2xl backdrop-blur-xl text-center space-y-6">
             <div className="w-16 h-16 bg-rose-500/10 border border-rose-500/30 rounded-2xl flex items-center justify-center mx-auto text-rose-400">
-              <ShieldAlert className="w-8 h-8 animate-pulse" />
+              <ShieldAlert className="w-8 h-8" />
             </div>
 
             <div className="space-y-2">

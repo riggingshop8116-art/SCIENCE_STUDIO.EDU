@@ -1989,11 +1989,15 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
         ? features.map((f: any) => String(f).trim()).filter(Boolean) 
         : (typeof features === 'string' ? features.split('\n').map(f => f.trim()).filter(Boolean) : []);
 
+      const resolvedSupervisor = (req.body?.supervisor || req.body?.instructor || req.body?.mentor || db.settings?.adminName || 'সাকিব হাসান (Sakib Hasan)').trim();
+
       const newCourse = {
         id: courseId,
         title: String(title).trim(),
         subject: String(subject).trim(),
         classLevel: classLevel ? String(classLevel).trim() : '',
+        supervisor: resolvedSupervisor,
+        instructor: resolvedSupervisor,
         imageUrl: finalImageUrl,
         price: Number(price) || 0,
         originalPrice: originalPrice ? Number(originalPrice) : undefined,
@@ -2018,7 +2022,7 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
   app.put('/api/courses/:id', requireAdmin, async (req, res) => {
     try {
       const { id } = req.params;
-      const { title, subject, classLevel, imageUrl, price, originalPrice, duration, description, features } = req.body || {};
+      const { title, subject, classLevel, imageUrl, price, originalPrice, duration, description, features, supervisor, instructor } = req.body || {};
       
       const db = readDB();
       if (!db.courses) db.courses = [];
@@ -2032,6 +2036,8 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
         title: title ?? db.courses[index].title,
         subject: subject ?? db.courses[index].subject,
         classLevel: classLevel ?? db.courses[index].classLevel,
+        supervisor: supervisor ?? instructor ?? db.courses[index].supervisor ?? (db.settings?.adminName || 'সাকিব হাসান (Sakib Hasan)'),
+        instructor: instructor ?? supervisor ?? db.courses[index].instructor ?? (db.settings?.adminName || 'সাকিব হাসান (Sakib Hasan)'),
         imageUrl: imageUrl ?? db.courses[index].imageUrl,
         price: price !== undefined ? Number(price) : db.courses[index].price,
         originalPrice: originalPrice !== undefined ? Number(originalPrice) : db.courses[index].originalPrice,

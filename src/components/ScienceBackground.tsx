@@ -289,7 +289,7 @@ export default function ScienceBackground() {
       <div className="absolute top-[5%] left-[15%] w-[36rem] h-[36rem] rounded-full bg-cyan-600/[0.04] blur-[160px] pointer-events-none" />
       <div className="absolute bottom-[10%] right-[8%] w-[40rem] h-[40rem] rounded-full bg-emerald-600/[0.03] blur-[170px] pointer-events-none" />
       <div className="absolute top-[40%] left-[55%] w-[32rem] h-[32rem] rounded-full bg-blue-600/[0.03] blur-[150px] pointer-events-none" />
-      <div className="absolute bottom-[35%] left-[5%] w-[32rem] h-[32rem] rounded-full bg-amber-500/[0.06] blur-[130px] animate-pulse pointer-events-none" style={{ animationDuration: '16s' }} />
+      <div className="absolute bottom-[35%] left-[5%] w-[32rem] h-[32rem] rounded-full bg-amber-500/[0.04] blur-[130px] pointer-events-none" />
 
       {/* 4. Floating Particles / Glowing Star Nodes (Subtle, calm ambient) */}
       <div className="absolute inset-0 pointer-events-none opacity-40">

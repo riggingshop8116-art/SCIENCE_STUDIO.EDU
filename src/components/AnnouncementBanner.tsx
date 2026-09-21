@@ -42,10 +42,10 @@ export default function AnnouncementBanner({
           {/* Desktop (sm+): Horizontal row with badge on the left and marquee on the right */}
           <div className="flex flex-col sm:flex-row items-center gap-2 sm:gap-4 flex-1 min-w-0 w-full overflow-hidden">
             
-            {/* Animated Megaphone Badge - Centered in middle of screen on mobile */}
-            <div className="shrink-0 flex items-center justify-center gap-1.5 sm:gap-2.5 px-3.5 sm:px-5 py-1.5 sm:py-2.5 rounded-xl sm:rounded-2xl bg-amber-500/20 border border-amber-400/50 sm:border-2 text-amber-300 shadow-[0_0_15px_rgba(245,158,11,0.25)] mx-auto sm:mx-0">
-              <Megaphone className="w-4 h-4 sm:w-6 sm:h-6 text-amber-400 animate-pulse shrink-0" />
-              <span className="text-xs sm:text-base md:text-lg font-mono font-black uppercase tracking-wide text-amber-300 whitespace-nowrap text-center">
+            {/* Refined Megaphone Badge - Centered on mobile, aligned on desktop */}
+            <div className="shrink-0 flex items-center justify-center gap-2 px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-xl bg-amber-500/15 border border-amber-400/30 text-amber-300 mx-auto sm:mx-0 shadow-sm">
+              <Megaphone className="w-4 h-4 sm:w-5 sm:h-5 text-amber-400 shrink-0" />
+              <span className="text-xs sm:text-sm font-mono font-bold uppercase tracking-wide text-amber-300 whitespace-nowrap text-center">
                 {settings?.announcementBadge || 'নির্দেশনা ও নোটিশ'}
               </span>
             </div>
@@ -55,19 +55,25 @@ export default function AnnouncementBanner({
               <div className="animate-marquee-infinite flex items-center gap-8 sm:gap-14">
                 {/* First Set of Items */}
                 {marqueeItems.map((item, idx) => (
-                  <div key={`m1-${idx}`} className="inline-flex items-center gap-2.5 sm:gap-3.5 text-sm sm:text-base md:text-lg font-sans font-bold text-slate-100 shrink-0 tracking-wide drop-shadow-md">
-                    <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 shadow-[0_0_10px_#22d3ee] shrink-0 animate-ping" />
+                  <div key={`m1-${idx}`} className="inline-flex items-center gap-2.5 sm:gap-3 text-sm sm:text-base font-sans font-medium text-slate-100 shrink-0 tracking-wide">
+                    <span className="relative flex h-2 w-2 shrink-0 items-center justify-center">
+                      <span className="absolute inline-flex h-full w-full rounded-full bg-cyan-400/40"></span>
+                      <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-cyan-400"></span>
+                    </span>
                     <span className="leading-snug">{item}</span>
-                    <span className="text-cyan-400/70 ml-2.5 sm:ml-3.5 font-mono text-sm sm:text-lg">✦</span>
+                    <span className="text-cyan-400/50 ml-2.5 sm:ml-3 font-mono text-xs sm:text-sm">✦</span>
                   </div>
                 ))}
 
                 {/* Duplicate Set for Seamless Infinite Looping */}
                 {marqueeItems.map((item, idx) => (
-                  <div key={`m2-${idx}`} className="inline-flex items-center gap-2.5 sm:gap-3.5 text-sm sm:text-base md:text-lg font-sans font-bold text-slate-100 shrink-0 tracking-wide drop-shadow-md">
-                    <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 shadow-[0_0_10px_#22d3ee] shrink-0 animate-ping" />
+                  <div key={`m2-${idx}`} className="inline-flex items-center gap-2.5 sm:gap-3 text-sm sm:text-base font-sans font-medium text-slate-100 shrink-0 tracking-wide">
+                    <span className="relative flex h-2 w-2 shrink-0 items-center justify-center">
+                      <span className="absolute inline-flex h-full w-full rounded-full bg-cyan-400/40"></span>
+                      <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-cyan-400"></span>
+                    </span>
                     <span className="leading-snug">{item}</span>
-                    <span className="text-cyan-400/70 ml-2.5 sm:ml-3.5 font-mono text-sm sm:text-lg">✦</span>
+                    <span className="text-cyan-400/50 ml-2.5 sm:ml-3 font-mono text-xs sm:text-sm">✦</span>
                   </div>
                 ))}
               </div>

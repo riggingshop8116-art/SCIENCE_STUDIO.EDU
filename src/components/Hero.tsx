@@ -520,12 +520,12 @@ export default function Hero({
       {/* Visible only on Mobile (lg:hidden), hidden on Computer/Desktop */}
       <div className="w-full max-w-[1700px] mx-auto z-10 lg:hidden flex flex-col items-center justify-center text-center pt-1 pb-5 px-2 animate-fade-in">
         
-        {/* Large Centered Circular Logo with Glowing Pulsing Neon Border */}
+        {/* Large Centered Circular Logo with Sleek Gradient Ring */}
         <div className="relative mx-auto flex items-center justify-center">
-          <div className="absolute -inset-2.5 rounded-full bg-gradient-to-tr from-cyan-500 via-teal-400 to-blue-600 opacity-60 blur-xl animate-pulse" />
+          <div className="absolute -inset-2 rounded-full bg-gradient-to-tr from-cyan-500/40 via-teal-400/30 to-blue-600/40 opacity-50 blur-lg" />
           
-          <div className="relative w-24 h-24 xs:w-28 xs:h-28 rounded-full p-1 bg-gradient-to-tr from-cyan-400 via-teal-300 to-blue-500 shadow-[0_0_35px_rgba(34,211,238,0.5)] border-2 border-white/30">
-            <div className="w-full h-full rounded-full overflow-hidden bg-slate-950 border border-cyan-400/60 shadow-inner flex items-center justify-center">
+          <div className="relative w-24 h-24 xs:w-28 xs:h-28 rounded-full p-1 bg-gradient-to-tr from-cyan-400/80 via-teal-300/80 to-blue-500/80 shadow-[0_0_25px_rgba(34,211,238,0.35)] border border-white/20">
+            <div className="w-full h-full rounded-full overflow-hidden bg-slate-950 border border-cyan-400/40 shadow-inner flex items-center justify-center">
               <img 
                 src={settings?.academyLogoUrl || scienceStudioLogo} 
                 alt="Science Studio Logo" 
@@ -540,15 +540,15 @@ export default function Hero({
         </div>
 
         {/* Eye-catching English Display Typography across the mobile screen */}
-        <h1 className="mt-4 text-2xl xs:text-3xl sm:text-4xl font-display font-black tracking-wider uppercase text-transparent bg-clip-text bg-gradient-to-r from-white via-cyan-200 to-emerald-300 drop-shadow-[0_2px_20px_rgba(34,211,238,0.5)] leading-tight text-center w-full px-2">
+        <h1 className="mt-4 text-2xl xs:text-3xl sm:text-4xl font-display font-black tracking-wider uppercase text-transparent bg-clip-text bg-gradient-to-r from-white via-cyan-200 to-emerald-300 drop-shadow-[0_2px_15px_rgba(34,211,238,0.3)] leading-tight text-center w-full px-2">
           {settings?.academyName || "SCIENCE STUDIO BY SAKIB"}
         </h1>
 
         {/* Elegant Futuristic Subtitle & Badges */}
-        <div className="mt-1.5 flex items-center justify-center gap-2 text-[11px] xs:text-xs font-mono tracking-widest text-emerald-400 font-extrabold uppercase">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping inline-block shrink-0" />
+        <div className="mt-2 flex items-center justify-center gap-2 text-[11px] xs:text-xs font-mono tracking-wider text-emerald-400 font-semibold uppercase">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0"></span>
           <span>Virtual Science Lab & Portal</span>
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping inline-block shrink-0" />
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0"></span>
         </div>
 
         <p className="mt-1.5 text-xs sm:text-sm text-slate-300 font-sans max-w-md mx-auto text-center px-4 leading-relaxed">
@@ -627,9 +627,9 @@ export default function Hero({
             <div className="absolute inset-0 bg-gradient-to-t from-[#030712]/95 via-transparent to-[#030712]/60 z-[1] pointer-events-none" />
             <div className="absolute inset-0 bg-cyan-950/10 mix-blend-overlay z-[1] pointer-events-none" />
             
-            {/* Ambient Neon Pulses with Dynamic Theme Glow */}
+            {/* Ambient Dynamic Theme Glow */}
             <div 
-              className="absolute top-1/4 right-1/4 w-96 h-96 rounded-full opacity-20 filter blur-3xl animate-pulse pointer-events-none z-[1] transition-all duration-1000"
+              className="absolute top-1/4 right-1/4 w-96 h-96 rounded-full opacity-20 filter blur-3xl pointer-events-none z-[1] transition-all duration-1000"
               style={{ backgroundColor: activeBanner.borderGlow || 'rgba(34,211,238,0.4)' }}
             />
           </div>
@@ -657,10 +657,10 @@ export default function Hero({
                     />
                   </div>
                   <span className="text-white font-bold">Science Studio by Sakib</span>
-                  <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 shrink-0"></span>
                 </div>
 
-                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-500/20 border border-amber-400/40 text-amber-300 text-xs font-medium backdrop-blur-md shadow-sm">
+                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-500/15 border border-amber-400/30 text-amber-300 text-xs font-medium backdrop-blur-md shadow-sm">
                   <Sparkles className="w-3.5 h-3.5 text-amber-400" />
                   <span>৩ডি ভিজ্যুয়াল লার্নিং</span>
                 </span>
@@ -677,12 +677,12 @@ export default function Hero({
                 <div 
                   className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-slate-950/90 border text-xs font-mono font-bold backdrop-blur-md shadow-lg transition-all duration-500"
                   style={{
-                    borderColor: activeBanner.borderGlow || 'rgba(34,211,238,0.5)',
-                    boxShadow: `0 0 15px -3px ${activeBanner.borderGlow || 'rgba(34,211,238,0.4)'}`
+                    borderColor: activeBanner.borderGlow || 'rgba(34,211,238,0.4)',
+                    boxShadow: `0 0 12px -2px ${activeBanner.borderGlow || 'rgba(34,211,238,0.3)'}`
                   }}
                 >
                   {React.createElement(activeBanner.icon || Atom, {
-                    className: "w-4 h-4 animate-pulse",
+                    className: "w-4 h-4",
                     style: { color: activeBanner.glowColor === 'emerald' ? '#34d399' : activeBanner.glowColor === 'amber' ? '#fbbf24' : activeBanner.glowColor === 'rose' ? '#fb7185' : '#22d3ee' }
                   })}
                   <span className="text-white font-bold">{activeBanner.badge}</span>
@@ -900,7 +900,7 @@ export default function Hero({
             {/* Section Header */}
             <div className="text-center mb-8 relative z-10">
               <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-cyan-500/15 border border-cyan-400/30 text-cyan-300 text-xs font-mono uppercase tracking-widest mb-3 backdrop-blur-md">
-                <Sparkles className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
+                <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
                 <span>{settings?.pillarsSectionBadge || "LEADERSHIP & PEDAGOGY PILLARS"}</span>
               </div>
               <h2 className="text-2xl sm:text-3xl lg:text-4xl font-display font-extrabold text-white tracking-tight leading-tight">
@@ -922,7 +922,7 @@ export default function Hero({
                 {/* Header row inside card */}
                 <div className="flex items-center justify-between pb-4 mb-6 border-b border-white/10 flex-wrap gap-3">
                   <div className="flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping" />
+                    <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 shrink-0"></span>
                     <span className="text-xs font-mono font-bold text-cyan-300 uppercase tracking-wider">মেন্টরশিপ ও অ্যাকাডেমিক লিডারশিপ</span>
                   </div>
                   <div className="flex items-center gap-2">

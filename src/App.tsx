@@ -228,6 +228,42 @@ export default function App() {
               token
             };
             setUser(decodedUser);
+            // Check Supabase app_users directly to keep user state authoritative across sessions
+            if (canAttemptSupabase()) {
+              try {
+                const { data: sbProfile } = await supabase
+                  .from('app_users')
+                  .select('*')
+                  .or(`id.eq.${decodedUser.id},email.ilike.${decodedUser.email}`)
+                  .maybeSingle();
+
+                if (sbProfile) {
+                  const approvedValue = sbProfile.isApproved !== undefined 
+                    ? Boolean(sbProfile.isApproved) 
+                    : Boolean(sbProfile.is_approved);
+
+                  const enrolled = Array.isArray(sbProfile.enrolledCourseTitles) && sbProfile.enrolledCourseTitles.length > 0
+                    ? sbProfile.enrolledCourseTitles
+                    : (Array.isArray(sbProfile.enrolled_courses) && sbProfile.enrolled_courses.length > 0
+                      ? sbProfile.enrolled_courses
+                      : (decodedUser.enrolledCourseTitles || []));
+
+                  decodedUser = {
+                    ...decodedUser,
+                    ...sbProfile,
+                    id: sbProfile.id || decodedUser.id,
+                    name: (sbProfile.name && sbProfile.name !== 'Student' && sbProfile.name !== 'স্টুডেন্ট') ? sbProfile.name : decodedUser.name,
+                    isApproved: approvedValue,
+                    enrolledCourseTitles: enrolled,
+                    transactionId: sbProfile.transactionId || sbProfile.transaction_id || decodedUser.transactionId || '',
+                    paymentMethod: sbProfile.paymentMethod || sbProfile.payment_method || decodedUser.paymentMethod || '',
+                    senderPhone: sbProfile.senderPhone || sbProfile.sender_phone || decodedUser.senderPhone || ''
+                  };
+                  setUser(decodedUser);
+                }
+              } catch (e) {}
+            }
+
             const savedTab = localStorage.getItem('science_studio_saved_tab');
             if (savedTab && ['home', 'classroom', 'admin', 'lab', 'admin-settings'].includes(savedTab)) {
               if (savedTab.startsWith('admin') && decodedUser.role !== 'admin') {
@@ -367,12 +403,27 @@ export default function App() {
     localStorage.setItem('science_studio_last_active', String(Date.now()));
     setSessionExpiredMessage(null);
     
-    // Resume preserved tab if available, else route to default
-    const savedTab = localStorage.getItem('science_studio_saved_tab');
-    if (savedTab && savedTab !== 'home' && (!savedTab.startsWith('admin') || authData.user.role === 'admin')) {
-      setCurrentTab(savedTab);
+    if (authData.user.role === 'admin') {
+      const savedTab = localStorage.getItem('science_studio_saved_tab');
+      setCurrentTab(savedTab?.startsWith('admin') ? savedTab : 'admin');
+      return;
+    }
+
+    // Student Login Navigation Flow
+    const hasEnrolledOrPaid = (Array.isArray(authData.user.enrolledCourseTitles) && authData.user.enrolledCourseTitles.length > 0) || Boolean(authData.user.transactionId);
+
+    if (!authData.user.isApproved) {
+      // If student has registered but not yet enrolled or paid:
+      // Route directly to Classroom where the Course Catalog & Enrollment guide is displayed
+      setCurrentTab('classroom');
     } else {
-      setCurrentTab(authData.user.role === 'admin' ? 'admin' : 'classroom');
+      // Approved student: resume preserved tab or default to classroom
+      const savedTab = localStorage.getItem('science_studio_saved_tab');
+      if (savedTab && ['classroom', 'lab', 'home'].includes(savedTab)) {
+        setCurrentTab(savedTab);
+      } else {
+        setCurrentTab('classroom');
+      }
     }
   };
 
@@ -380,7 +431,6 @@ export default function App() {
     setUser(null);
     localStorage.removeItem('science_studio_token');
     localStorage.removeItem('science_studio_last_active');
-    localStorage.removeItem('science_studio_saved_tab');
     setClasses([]);
     setNotes([]);
     setCurrentTab('home');
@@ -394,9 +444,9 @@ export default function App() {
         <div className="relative flex flex-col items-center justify-center p-8 rounded-3xl bg-white/5 backdrop-blur-xl border border-white/10 shadow-2xl max-w-sm w-full mx-4">
           <div className="relative flex items-center justify-center mb-6">
             <Atom className="w-12 h-12 text-cyan-400 animate-spin" />
-            <div className="absolute w-20 h-20 border border-cyan-500/20 rounded-full animate-ping" />
+            <div className="absolute w-20 h-20 border border-cyan-500/30 rounded-full" />
           </div>
-          <p className="font-mono text-xs tracking-widest text-cyan-400 animate-pulse uppercase">
+          <p className="font-mono text-xs tracking-widest text-cyan-400 uppercase">
             Initializing Science Studio by Sakib...
           </p>
         </div>
@@ -489,7 +539,7 @@ export default function App() {
         )}
 
         {currentTab === 'lab' && (
-          <div className="w-full max-w-[1800px] mx-auto px-2 sm:px-4 lg:px-8 py-6 sm:py-8 animate-fade-in">
+          <div className="w-full max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-12 py-8 sm:py-12 animate-fade-in">
             <InteractiveScience settings={settings} />
           </div>
         )}

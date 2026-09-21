@@ -1330,66 +1330,85 @@ export default function AdminDashboard({
         });
       }
 
-      // 2. Fetch Users
-      const usersRes = await fetch('/api/admin/users', {
-        headers: getAdminHeaders(false)
-      });
-      if (usersRes.ok) {
-        const usersData = await usersRes.json();
-        const tombstoneSet = tombstonedIdsRef.current;
-        const validUsers = Array.isArray(usersData)
-          ? usersData.filter((u: any) => {
-              const uId = String(u.id || '').trim().toLowerCase();
-              const uEmail = (u.email || '').trim().toLowerCase();
-              return (!uId || !tombstoneSet.has(uId)) && (!uEmail || !tombstoneSet.has(uEmail));
-            })
-          : [];
-        usersLoaded = true;
-        setUserList(prev => {
-          if (prev.length === validUsers.length) {
-            let unchanged = true;
-            for (let i = 0; i < prev.length; i++) {
-              const a = prev[i];
-              const b = validUsers[i];
-              if (
-                a.id !== b.id ||
-                a.name !== b.name ||
-                a.email !== b.email ||
-                a.phone !== b.phone ||
-                a.transactionId !== b.transactionId ||
-                a.isApproved !== b.isApproved ||
-                a.role !== b.role ||
-                a.studentClass !== b.studentClass ||
-                (a.photoUrl || a.avatarUrl) !== (b.photoUrl || b.avatarUrl) ||
-                JSON.stringify(a.enrolledCourseTitles || []) !== JSON.stringify(b.enrolledCourseTitles || [])
-              ) {
-                unchanged = false;
-                break;
-              }
-            }
-            if (unchanged) return prev;
-          }
-          return validUsers;
+      // 2. Fetch Users from API and Supabase directly, merging both
+      let apiUsers: any[] = [];
+      try {
+        const usersRes = await fetch('/api/admin/users', {
+          headers: getAdminHeaders(false)
         });
+        if (usersRes.ok) {
+          const uData = await usersRes.json();
+          if (Array.isArray(uData)) apiUsers = uData;
+        }
+      } catch (apiErr) {
+        console.warn("API users fetch notice:", apiErr);
       }
+
+      let sbUsers: any[] = [];
+      if (canAttemptSupabase()) {
+        try {
+          const { data: sData } = await supabase.from('app_users').select('*');
+          if (Array.isArray(sData)) sbUsers = sData;
+        } catch (sbErr) {
+          console.warn("Supabase users fetch notice:", sbErr);
+        }
+      }
+
+      const tombstoneSet = tombstonedIdsRef.current;
+      const userMap = new Map<string, any>();
+
+      // 1. Add API users
+      apiUsers.forEach((u: any) => {
+        const key = String(u.id || u.email || '').trim().toLowerCase();
+        if (key && !tombstoneSet.has(key)) {
+          userMap.set(key, u);
+        }
+      });
+
+      // 2. Merge Supabase users (Supabase is authoritative for persistent registrations and updates)
+      sbUsers.forEach((sb: any) => {
+        const key = String(sb.id || sb.email || '').trim().toLowerCase();
+        if (key && !tombstoneSet.has(key)) {
+          const existing = userMap.get(key) || {};
+          const isApproved = sb.isApproved !== undefined 
+            ? Boolean(sb.isApproved) 
+            : (sb.is_approved !== undefined ? Boolean(sb.is_approved) : Boolean(existing.isApproved));
+
+          const enrolled = (Array.isArray(sb.enrolledCourseTitles) && sb.enrolledCourseTitles.length > 0)
+            ? sb.enrolledCourseTitles
+            : ((Array.isArray(sb.enrolled_courses) && sb.enrolled_courses.length > 0)
+              ? sb.enrolled_courses
+              : (existing.enrolledCourseTitles || (sb.course ? [sb.course] : [])));
+
+          userMap.set(key, {
+            ...existing,
+            ...sb,
+            id: sb.id || existing.id,
+            name: (sb.name && sb.name !== 'Student' && sb.name !== 'স্টুডেন্ট') ? sb.name : (existing.name || sb.name),
+            email: sb.email || existing.email,
+            phone: sb.phone || existing.phone,
+            role: sb.role || existing.role || 'student',
+            isApproved,
+            enrolledCourseTitles: enrolled,
+            transactionId: sb.transactionId || sb.transaction_id || existing.transactionId || '',
+            paymentMethod: sb.paymentMethod || sb.payment_method || existing.paymentMethod || '',
+            senderPhone: sb.senderPhone || sb.sender_phone || existing.senderPhone || '',
+            studentClass: sb.batch || sb.studentClass || existing.studentClass || '',
+            createdAt: sb.joinedAt || sb.created_at || existing.createdAt || new Date().toISOString()
+          });
+        }
+      });
+
+      const validUsers = Array.from(userMap.values());
+      usersLoaded = true;
+      setUserList(validUsers);
+
+      // Keep stats synced with combined student count
+      const totalStudentsCount = validUsers.filter((u: any) => u.role === 'student').length;
+      setStats(prev => prev ? { ...prev, totalStudents: totalStudentsCount } : null);
     } catch (err) {
       console.warn("Notice: loading admin info retry pending", err);
     } finally {
-      // Supabase Direct Fallback for Admin Users
-      if (!usersLoaded && canAttemptSupabase()) {
-        try {
-          const { data: sbUsers } = await supabase.from('app_users').select('*');
-          if (Array.isArray(sbUsers) && sbUsers.length > 0) {
-            const tombstoneSet = tombstonedIdsRef.current;
-            const validUsers = sbUsers.filter((u: any) => {
-              const uId = String(u.id || '').trim().toLowerCase();
-              const uEmail = (u.email || '').trim().toLowerCase();
-              return (!uId || !tombstoneSet.has(uId)) && (!uEmail || !tombstoneSet.has(uEmail));
-            });
-            setUserList(validUsers);
-          }
-        } catch {}
-      }
       setLoadingUsers(false);
     }
   };
@@ -1479,7 +1498,9 @@ export default function AdminDashboard({
           originalPrice: courseOriginalPrice ? Number(courseOriginalPrice) : undefined,
           duration: courseDuration,
           description: courseDescription,
-          features: courseFeatures.split('\n').filter(Boolean)
+          features: courseFeatures.split('\n').filter(Boolean),
+          supervisor: settings?.adminName || 'সাকিব হাসান (Sakib Hasan)',
+          instructor: settings?.adminName || 'সাকিব হাসান (Sakib Hasan)'
         })
       });
 
@@ -1508,6 +1529,9 @@ export default function AdminDashboard({
       fetchCourses();
       if (onRefreshData) {
         onRefreshData();
+      }
+      if (onRefreshSettings) {
+        onRefreshSettings();
       }
     } catch (err: any) {
       setCourseError(err.message || 'কোর্স পাবলিশ করতে সমস্যা হয়েছে।');
@@ -1544,6 +1568,9 @@ export default function AdminDashboard({
         setCoursesList(prev => prev.filter(c => c.id !== courseToDelete.id));
         fetchCourses();
         onRefreshData();
+        if (onRefreshSettings) {
+          onRefreshSettings();
+        }
         setCourseToDelete(null);
       } else {
         const errData = await response.json().catch(() => ({}));
@@ -1856,23 +1883,35 @@ export default function AdminDashboard({
 
     if (canAttemptSupabase() && targetUser.id) {
       try {
-        await supabase
+        const { error: updateErr } = await supabase
           .from('app_users')
-          .upsert({
-            id: targetUser.id,
-            name: targetUser.name,
-            email: targetUser.email,
-            phone: targetUser.phone,
-            role: targetUser.role,
+          .update({
             isApproved: newApprovalStatus,
             is_approved: newApprovalStatus,
-            enrolledCourseTitles: targetUser.enrolledCourseTitles || [],
-            enrolled_courses: targetUser.enrolledCourseTitles || [],
-            transactionId: targetUser.transactionId || '',
-            paymentMethod: targetUser.paymentMethod || '',
-            senderPhone: targetUser.senderPhone || '',
             updated_at: new Date().toISOString()
-          }, { onConflict: 'id' });
+          })
+          .or(`id.eq.${targetUser.id},email.ilike.${targetUser.email || ''}`);
+
+        if (updateErr) {
+          await supabase
+            .from('app_users')
+            .upsert({
+              id: targetUser.id,
+              name: targetUser.name || '',
+              email: targetUser.email || '',
+              phone: targetUser.phone || '',
+              password: (targetUser as any).password || 'student123',
+              role: targetUser.role || 'student',
+              isApproved: newApprovalStatus,
+              is_approved: newApprovalStatus,
+              enrolledCourseTitles: targetUser.enrolledCourseTitles || [],
+              enrolled_courses: targetUser.enrolledCourseTitles || [],
+              transactionId: targetUser.transactionId || '',
+              paymentMethod: targetUser.paymentMethod || '',
+              senderPhone: targetUser.senderPhone || '',
+              updated_at: new Date().toISOString()
+            }, { onConflict: 'id' });
+        }
       } catch (sbApproveErr) {
         console.warn('Supabase approval sync notice:', sbApproveErr);
       }
@@ -2202,7 +2241,7 @@ export default function AdminDashboard({
         <div className="shrink-0 mb-3 space-y-2">
           <div className="flex flex-wrap items-center justify-between gap-2 px-3 sm:px-4 py-2 rounded-2xl bg-[#0a1122]/90 border border-cyan-500/25 shadow-[0_0_15px_rgba(34,211,238,0.1)] text-xs">
             <div className="flex items-center gap-2 text-cyan-300 font-mono">
-              <Sparkles className="w-4 h-4 text-cyan-400 animate-pulse shrink-0" />
+              <Sparkles className="w-4 h-4 text-cyan-400 shrink-0" />
               <span className="hidden sm:inline text-slate-400">অ্যাডমিন ব্যাকগ্রাউন্ড থিম:</span>
               <span className="font-bold text-white tracking-wide">{sectionBgMeta.label}</span>
             </div>
@@ -2257,7 +2296,7 @@ export default function AdminDashboard({
                 <Users className="w-3.5 h-3.5" />
                 <span>স্টুডেন্টস</span>
                 {userList.filter(u => !u.isApproved).length > 0 && (
-                  <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
+                  <span className="w-2 h-2 rounded-full bg-rose-500 shadow-[0_0_6px_rgba(244,63,94,0.6)]" />
                 )}
               </button>
 
@@ -2363,7 +2402,7 @@ export default function AdminDashboard({
               <div className="px-2 py-2 text-xs font-mono uppercase tracking-widest text-cyan-400 font-black flex items-center justify-between shrink-0">
                 <span>মেনু ও ন্যাভিগেশন</span>
                 <span className="text-[10px] text-emerald-400 font-sans font-bold flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_4px_rgba(52,211,153,0.8)]" />
                   অনলাইন
                 </span>
               </div>
@@ -2734,7 +2773,7 @@ export default function AdminDashboard({
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex items-center gap-3 overflow-hidden">
                           <div className="p-2 bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 rounded-lg">
-                            <Video className="w-5 h-5 animate-pulse" />
+                            <Video className="w-5 h-5" />
                           </div>
                           <div className="overflow-hidden">
                             <h5 className="text-xs font-semibold text-white truncate">{classFile.name}</h5>
@@ -3002,7 +3041,7 @@ export default function AdminDashboard({
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex items-center gap-3 overflow-hidden">
                           <div className="p-2 bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 rounded-lg">
-                            <FileText className="w-5 h-5 animate-pulse" />
+                            <FileText className="w-5 h-5" />
                           </div>
                           <div className="overflow-hidden">
                             <h5 className="text-xs font-semibold text-white truncate">{noteFile.name}</h5>
@@ -4149,6 +4188,9 @@ export default function AdminDashboard({
                             {course.classLevel && (
                               <span className="px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 text-[10px] font-mono font-bold">{course.classLevel}</span>
                             )}
+                            <span className="px-2 py-0.5 rounded bg-amber-500/15 border border-amber-500/30 text-amber-300 text-[10px] font-mono">
+                              তত্ত্বাবধানে: {course.supervisor || course.instructor || settings?.adminName || 'সাকিব হাসান'}
+                            </span>
                           </div>
                           <h3 className="font-display font-bold text-base text-white">{course.title}</h3>
                         </div>
@@ -4493,7 +4535,7 @@ export default function AdminDashboard({
                 </div>
 
                 <div className="p-6 bg-slate-950/80 border border-white/10 rounded-xl text-center space-y-4">
-                  <FileText className="w-12 h-12 text-purple-400 mx-auto animate-pulse" />
+                  <FileText className="w-12 h-12 text-purple-400 mx-auto" />
                   <div>
                     <h4 className="text-sm font-bold text-white mb-1">{previewPdf.title}</h4>
                     <p className="text-xs text-slate-400 font-mono">আইডি: {previewPdf.id}</p>
@@ -6068,7 +6110,7 @@ export default function AdminDashboard({
             </div>
             <div className="p-3.5 rounded-2xl bg-slate-900/80 border border-emerald-500/20 flex flex-col justify-between">
               <span className="text-[11px] font-mono text-emerald-400 flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.6)]" />
                 হোমপেজে সক্রিয় ব্যানার
               </span>
               <span className="text-xl font-bold text-emerald-300 font-mono mt-1">
@@ -6247,12 +6289,12 @@ export default function AdminDashboard({
             {/* Sleek Admin Bottom Bar & Status inside scrollable content */}
             <div className="pt-8 pb-6 mt-8 border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-3 text-[11px] font-mono text-slate-400">
               <div className="flex items-center gap-2">
-                <Zap className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
+                <Zap className="w-3.5 h-3.5 text-cyan-400" />
                 <span>© {new Date().getFullYear()} {(settings.academyName || "SCIENCE STUDIO").toUpperCase()} ADMIN CONSOLE</span>
               </div>
               <div className="flex items-center gap-3">
                 <span className="flex items-center gap-1.5 text-emerald-400">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_4px_rgba(52,211,153,0.8)]" />
                   সিস্টেম অনলাইন ও সুরক্ষিত
                 </span>
                 <span>•</span>

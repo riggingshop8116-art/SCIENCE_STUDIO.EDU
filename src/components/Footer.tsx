@@ -71,8 +71,8 @@ export default function Footer({
               </p>
 
               {/* Live Status Badge */}
-              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-[11px] font-medium shadow-[0_0_12px_rgba(16,185,129,0.15)]">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_8px_#34d399]" />
+              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-[11px] font-medium shadow-sm">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
                 <span>অনলাইন ল্যাব ও পোর্টালে ভর্তি কার্যক্রম চলমান</span>
               </div>
             </div>
@@ -148,7 +148,7 @@ export default function Footer({
 
                 {/* Clean Contact Info without helpline and routine buttons */}
                 <div className="pt-2 border-t border-white/10 flex items-center gap-2 text-[11px] text-slate-400">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400/80 animate-pulse shrink-0" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400/80 shrink-0" />
                   <span>সরাসরি যোগাযোগ ও ক্লাসরুম কাউন্সেলিং ডেস্ক</span>
                 </div>
               </div>
@@ -160,7 +160,7 @@ export default function Footer({
         {/* Bottom Copyright & Discreet Portal Access Bar */}
         <div className="pt-6 flex flex-col md:flex-row items-center justify-between gap-4 text-[11px] font-mono text-slate-400">
           <div className="flex items-center gap-2">
-            <Zap className="w-4 h-4 text-cyan-400 animate-pulse" />
+            <Zap className="w-4 h-4 text-cyan-400" />
             <span>
               © {new Date().getFullYear()} {(settings.academyName || "SCIENCE STUDIO").toUpperCase()}. ALL RIGHTS RESERVED.
             </span>

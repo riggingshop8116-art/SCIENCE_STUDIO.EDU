@@ -151,10 +151,6 @@ export default function InteractiveScience({ settings }: InteractiveScienceProps
                     <div className="text-[9px] font-mono text-slate-400 truncate">{subj.sub}</div>
                   </div>
                 </div>
-
-                {isSel && (
-                  <div className="absolute top-1 right-1 w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
-                )}
               </button>
             );
           })}
@@ -187,8 +183,8 @@ export default function InteractiveScience({ settings }: InteractiveScienceProps
             </div>
 
             {/* Right side live status indicator */}
-            <div className="hidden sm:flex absolute right-6 items-center gap-2 px-3 py-1.5 rounded-full bg-slate-900/90 border border-cyan-400/30 text-cyan-300 text-xs font-mono">
-              <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
+            <div className="hidden sm:flex absolute right-6 items-center gap-2 px-3 py-1.5 rounded-full bg-slate-900/90 border border-white/10 text-cyan-300 text-xs font-mono">
+              <Activity className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
               <span>LIVE 60FPS SIMULATION</span>
             </div>
           </div>
@@ -251,7 +247,6 @@ export default function InteractiveScience({ settings }: InteractiveScienceProps
                           const py = 130 + Math.sin(px * waveFrequency + physicsTime) * waveAmplitude;
                           return (
                             <g>
-                              <circle cx={px} cy={py} r="14" fill="#22d3ee" className="animate-ping opacity-40" />
                               <circle cx={px} cy={py} r="7" fill="#38bdf8" stroke="#ffffff" strokeWidth="2.5" />
                               <line x1={px} y1="130" x2={px} y2={py} stroke="#38bdf8" strokeWidth="1.5" strokeDasharray="2,2" />
                             </g>
@@ -423,7 +418,7 @@ export default function InteractiveScience({ settings }: InteractiveScienceProps
                                 stroke="rgba(34,211,238,0.12)"
                                 strokeWidth="1.5"
                               />
-                              <circle cx="125" cy={index < 2 ? 75 : 35} r="6" fill="#34d399" stroke="#ffffff" strokeWidth="1.5" className="animate-pulse">
+                              <circle cx="125" cy={index < 2 ? 75 : 35} r="6" fill="#34d399" stroke="#ffffff" strokeWidth="1.5">
                                 <animateTransform
                                   attributeName="transform"
                                   type="rotate"
@@ -439,7 +434,7 @@ export default function InteractiveScience({ settings }: InteractiveScienceProps
 
                         {/* Nucleus Center (Protons & Neutrons clump) */}
                         <g transform="translate(125, 125)">
-                          <circle cx="0" cy="0" r="22" fill="#ef4444" className="opacity-20 animate-ping" />
+                          <circle cx="0" cy="0" r="16" fill="#ef4444" className="opacity-15" />
                           
                           {Array.from({ length: protons + neutrons }).map((_, i) => {
                             const angle = (i * 2.39996) * (180 / Math.PI);
@@ -572,8 +567,8 @@ export default function InteractiveScience({ settings }: InteractiveScienceProps
                               <line x1={x} y1={y1} x2={x} y2={y2} stroke="rgba(255,255,255,0.12)" strokeWidth="2.5" />
                               <line x1={x} y1={y1} x2={x} y2={80} stroke={color1} strokeWidth="3.5" />
                               <line x1={x} y1={80} x2={x} y2={y2} stroke={color2} strokeWidth="3.5" />
-                              <circle cx={x} cy={y1} r="5" fill="#ffffff" stroke={color1} strokeWidth="2" className="animate-pulse" />
-                              <circle cx={x} cy={y2} r="5" fill="#ffffff" stroke={color2} strokeWidth="2" className="animate-pulse" />
+                              <circle cx={x} cy={y1} r="5" fill="#ffffff" stroke={color1} strokeWidth="2" />
+                              <circle cx={x} cy={y2} r="5" fill="#ffffff" stroke={color2} strokeWidth="2" />
                             </g>
                           );
                         })}
@@ -858,7 +853,7 @@ export default function InteractiveScience({ settings }: InteractiveScienceProps
                         {/* Piston Head */}
                         <rect x="32" y={40 + (100 - gasPressure) * 0.7} width="136" height="15" fill="#f97316" stroke="#ffffff" strokeWidth="1" />
                         {/* Heat glow */}
-                        <rect x="32" y="165" width="136" height="5" fill="#ef4444" className="animate-pulse" />
+                        <rect x="32" y="165" width="136" height="5" fill="#ef4444" opacity="0.8" />
                       </svg>
                       <div className="absolute top-3 left-3 text-[10px] font-mono text-orange-400 bg-orange-950/80 px-3 py-1 rounded-lg border border-orange-500/30">
                         IDEAL GAS: P·V = n·R·T
