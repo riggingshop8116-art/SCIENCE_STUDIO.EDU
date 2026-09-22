@@ -480,6 +480,7 @@ export async function upsertCourseToSupabase(cr: any) {
       batch: cr.classLevel || cr.batch || '',
       duration: cr.duration || '',
       description: cr.description || '',
+      instructor: cr.instructor || cr.supervisor || 'SAKIB HOSEN (Founder & Chief Science Mentor)',
       features: Array.isArray(cr.features) ? cr.features : [],
       updated_at: new Date().toISOString()
     };
@@ -996,12 +997,14 @@ export async function syncToSupabase(data: any) {
                   id: cr.id,
                   title: cr.title,
                   subject: cr.subject,
+                  instructor: cr.instructor || cr.supervisor || 'SAKIB HOSEN (Founder & Chief Science Mentor)',
                   price: Number(cr.price || 0),
                   originalPrice: cr.originalPrice !== undefined && cr.originalPrice !== null ? Number(cr.originalPrice) : null,
                   imageUrl: cr.imageUrl || '',
                   batch: cr.classLevel || cr.batch || '',
                   duration: cr.duration || '',
                   description: cr.description || '',
+                  features: Array.isArray(cr.features) ? cr.features : [],
                   updated_at: new Date().toISOString()
                 })), { onConflict: 'id' });
 
@@ -1390,6 +1393,8 @@ export async function loadFromSupabase(defaultData: any) {
           id: r.id,
           title: r.title,
           subject: r.subject,
+          instructor: r.instructor || r.supervisor || r.data?.instructor || r.data?.supervisor || 'SAKIB HOSEN (Founder & Chief Science Mentor)',
+          supervisor: r.supervisor || r.instructor || r.data?.supervisor || r.data?.instructor || 'SAKIB HOSEN (Founder & Chief Science Mentor)',
           classLevel: r.batch || r.classLevel || r.class_level || '',
           price: Number(r.price || 0),
           originalPrice: Number(r.originalPrice || r.original_price || 0),

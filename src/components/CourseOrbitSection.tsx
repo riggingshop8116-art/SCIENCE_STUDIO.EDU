@@ -97,114 +97,68 @@ const DEFAULT_COURSES: Array<{
   symbol: string;
   description: string;
   features: string[];
+  supervisor: string;
+  instructor: string;
 }> = [
   {
-    id: 'c-physics-master',
-    title: 'HSC Physics 3D Simulation Masterclass',
+    id: 'crs_8epb793',
+    title: 'PHYSICS HUNTER',
     subject: 'পদার্থবিজ্ঞান',
-    classLevel: 'একাদশ - দ্বাদশ শ্রেণি',
+    classLevel: 'Class 9',
     badge: 'সেরা সেলার',
     enrolled: '৪৫০+ শিক্ষার্থী',
-    rating: 4.9,
-    price: '৳ ১২৫০',
+    rating: 5.0,
+    price: '৳ ১০০০',
     color: 'from-cyan-500 to-blue-600',
     iconBg: 'bg-cyan-500/20 border-cyan-400/30 text-cyan-300',
-    banner: SCIENCE_3D_BANNERS.particleAccelerator,
+    banner: 'https://tcsblgpiufflkitislpz.supabase.co/storage/v1/object/public/course-images/crs_8epb793_1788260465489.jpg',
     fallbackBanner: SCIENCE_3D_BANNERS.particleAccelerator,
     icon: Atom,
     symbol: '🌌',
-    description: 'ভেক্টর, গতিবিদ্যা ও তরঙ্গ বিজ্ঞানের শতভাগ ভিজ্যুয়াল ল্যাব সিমুলেশনসহ এ টু জেড কোর্স।',
-    features: ['৩০+ থ্রিডি ল্যাব ক্লাস', 'অধ্যায়ভিত্তিক PDF নোট', 'প্রতি সপ্তাহে লাইভ ডাউট সলভ']
+    description: 'নবম শ্রেণির পদার্থবিজ্ঞানের সম্পূর্ণ অধ্যায়ভিত্তিক লাইভ ক্লাস, প্র্যাকটিক্যাল ল্যাব অ্যানিমেশন ও হ্যান্ডনোট।',
+    features: ['রেকর্ডেড ও লাইভ ক্লাস', 'অধ্যায়ভিত্তিক PDF নোট', 'সাপ্তাহিক অনলাইন পরীক্ষা', '২৪/৭ ডাউট সলভ'],
+    supervisor: 'SAKIB HOSEN (Founder & Chief Science Mentor)',
+    instructor: 'SAKIB HOSEN (সাকিব স্যার)'
   },
   {
-    id: 'c-chem-reactor',
-    title: 'Chemistry Organic & Inorganic Reactor',
+    id: 'crs_nsuc66w',
+    title: 'CHEMISTRY ONE SHORT',
     subject: 'রসায়নবিজ্ঞান',
-    classLevel: 'এইচএসসি ও ভর্তি পরীক্ষা',
+    classLevel: 'Class 10',
     badge: 'পপুলার',
     enrolled: '৩৮০+ শিক্ষার্থী',
-    rating: 4.8,
-    price: '৳ ১২০০',
+    rating: 5.0,
+    price: '৳ ১৫০০',
     color: 'from-emerald-500 to-teal-600',
     iconBg: 'bg-emerald-500/20 border-emerald-400/30 text-emerald-300',
-    banner: SCIENCE_3D_BANNERS.chemistryHub,
+    banner: 'https://tcsblgpiufflkitislpz.supabase.co/storage/v1/object/public/course-images/crs_nsuc66w_1788596090821.jpg',
     fallbackBanner: SCIENCE_3D_BANNERS.chemistryHub,
     icon: Zap,
     symbol: '⚛️',
-    description: 'জৈব রসায়নের মেকানিজম এবং রাসায়নিক বিক্রিয়া মুখস্থ না করে সহজে আয়ত্ত করার স্পেশাল ব্যাচ।',
-    features: ['জৈব রাসায়নিক শর্টকাট', 'বোর্ড ও মেডিকেল প্রশ্ন সমাধান', 'হ্যান্ডরাইটিং ফর্মুলা শিট']
+    description: 'দশম শ্রেণির রসায়ন সম্পূর্ণ সিলেবাস ওয়ান-শট মাস্টারক্লাস। সমীকরণ ও থিওরির শতভাগ ভিজ্যুয়াল সমাধান।',
+    features: ['রেকর্ডেড ও লাইভ ভিডিও ক্লাস', 'অধ্যায়ভিত্তিক এইচডি পিডিএফ লেকচার শিট', 'সাপ্তাহিক অনলাইন প্র্যাকটিস কুইজ ও এক্সাম', '২৪/৭ ডাউট সলভিং ও মেন্টর সাপোর্ট'],
+    supervisor: 'SAKIB HOSEN (Founder & Chief Science Mentor)',
+    instructor: 'SAKIB HOSEN (সাকিব স্যার)'
   },
   {
-    id: 'c-biology-genetics',
-    title: 'Biology 3D Anatomy & Cellular Master',
-    subject: 'জীববিজ্ঞান',
-    classLevel: 'একাদশ - দ্বাদশ শ্রেণি',
-    badge: 'হট কোর্স',
-    enrolled: '৩১০+ শিক্ষার্থী',
-    rating: 4.9,
-    price: '৳ ১১৫০',
-    color: 'from-rose-500 to-pink-600',
-    iconBg: 'bg-rose-500/20 border-rose-400/30 text-rose-300',
-    banner: SCIENCE_3D_BANNERS.bioCell,
-    fallbackBanner: SCIENCE_3D_BANNERS.bioCell,
-    icon: Dna,
-    symbol: '🧬',
-    description: 'কোষ অঙ্গাণু, ডিএনএ রেপ্লিকেশন ও মানব শারীরতত্ত্বের হাই-ডেফিনিশন এনিমেশন ভিত্তিক প্রিপারেশন।',
-    features: ['হাই-রেজুলেশন ডায়াগ্রাম', 'মেডিকেল স্পেশাল গাইড', 'সাপ্তাহিক ওএমআর মডেল টেস্ট']
-  },
-  {
-    id: 'c-math-calculus',
-    title: 'Higher Math Calculus & Vector 3D',
-    subject: 'উচ্চতর গণিত',
-    classLevel: 'এইচএসসি ২০২৬ স্পেশাল',
-    badge: 'অ্যাডভান্সড',
-    enrolled: '৪২০+ শিক্ষার্থী',
-    rating: 4.9,
-    price: '৳ ১৩০০',
-    color: 'from-amber-500 to-orange-600',
-    iconBg: 'bg-amber-500/20 border-amber-400/30 text-amber-300',
-    banner: SCIENCE_3D_BANNERS.mathStudio,
-    fallbackBanner: SCIENCE_3D_BANNERS.mathStudio,
-    icon: Compass,
-    symbol: '📐',
-    description: 'ডিফারেন্সিয়েশন ও ইন্টিগ্রেশনের ভয় দূর করে ভিজ্যুয়াল গ্রাফিক্স দিয়ে অংক সমাধানের ম্যাজিক প্রযুক্তি।',
-    features: ['২০০+ জটিল সমস্যা সমাধান', 'অ্যাডমিশন স্ট্যান্ডার্ড ট্রিকস', 'প্র্যাকটিস প্রবলেম ব্যাংক']
-  },
-  {
-    id: 'c-medical-booster',
-    title: 'Medical & University Admission Science Pack',
-    subject: 'অ্যাডমিশন স্পেশাল',
-    classLevel: 'এইচএসসি পরীক্ষার্থী',
-    badge: 'ফ্ল্যাগশিপ',
+    id: 'crs_1',
+    title: 'পদার্থবিজ্ঞান ১ম পত্র: স্পেশাল মাস্টারব্যাচ ২০২৬',
+    subject: 'পদার্থবিজ্ঞান',
+    classLevel: 'HSC',
+    badge: 'স্পেশাল ব্যাচ',
     enrolled: '৫২০+ শিক্ষার্থী',
     rating: 5.0,
     price: '৳ ১৫০০',
     color: 'from-purple-500 to-indigo-600',
     iconBg: 'bg-purple-500/20 border-purple-400/30 text-purple-300',
-    banner: SCIENCE_3D_BANNERS.heroFull,
+    banner: 'https://tcsblgpiufflkitislpz.supabase.co/storage/v1/object/public/course-images/crs_1_banner.jpg',
     fallbackBanner: SCIENCE_3D_BANNERS.heroFull,
     icon: Award,
     symbol: '🏆',
-    description: 'বুয়েট, মেডিকেল ও ঢাবি ক-ইউনিটের শীর্ষ স্থান অর্জনের জন্য সাকিব স্যারের পার্সোনাল গাইডলাইন ব্যাচ।',
-    features: ['সরাসরি সাকিব স্যারের মেন্টরশিপ', 'ডেইলি ওএমআর অ্যাসেসমেন্ট', 'স্পেশাল প্রশ্ন ব্যাংক সমাধান']
-  },
-  {
-    id: 'c-ict-computer',
-    title: 'ICT & Computational Science HSC',
-    subject: 'আইসিটি',
-    classLevel: 'একাদশ ও দ্বাদশ শ্রেণি',
-    badge: 'ফ্রী রিসোর্স সহ',
-    enrolled: '২৯০+ শিক্ষার্থী',
-    rating: 4.7,
-    price: '৳ ৯৯০',
-    color: 'from-cyan-400 to-teal-500',
-    iconBg: 'bg-cyan-400/20 border-cyan-300/30 text-cyan-200',
-    banner: SCIENCE_3D_BANNERS.laserOptics,
-    fallbackBanner: SCIENCE_3D_BANNERS.laserOptics,
-    icon: Activity,
-    symbol: '💻',
-    description: 'C প্রোগ্রামিং, ডাটাবেজ ও লজিক গেট সহজে শেখার জন্য প্র্যাকটিক্যাল কোডিং ও অ্যানিমেশন ক্লাস।',
-    features: ['লাইভ প্রোগ্রামিং ল্যাব', 'এইচএসসি প্র্যাকটিক্যাল সলভ', 'শর্টকাট নোটস']
+    description: 'এইচএসসি ও এডমিশন পরীক্ষার্থীদের জন্য সাকিব স্যারের বিশেষ পদার্থবিজ্ঞান কোর্স। সম্পূর্ণ সিলেবাস কভার ও প্রবলেম সলভিং মাস্টারক্লাস।',
+    features: ['সরাসরি সাকিব স্যারের মেন্টরশিপ', 'অধ্যায়ভিত্তিক PDF নোট', 'সাপ্তাহিক অনলাইন পরীক্ষা', '২৪/৭ ডাউট সলভ'],
+    supervisor: 'SAKIB HOSEN (Founder & Chief Science Mentor)',
+    instructor: 'SAKIB HOSEN (সাকিব স্যার)'
   }
 ];
 
@@ -263,8 +217,8 @@ export default function CourseOrbitSection({
           symbol: styling.symbol,
           description: c.description || 'সাকিব স্যারের তত্ত্ববধানে পরিচালিত পূর্ণাঙ্গ বিজ্ঞান কোর্স ও ভিজ্যুয়াল সিমুলেশন ক্লাস।',
           features,
-          supervisor: c.supervisor || c.instructor || settings?.adminName || 'সাকিব হাসান',
-          instructor: c.instructor || c.supervisor || settings?.adminName || 'সাকিব হাসান'
+          supervisor: c.supervisor || c.instructor || settings?.adminName || 'SAKIB HOSEN (Founder & Chief Science Mentor)',
+          instructor: c.instructor || c.supervisor || settings?.adminName || 'SAKIB HOSEN (সাকিব স্যার)'
         };
       });
     }

@@ -25,8 +25,8 @@ const defaultSettings: Settings = {
   footerDescription: "সাকিব স্যারের তত্ত্ববধানে পরিচালিত একটি আধুনিক ও প্রযুক্তিনির্ভর বিজ্ঞান শিক্ষা কেন্দ্র। আমরা প্রতিটি স্টুডেন্টের মেধা বিকাশে এবং বিজ্ঞানকে সহজভাবে বোঝার সুব্যবস্থা নিশ্চিত করি।"
 };
 
-// 30 Minutes Inactivity Timeout in milliseconds
-const INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000;
+// Inactivity Timeout in milliseconds (2 hours for students; admins never timeout on idle)
+const INACTIVITY_TIMEOUT_MS = 2 * 60 * 60 * 1000;
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -69,9 +69,9 @@ export default function App() {
     }
   }, [currentTab, user]);
 
-  // Periodic inactivity monitor: auto logouts user if idle for more than 30 minutes
+  // Periodic inactivity monitor: auto logouts student if idle for more than 2 hours (admins never auto-logout)
   useEffect(() => {
-    if (!user) return;
+    if (!user || user.role === 'admin') return;
 
     const inactivityInterval = setInterval(() => {
       const lastActiveStr = localStorage.getItem('science_studio_last_active');
@@ -131,7 +131,22 @@ export default function App() {
         try {
           const { data: sbCourses } = await supabase.from('app_courses').select('*');
           if (Array.isArray(sbCourses) && sbCourses.length > 0) {
-            setCourses(sbCourses);
+            const mappedCourses = sbCourses.map((r: any) => ({
+              id: r.id,
+              title: r.title,
+              subject: r.subject,
+              supervisor: r.supervisor || r.instructor || (r.data && (r.data.supervisor || r.data.instructor)) || 'SAKIB HOSEN (Founder & Chief Science Mentor)',
+              instructor: r.instructor || r.supervisor || (r.data && (r.data.instructor || r.data.supervisor)) || 'SAKIB HOSEN (সাকিব স্যার)',
+              classLevel: r.batch || r.classLevel || r.class_level || '',
+              price: Number(r.price || 0),
+              originalPrice: r.originalPrice ? Number(r.originalPrice) : (r.original_price ? Number(r.original_price) : undefined),
+              duration: r.duration || '',
+              description: r.description || '',
+              features: (Array.isArray(r.features) && r.features.length > 0) ? r.features : ['রেকর্ডেড ও লাইভ ক্লাস', 'অধ্যায়ভিত্তিক PDF নোট', 'সাপ্তাহিক অনলাইন পরীক্ষা', '২৪/৭ ডাউট সলভ'],
+              imageUrl: r.imageUrl || r.image_url || '',
+              ...(r.data || {})
+            }));
+            setCourses(mappedCourses);
           }
         } catch (e) {
           console.warn("Supabase courses client fetch notice:", e);
@@ -191,23 +206,6 @@ export default function App() {
         return;
       }
 
-      // Check if session has expired due to inactivity
-      const lastActiveStr = localStorage.getItem('science_studio_last_active');
-      const now = Date.now();
-      if (lastActiveStr) {
-        const lastActive = parseInt(lastActiveStr, 10);
-        if (!isNaN(lastActive) && now - lastActive > INACTIVITY_TIMEOUT_MS) {
-          localStorage.removeItem('science_studio_token');
-          localStorage.removeItem('science_studio_last_active');
-          localStorage.removeItem('science_studio_saved_tab');
-          setUser(null);
-          setCurrentTab('home');
-          setSessionExpiredMessage("নিরাপত্তার স্বার্থে দীর্ঘক্ষণ নিষ্ক্রিয় থাকার কারণে আপনার আইডিটি স্বয়ংক্রিয়ভাবে লগআউট করা হয়েছে। ক্লাসরুমে প্রবেশ করতে পুনরায় লগইন করুন।");
-          setLoading(false);
-          return;
-        }
-      }
-
       // Fast client-side token decoding for instant UI restoration without waiting for serverless cold start
       let decodedUser: any = null;
       if (token.startsWith('sst_')) {
@@ -227,55 +225,76 @@ export default function App() {
               studentClass: parsed.studentClass || '',
               token
             };
-            setUser(decodedUser);
-            // Check Supabase app_users directly to keep user state authoritative across sessions
-            if (canAttemptSupabase()) {
-              try {
-                const { data: sbProfile } = await supabase
-                  .from('app_users')
-                  .select('*')
-                  .or(`id.eq.${decodedUser.id},email.ilike.${decodedUser.email}`)
-                  .maybeSingle();
-
-                if (sbProfile) {
-                  const approvedValue = sbProfile.isApproved !== undefined 
-                    ? Boolean(sbProfile.isApproved) 
-                    : Boolean(sbProfile.is_approved);
-
-                  const enrolled = Array.isArray(sbProfile.enrolledCourseTitles) && sbProfile.enrolledCourseTitles.length > 0
-                    ? sbProfile.enrolledCourseTitles
-                    : (Array.isArray(sbProfile.enrolled_courses) && sbProfile.enrolled_courses.length > 0
-                      ? sbProfile.enrolled_courses
-                      : (decodedUser.enrolledCourseTitles || []));
-
-                  decodedUser = {
-                    ...decodedUser,
-                    ...sbProfile,
-                    id: sbProfile.id || decodedUser.id,
-                    name: (sbProfile.name && sbProfile.name !== 'Student' && sbProfile.name !== 'স্টুডেন্ট') ? sbProfile.name : decodedUser.name,
-                    isApproved: approvedValue,
-                    enrolledCourseTitles: enrolled,
-                    transactionId: sbProfile.transactionId || sbProfile.transaction_id || decodedUser.transactionId || '',
-                    paymentMethod: sbProfile.paymentMethod || sbProfile.payment_method || decodedUser.paymentMethod || '',
-                    senderPhone: sbProfile.senderPhone || sbProfile.sender_phone || decodedUser.senderPhone || ''
-                  };
-                  setUser(decodedUser);
-                }
-              } catch (e) {}
-            }
-
-            const savedTab = localStorage.getItem('science_studio_saved_tab');
-            if (savedTab && ['home', 'classroom', 'admin', 'lab', 'admin-settings'].includes(savedTab)) {
-              if (savedTab.startsWith('admin') && decodedUser.role !== 'admin') {
-                setCurrentTab('classroom');
-              } else {
-                setCurrentTab(savedTab);
-              }
-            } else {
-              setCurrentTab(decodedUser.role === 'admin' ? 'admin' : 'classroom');
-            }
           }
         } catch (e) {}
+      }
+
+      // Check if student session has expired due to inactivity (admins NEVER expire on idle)
+      const lastActiveStr = localStorage.getItem('science_studio_last_active');
+      const now = Date.now();
+      if (lastActiveStr && (!decodedUser || decodedUser.role !== 'admin')) {
+        const lastActive = parseInt(lastActiveStr, 10);
+        if (!isNaN(lastActive) && now - lastActive > INACTIVITY_TIMEOUT_MS) {
+          localStorage.removeItem('science_studio_token');
+          localStorage.removeItem('science_studio_last_active');
+          localStorage.removeItem('science_studio_saved_tab');
+          setUser(null);
+          setCurrentTab('home');
+          setSessionExpiredMessage("নিরাপত্তার স্বার্থে দীর্ঘক্ষণ নিষ্ক্রিয় থাকার কারণে আপনার আইডিটি স্বয়ংক্রিয়ভাবে লগআউট করা হয়েছে। ক্লাসরুমে প্রবেশ করতে পুনরায় লগইন করুন।");
+          setLoading(false);
+          return;
+        }
+      }
+
+      if (decodedUser) {
+        setUser(decodedUser);
+
+        // Check Supabase app_users directly to keep user state authoritative across sessions
+        if (canAttemptSupabase()) {
+          try {
+            const { data: sbProfile } = await supabase
+              .from('app_users')
+              .select('*')
+              .or(`id.eq.${decodedUser.id},email.ilike.${decodedUser.email}`)
+              .maybeSingle();
+
+            if (sbProfile) {
+              const approvedValue = sbProfile.isApproved !== undefined 
+                ? Boolean(sbProfile.isApproved) 
+                : Boolean(sbProfile.is_approved);
+
+              const enrolled = Array.isArray(sbProfile.enrolledCourseTitles) && sbProfile.enrolledCourseTitles.length > 0
+                ? sbProfile.enrolledCourseTitles
+                : (Array.isArray(sbProfile.enrolled_courses) && sbProfile.enrolled_courses.length > 0
+                  ? sbProfile.enrolled_courses
+                  : (decodedUser.enrolledCourseTitles || []));
+
+              decodedUser = {
+                ...decodedUser,
+                ...sbProfile,
+                id: sbProfile.id || decodedUser.id,
+                name: (sbProfile.name && sbProfile.name !== 'Student' && sbProfile.name !== 'স্টুডেন্ট') ? sbProfile.name : decodedUser.name,
+                isApproved: approvedValue,
+                enrolledCourseTitles: enrolled,
+                transactionId: sbProfile.transactionId || sbProfile.transaction_id || decodedUser.transactionId || '',
+                paymentMethod: sbProfile.paymentMethod || sbProfile.payment_method || decodedUser.paymentMethod || '',
+                senderPhone: sbProfile.senderPhone || sbProfile.sender_phone || decodedUser.senderPhone || ''
+              };
+              setUser(decodedUser);
+            }
+          } catch (e) {}
+        }
+
+        const savedTab = localStorage.getItem('science_studio_saved_tab');
+        if (savedTab && ['home', 'classroom', 'admin', 'lab', 'admin-settings'].includes(savedTab)) {
+          if (savedTab.startsWith('admin') && decodedUser.role !== 'admin') {
+            setCurrentTab('classroom');
+          } else {
+            setCurrentTab(savedTab);
+          }
+        } else {
+          setCurrentTab(decodedUser.role === 'admin' ? 'admin' : 'classroom');
+        }
       }
 
       try {

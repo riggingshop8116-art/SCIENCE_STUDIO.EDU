@@ -1632,10 +1632,46 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
   });
 
   // Classes: Get all video classes (accessible to both students and admins, with strict enrollment isolation)
-  app.get('/api/classes', requireAuth, (req, res) => {
+  app.get('/api/classes', requireAuth, async (req, res) => {
     const db = readDB();
     const requestingUser = (req as any).user;
     const deletedClassSet = new Set(Array.isArray(db.deletedClassIds) ? db.deletedClassIds : []);
+
+    if (canAttemptSupabase()) {
+      try {
+        const { data: rows, error: sbErr } = await supabaseServer.from('app_classes').select('*');
+        if (sbErr && isNetworkError(sbErr)) {
+          markSupabaseOffline(sbErr);
+        } else if (Array.isArray(rows) && rows.length > 0) {
+          if (!db.classes) db.classes = [];
+          let updated = false;
+          rows.forEach((r: any) => {
+            if (deletedClassSet.has(r.id)) return;
+            const existingIdx = db.classes!.findIndex(c => c.id === r.id);
+            const classObj = {
+              id: r.id,
+              title: r.title,
+              subject: r.subject,
+              videoUrl: r.video_url || r.videoUrl || '',
+              thumbnailUrl: r.thumbnail_url || r.thumbnailUrl || '',
+              courseId: r.course_id || r.courseId || '',
+              courseTitle: r.course_title || r.courseTitle || '',
+              description: r.description || ''
+            };
+            if (existingIdx !== -1) {
+              db.classes![existingIdx] = { ...db.classes![existingIdx], ...classObj };
+            } else {
+              db.classes!.push(classObj);
+              updated = true;
+            }
+          });
+          if (updated) writeDB(db);
+        }
+      } catch (e: any) {
+        if (isNetworkError(e)) markSupabaseOffline(e);
+      }
+    }
+
     let list = (db.classes || []).filter(c => !deletedClassSet.has(c.id));
 
     // Strict Classroom Isolation: Students can ONLY access classes of courses they are enrolled in and approved for!
@@ -1765,10 +1801,45 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
   });
 
   // Notes: Get all lecture notes (accessible to both students and admins, with strict enrollment isolation)
-  app.get('/api/notes', requireAuth, (req, res) => {
+  app.get('/api/notes', requireAuth, async (req, res) => {
     const db = readDB();
     const requestingUser = (req as any).user;
     const deletedNoteSet = new Set(Array.isArray(db.deletedNoteIds) ? db.deletedNoteIds : []);
+
+    if (canAttemptSupabase()) {
+      try {
+        const { data: rows, error: sbErr } = await supabaseServer.from('app_notes').select('*');
+        if (sbErr && isNetworkError(sbErr)) {
+          markSupabaseOffline(sbErr);
+        } else if (Array.isArray(rows) && rows.length > 0) {
+          if (!db.notes) db.notes = [];
+          let updated = false;
+          rows.forEach((r: any) => {
+            if (deletedNoteSet.has(r.id)) return;
+            const existingIdx = db.notes!.findIndex(n => n.id === r.id);
+            const noteObj = {
+              id: r.id,
+              title: r.title,
+              subject: r.subject,
+              pdfUrl: r.pdf_url || r.pdfUrl || '',
+              courseId: r.course_id || r.courseId || '',
+              courseTitle: r.course_title || r.courseTitle || '',
+              description: r.description || ''
+            };
+            if (existingIdx !== -1) {
+              db.notes![existingIdx] = { ...db.notes![existingIdx], ...noteObj };
+            } else {
+              db.notes!.push(noteObj);
+              updated = true;
+            }
+          });
+          if (updated) writeDB(db);
+        }
+      } catch (e: any) {
+        if (isNetworkError(e)) markSupabaseOffline(e);
+      }
+    }
+
     let list = (db.notes || []).filter(n => !deletedNoteSet.has(n.id));
 
     // Strict Classroom Isolation: Students can ONLY access lecture notes of courses they are enrolled in and approved for!
@@ -1907,10 +1978,14 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
                 return;
               }
               const existingIndex = db.courses!.findIndex(c => c.id === r.id);
+              const supervisorVal = r.supervisor || r.instructor || (r.data && (r.data.supervisor || r.data.instructor)) || (existingIndex !== -1 ? (db.courses![existingIndex]?.supervisor || db.courses![existingIndex]?.instructor) : null) || db.settings?.adminName || 'SAKIB HOSEN (Founder & Chief Science Mentor)';
+              const instructorVal = r.instructor || r.supervisor || (r.data && (r.data.instructor || r.data.supervisor)) || (existingIndex !== -1 ? (db.courses![existingIndex]?.instructor || db.courses![existingIndex]?.supervisor) : null) || db.settings?.adminName || 'SAKIB HOSEN (সাকিব স্যার)';
               const courseObj = {
                 id: r.id,
                 title: r.title,
                 subject: r.subject,
+                supervisor: supervisorVal,
+                instructor: instructorVal,
                 classLevel: r.batch || r.classLevel || r.class_level || '',
                 price: Number(r.price || 0),
                 originalPrice: r.originalPrice ? Number(r.originalPrice) : (r.original_price ? Number(r.original_price) : undefined),
