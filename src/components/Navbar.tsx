@@ -93,6 +93,9 @@ export default function Navbar({
                   alt="Science Studio Logo" 
                   className="w-full h-full object-cover"
                   referrerPolicy="no-referrer"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).src = LogoImage;
+                  }}
                 />
               </div>
               <div className="flex flex-col justify-center">
@@ -216,8 +219,15 @@ export default function Navbar({
                     className="flex items-center gap-1.5 sm:gap-2 bg-slate-900/90 hover:bg-slate-800/90 border border-cyan-500/30 hover:border-cyan-400/60 rounded-xl py-1 px-1.5 sm:px-2.5 cursor-pointer transition-all shadow-sm"
                   >
                     <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-lg overflow-hidden flex items-center justify-center shrink-0 ${user.role === 'admin' ? 'bg-rose-500/15 border border-rose-500/40 text-rose-400' : 'bg-cyan-500/15 border border-cyan-500/40 text-cyan-400'}`}>
-                      {user.photoUrl || user.avatarUrl ? (
-                        <img src={user.photoUrl || user.avatarUrl} alt={userDisplayName} className="w-full h-full object-cover" />
+                      {(user.photoUrl || user.avatarUrl || (user.role === 'admin' ? settings?.adminPhotoUrl : '')) ? (
+                        <img 
+                          src={user.photoUrl || user.avatarUrl || (user.role === 'admin' ? settings?.adminPhotoUrl : '')} 
+                          alt={userDisplayName} 
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).style.display = 'none';
+                          }}
+                        />
                       ) : user.role === 'admin' ? (
                         <Shield className="w-4 h-4" />
                       ) : (
@@ -273,10 +283,17 @@ export default function Navbar({
                       >
                         <div className="flex items-center gap-2.5 pb-2.5 mb-2.5 border-b border-white/10">
                           <div className={`w-10 h-10 rounded-xl overflow-hidden flex items-center justify-center shrink-0 ${user.role === 'admin' ? 'bg-rose-500/20 text-rose-400' : 'bg-cyan-500/20 text-cyan-400'}`}>
-                            {user.photoUrl || user.avatarUrl ? (
-                              <img src={user.photoUrl || user.avatarUrl} alt={userDisplayName} className="w-full h-full object-cover" />
+                            {(user.photoUrl || user.avatarUrl || (user.role === 'admin' ? settings?.adminPhotoUrl : '')) ? (
+                              <img 
+                                src={user.photoUrl || user.avatarUrl || (user.role === 'admin' ? settings?.adminPhotoUrl : '')} 
+                                alt={userDisplayName} 
+                                className="w-full h-full object-cover"
+                                onError={(e) => {
+                                  (e.target as HTMLImageElement).style.display = 'none';
+                                }}
+                              />
                             ) : (
-                              <UserIcon className="w-5 h-5" />
+                              user.role === 'admin' ? <Shield className="w-5 h-5" /> : <UserIcon className="w-5 h-5" />
                             )}
                           </div>
                           <div className="min-w-0 flex-1">

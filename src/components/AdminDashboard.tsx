@@ -260,28 +260,32 @@ export default function AdminDashboard({
     const list = userList.filter(u => {
       const q = userSearchQuery.toLowerCase().trim();
       const matchesSearch = !q ||
-        u.name.toLowerCase().includes(q) ||
-        u.email.toLowerCase().includes(q) ||
-        (u.phone && u.phone.includes(q)) ||
-        (u.id && u.id.toLowerCase().includes(q)) ||
-        (u.transactionId && u.transactionId.toLowerCase().includes(q)) ||
-        (u.enrolledCourseTitles && u.enrolledCourseTitles.some(t => t.toLowerCase().includes(q)));
+        Boolean(u.name && String(u.name).toLowerCase().includes(q)) ||
+        Boolean(u.email && String(u.email).toLowerCase().includes(q)) ||
+        Boolean(u.phone && String(u.phone).includes(q)) ||
+        Boolean(u.id && String(u.id).toLowerCase().includes(q)) ||
+        Boolean(u.transactionId && String(u.transactionId).toLowerCase().includes(q)) ||
+        Boolean(Array.isArray(u.enrolledCourseTitles) && u.enrolledCourseTitles.some((t: any) => String(t || '').toLowerCase().includes(q)));
 
+      const isApprovedBool = Boolean(u.isApproved);
       const matchesStatus = 
         userStatusFilter === 'all' ||
-        (userStatusFilter === 'approved' && u.isApproved) ||
-        (userStatusFilter === 'pending' && !u.isApproved);
+        (userStatusFilter === 'approved' && isApprovedBool) ||
+        (userStatusFilter === 'pending' && !isApprovedBool);
 
       let matchesDate = true;
-      if (u.createdAt) {
-        const uDate = new Date(u.createdAt);
-        if (userStartDate) {
-          const start = new Date(userStartDate + 'T00:00:00');
-          if (uDate < start) matchesDate = false;
-        }
-        if (userEndDate) {
-          const end = new Date(userEndDate + 'T23:59:59');
-          if (uDate > end) matchesDate = false;
+      const userDateStr = u.createdAt || (u as any).joinedAt || (u as any).created_at;
+      if (userDateStr && (userStartDate || userEndDate)) {
+        const uDate = new Date(userDateStr);
+        if (!isNaN(uDate.getTime())) {
+          if (userStartDate) {
+            const start = new Date(userStartDate + 'T00:00:00');
+            if (uDate < start) matchesDate = false;
+          }
+          if (userEndDate) {
+            const end = new Date(userEndDate + 'T23:59:59');
+            if (uDate > end) matchesDate = false;
+          }
         }
       }
 
@@ -1356,20 +1360,37 @@ export default function AdminDashboard({
 
       const tombstoneSet = tombstonedIdsRef.current;
       const userMap = new Map<string, any>();
+      const emailToKeyMap = new Map<string, string>();
 
       // 1. Add API users
       apiUsers.forEach((u: any) => {
-        const key = String(u.id || u.email || '').trim().toLowerCase();
-        if (key && !tombstoneSet.has(key)) {
+        const idKey = u.id ? String(u.id).trim().toLowerCase() : '';
+        const emailKey = u.email ? String(u.email).trim().toLowerCase() : '';
+        const key = idKey || emailKey;
+        if (key && !tombstoneSet.has(key) && (!emailKey || !tombstoneSet.has(emailKey)) && (!idKey || !tombstoneSet.has(idKey))) {
           userMap.set(key, u);
+          if (emailKey) emailToKeyMap.set(emailKey, key);
         }
       });
 
       // 2. Merge Supabase users (Supabase is authoritative for persistent registrations and updates)
       sbUsers.forEach((sb: any) => {
-        const key = String(sb.id || sb.email || '').trim().toLowerCase();
-        if (key && !tombstoneSet.has(key)) {
-          const existing = userMap.get(key) || {};
+        const idKey = sb.id ? String(sb.id).trim().toLowerCase() : '';
+        const emailKey = sb.email ? String(sb.email).trim().toLowerCase() : '';
+        
+        let targetKey = '';
+        if (idKey && userMap.has(idKey)) {
+          targetKey = idKey;
+        } else if (emailKey && emailToKeyMap.has(emailKey)) {
+          targetKey = emailToKeyMap.get(emailKey)!;
+        } else if (emailKey && userMap.has(emailKey)) {
+          targetKey = emailKey;
+        } else {
+          targetKey = idKey || emailKey;
+        }
+
+        if (targetKey && !tombstoneSet.has(targetKey) && (!emailKey || !tombstoneSet.has(emailKey)) && (!idKey || !tombstoneSet.has(idKey))) {
+          const existing = userMap.get(targetKey) || {};
           const isApproved = sb.isApproved !== undefined 
             ? Boolean(sb.isApproved) 
             : (sb.is_approved !== undefined ? Boolean(sb.is_approved) : Boolean(existing.isApproved));
@@ -1380,13 +1401,13 @@ export default function AdminDashboard({
               ? sb.enrolled_courses
               : (existing.enrolledCourseTitles || (sb.course ? [sb.course] : [])));
 
-          userMap.set(key, {
+          const mergedUser = {
             ...existing,
             ...sb,
-            id: sb.id || existing.id,
-            name: (sb.name && sb.name !== 'Student' && sb.name !== 'স্টুডেন্ট') ? sb.name : (existing.name || sb.name),
-            email: sb.email || existing.email,
-            phone: sb.phone || existing.phone,
+            id: sb.id || existing.id || targetKey,
+            name: (sb.name && sb.name !== 'Student' && sb.name !== 'স্টুডেন্ট') ? sb.name : (existing.name || sb.name || 'শিক্ষার্থী'),
+            email: sb.email || existing.email || '',
+            phone: sb.phone || existing.phone || sb.senderPhone || sb.sender_phone || '',
             role: sb.role || existing.role || 'student',
             isApproved,
             enrolledCourseTitles: enrolled,
@@ -1395,7 +1416,10 @@ export default function AdminDashboard({
             senderPhone: sb.senderPhone || sb.sender_phone || existing.senderPhone || '',
             studentClass: sb.batch || sb.studentClass || existing.studentClass || '',
             createdAt: sb.joinedAt || sb.created_at || existing.createdAt || new Date().toISOString()
-          });
+          };
+
+          userMap.set(targetKey, mergedUser);
+          if (emailKey) emailToKeyMap.set(emailKey, targetKey);
         }
       });
 
@@ -2222,32 +2246,28 @@ export default function AdminDashboard({
   };
 
   return (
-    <div className="relative w-full text-slate-100 font-sans min-h-screen lg:h-[calc(100dvh-4.5rem)] lg:min-h-0 lg:overflow-hidden flex flex-col">
-      {/* Dynamic Contextual Scientific Hero Banner Background with High-Legibility Overlay */}
+    <div className="relative w-full text-slate-100 font-sans min-h-screen lg:h-[calc(100dvh-4.5rem)] lg:min-h-0 lg:overflow-hidden flex flex-col bg-[#070c18]">
+      {/* Crisp Solid Modern High-Tech Background */}
       <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden">
-        <img 
-          src={sectionBgMeta.image} 
-          alt="Admin Section Background" 
-          className="w-full h-full object-cover object-center opacity-20 scale-105 transition-all duration-1000 blur-[1px]"
-        />
-        <div className="absolute inset-0 bg-[#070c18]/92 backdrop-blur-[2px]" />
-        <div className="absolute inset-0 bg-gradient-to-t from-[#050811] via-[#070c18]/80 to-[#070c18]/95" />
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-cyan-900/20 via-transparent to-slate-950/80" />
+        <div className="absolute inset-0 bg-[#070c18]" />
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-cyan-950/25 via-slate-950/80 to-[#070c18]" />
+        <div className="absolute inset-0 bg-[linear-gradient(to_right,#0c172e0a_1px,transparent_1px),linear-gradient(to_bottom,#0c172e0a_1px,transparent_1px)] bg-[size:32px_32px]" />
       </div>
 
       <div className="relative z-10 w-full max-w-[1920px] mx-auto px-2 sm:px-4 lg:px-6 py-2 sm:py-3 flex flex-col flex-1 min-h-0 h-full overflow-hidden">
       
-        {/* Top Header Controls: Theme Indicator & Mobile Quick Navigation */}
+        {/* Top Header Controls: Executive Status Bar & Mobile Quick Navigation */}
         <div className="shrink-0 mb-3 space-y-2">
-          <div className="flex flex-wrap items-center justify-between gap-2 px-3 sm:px-4 py-2 rounded-2xl bg-[#0a1122]/90 border border-cyan-500/25 shadow-[0_0_15px_rgba(34,211,238,0.1)] text-xs">
+          <div className="flex flex-wrap items-center justify-between gap-2 px-3 sm:px-4 py-2 rounded-2xl bg-[#0a1122]/95 border border-cyan-500/25 shadow-[0_0_20px_rgba(0,0,0,0.5)] text-xs">
             <div className="flex items-center gap-2 text-cyan-300 font-mono">
-              <Sparkles className="w-4 h-4 text-cyan-400 shrink-0" />
-              <span className="hidden sm:inline text-slate-400">অ্যাডমিন ব্যাকগ্রাউন্ড থিম:</span>
-              <span className="font-bold text-white tracking-wide">{sectionBgMeta.label}</span>
+              <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)] animate-pulse" />
+              <span className="font-bold text-white tracking-wide">সায়েন্স স্টুডিও • অ্যাডমিন কন্ট্রোল রুম</span>
+              <span className="hidden md:inline text-slate-500">|</span>
+              <span className="hidden md:inline text-emerald-400/90 text-[11px]">সুপাবেজ ও ক্লাউড ডাটাবেস লাইভ কানেক্টেড</span>
             </div>
             <div className="flex items-center gap-2">
               <span className="px-2.5 py-0.5 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/30 text-[10px] uppercase font-mono font-bold tracking-wider">
-                {sectionBgMeta.badge}
+                {activeTab === 'dashboard' ? `DASHBOARD • ${dashSubTab.toUpperCase()}` : activeTab.toUpperCase()}
               </span>
             </div>
           </div>
@@ -2386,15 +2406,18 @@ export default function AdminDashboard({
               <div className="flex flex-col items-center justify-center gap-2.5 border-b border-cyan-500/20 pb-4 select-none shrink-0">
                 <div className="relative w-14 h-14 rounded-full overflow-hidden border-2 border-cyan-400 shadow-[0_0_20px_rgba(34,211,238,0.4)] bg-slate-900 shrink-0">
                   <img 
-                    src={LogoImage} 
+                    src={settings?.adminPhotoUrl || settings?.academyLogoUrl || LogoImage} 
                     alt="Science Studio Logo" 
                     className="w-full h-full object-cover pointer-events-none"
                     draggable={false}
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).src = LogoImage;
+                    }}
                   />
                 </div>
                 <div className="text-center">
-                  <h4 className="text-sm font-display font-bold text-white tracking-wide">SCIENCE STUDIO</h4>
-                  <p className="text-[11px] font-mono text-cyan-400 font-semibold">এডমিন কন্ট্রোল প্যানেল</p>
+                  <h4 className="text-sm font-display font-bold text-white tracking-wide">{settings?.academyName || "SCIENCE STUDIO"}</h4>
+                  <p className="text-[11px] font-mono text-cyan-400 font-semibold">{settings?.adminName ? `${settings.adminName} • এডমিন` : "এডমিন কন্ট্রোল প্যানেল"}</p>
                 </div>
               </div>
 
@@ -6318,11 +6341,18 @@ export default function AdminDashboard({
             <div className="flex items-center justify-between pb-4 border-b border-cyan-500/20">
               <div className="flex items-center gap-2.5">
                 <div className="w-10 h-10 rounded-full overflow-hidden border border-cyan-400 bg-slate-900 shrink-0">
-                  <img src={LogoImage} alt="Logo" className="w-full h-full object-cover" />
+                  <img 
+                    src={settings?.adminPhotoUrl || settings?.academyLogoUrl || LogoImage} 
+                    alt="Logo" 
+                    className="w-full h-full object-cover" 
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).src = LogoImage;
+                    }}
+                  />
                 </div>
                 <div>
-                  <h4 className="text-sm font-display font-bold text-white">SCIENCE STUDIO</h4>
-                  <p className="text-[10px] font-mono text-cyan-400">এডমিন কন্ট্রোল প্যানেল</p>
+                  <h4 className="text-sm font-display font-bold text-white">{settings?.academyName || "SCIENCE STUDIO"}</h4>
+                  <p className="text-[10px] font-mono text-cyan-400">{settings?.adminName ? `${settings.adminName} • এডমিন` : "এডমিন কন্ট্রোল প্যানেল"}</p>
                 </div>
               </div>
               <button

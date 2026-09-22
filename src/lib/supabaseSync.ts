@@ -122,9 +122,9 @@ export async function registerUserInSupabaseAuth(
     }
 
     // 3. User is now in Supabase Authentication!
-    // Per requirement: Unapproved students must NOT be added to Table Editor (app_users table).
-    // They will only be added to app_users when Admin explicitly approves them.
-    if (userObject?.isApproved === true || userObject?.role === 'admin') {
+    // Persist all registered students (approved and pending) directly to app_users
+    // so that Admin can instantly see and approve them in Admin Panel
+    if (userObject) {
       await upsertUserToSupabase(userObject);
     }
 
@@ -323,44 +323,42 @@ export async function deleteFromSupabase(table: string, id: string) {
 export async function upsertUserToSupabase(u: any) {
   if (!canAttemptSupabase() || !u || !u.id) return;
   try {
-    const isApproved = u.isApproved !== undefined ? Boolean(u.isApproved) : (u.is_approved !== undefined ? Boolean(u.is_approved) : false);
+    const isApproved = u.isApproved !== undefined 
+      ? Boolean(u.isApproved) 
+      : (u.is_approved !== undefined ? Boolean(u.is_approved) : false);
 
     const enrolledList = Array.isArray(u.enrolledCourseTitles) 
       ? u.enrolledCourseTitles 
       : (u.course ? [u.course] : (Array.isArray(u.enrolled_courses) ? u.enrolled_courses : []));
 
     const userAvatar = u.photoUrl || u.avatarUrl || u.avatar || '';
+    const cleanId = String(u.id).trim();
+
+    // Supabase app_users strictly contains:
+    // id, name, email, phone, password (NOT NULL), role, isApproved, course, batch, 
+    // enrolledCourseTitles, enrolledCourseIds, transactionId, joinedAt, lastLoginAt, deviceInfo, avatar, created_at, updated_at
     const payload: any = {
-      id: u.id,
+      id: cleanId,
       name: u.name || '',
       email: u.email ? u.email.toLowerCase().trim() : '',
-      phone: u.phone || '',
-      password: u.password || '',
+      phone: u.phone || u.senderPhone || u.sender_phone || '',
+      password: (u.password && String(u.password).trim()) ? String(u.password).trim() : ('STUDENT@' + (cleanId || '2026')),
       role: u.role || 'student',
       isApproved: isApproved,
-      is_approved: isApproved,
       course: enrolledList.length > 0 ? enrolledList[0] : (u.course || ''),
       batch: u.studentClass || u.batch || '',
-      student_class: u.studentClass || u.batch || '',
       enrolledCourseTitles: enrolledList,
-      enrolled_courses: enrolledList,
       enrolledCourseIds: Array.isArray(u.enrolledCourseIds) ? u.enrolledCourseIds : [],
       transactionId: u.transactionId || u.transaction_id || '',
-      transaction_id: u.transactionId || u.transaction_id || '',
-      paymentMethod: u.paymentMethod || u.payment_method || '',
-      payment_method: u.paymentMethod || u.payment_method || '',
-      senderPhone: u.senderPhone || u.sender_phone || '',
-      sender_phone: u.senderPhone || u.sender_phone || '',
       joinedAt: u.joinedAt || u.createdAt || u.created_at || new Date().toISOString(),
       updated_at: new Date().toISOString()
     };
 
-    // If an avatar is provided, include it in payload. If empty, don't overwrite DB avatar with empty string!
     if (userAvatar) {
       payload.avatar = userAvatar;
     }
 
-    let maxRetries = 8;
+    let maxRetries = 4;
     while (maxRetries > 0 && canAttemptSupabase()) {
       maxRetries--;
       const { error } = await supabaseServer.from('app_users').upsert(payload, { onConflict: 'id' });
@@ -373,6 +371,7 @@ export async function upsertUserToSupabase(u: any) {
       if (missingCol && missingCol in payload) {
         delete payload[missingCol];
       } else {
+        console.warn("Supabase app_users upsert warning:", error.message);
         break;
       }
     }
@@ -628,6 +627,60 @@ function getValueForSettingColumn(col: string, s: any, targetRow: any, now: stri
 export async function upsertSettingsToSupabase(st: any) {
   if (!canAttemptSupabase() || !st) return;
   try {
+    // Pack all extended fields into routineText JSON so NOTHING is lost even if custom columns do not exist in app_settings table
+    const extendedPayload = {
+      routine: Array.isArray(st.routine) ? st.routine : [],
+      heroBanners: Array.isArray(st.heroBanners) ? st.heroBanners : [],
+      academyLogoUrl: st.academyLogoUrl || '',
+      marqueeNotice2: st.marqueeNotice2 || '',
+      marqueeNotice3: st.marqueeNotice3 || '',
+      marqueeNotice4: st.marqueeNotice4 || '',
+      marqueeNotice5: st.marqueeNotice5 || '',
+      telegramUrl: st.telegramUrl || '',
+      helplineTime: st.helplineTime || '',
+      classLevels: Array.isArray(st.classLevels) ? st.classLevels : [],
+      courseDurations: Array.isArray(st.courseDurations) ? st.courseDurations : [],
+      defaultCourseFeatures: Array.isArray(st.defaultCourseFeatures) ? st.defaultCourseFeatures : [],
+      orbitSectionBadge: st.orbitSectionBadge,
+      orbitSectionTitle: st.orbitSectionTitle,
+      orbitSectionSubtitle: st.orbitSectionSubtitle,
+      orbitAutoRotate: st.orbitAutoRotate,
+      orbitSpeedSeconds: st.orbitSpeedSeconds,
+      insightsTotalStudents: st.insightsTotalStudents,
+      insightsActivePercent: st.insightsActivePercent,
+      insightsSuccessRate: st.insightsSuccessRate,
+      insightsSuccessRateLabel: st.insightsSuccessRateLabel,
+      insightsTotalCourses: st.insightsTotalCourses,
+      insightsTotalNotes: st.insightsTotalNotes,
+      insightsBullet1: st.insightsBullet1,
+      insightsBullet2: st.insightsBullet2,
+      insightsBullet3: st.insightsBullet3,
+      insightsRegisterButtonText: st.insightsRegisterButtonText,
+      pillarsSectionBadge: st.pillarsSectionBadge,
+      pillarsSectionTitle: st.pillarsSectionTitle,
+      pillarsSectionSubtitle: st.pillarsSectionSubtitle,
+      pillar1Title: st.pillar1Title,
+      pillar1Badge: st.pillar1Badge,
+      pillar1Description: st.pillar1Description,
+      pillar2Title: st.pillar2Title,
+      pillar2Badge: st.pillar2Badge,
+      pillar2Description: st.pillar2Description,
+      pillar3Title: st.pillar3Title,
+      pillar3Badge: st.pillar3Badge,
+      pillar3Description: st.pillar3Description,
+      mentorExperience: st.mentorExperience,
+      mentorGuidance: st.mentorGuidance,
+      heroBadgeText: st.heroBadgeText,
+      announcementBadge: st.announcementBadge,
+      labSectionBadge: st.labSectionBadge,
+      labSectionTitle: st.labSectionTitle,
+      labSectionSubtitle: st.labSectionSubtitle,
+      deletedCourseIds: Array.isArray(st.deletedCourseIds) ? st.deletedCourseIds : [],
+      deletedClassIds: Array.isArray(st.deletedClassIds) ? st.deletedClassIds : [],
+      deletedNoteIds: Array.isArray(st.deletedNoteIds) ? st.deletedNoteIds : [],
+      deletedUserIds: Array.isArray(st.deletedUserIds) ? st.deletedUserIds : []
+    };
+
     const payload: any = {
       id: 'default',
       academyName: st.academyName || 'SCIENCE STUDIO by Sakib',
@@ -641,7 +694,7 @@ export async function upsertSettingsToSupabase(st: any) {
       bkashNumber: st.bkashNumber ?? '',
       nagadNumber: st.nagadNumber ?? '',
       rocketNumber: st.rocketNumber ?? '',
-      routineText: st.routineText ?? null,
+      routineText: JSON.stringify(extendedPayload),
       routineImageUrl: st.routineImageUrl ?? null,
       heroTitle: st.heroTitle || 'Innovate, Educate & Explore with Science Studio by Sakib',
       heroSubtitle: st.heroSubtitle ?? '',
@@ -872,8 +925,8 @@ export async function syncToSupabase(data: any) {
                   id: u.id,
                   name: u.name || '',
                   email: u.email ? u.email.toLowerCase().trim() : '',
-                  phone: u.phone || '',
-                  password: u.password || '',
+                  phone: u.phone || u.senderPhone || u.sender_phone || '',
+                  password: (u.password && String(u.password).trim()) ? String(u.password).trim() : ('STUDENT@' + (u.id || '2026')),
                   role: u.role || 'student',
                   isApproved: isApprovedVal,
                   course: enrolledList.length > 0 ? enrolledList[0] : (u.course || ''),
@@ -1099,9 +1152,22 @@ export async function loadFromSupabase(defaultData: any) {
     }
 
     if (settingsRow) {
-      const configObj = (typeof settingsRow.config === 'object' && settingsRow.config !== null)
-        ? settingsRow.config
-        : ((typeof settingsRow.data === 'object' && settingsRow.data !== null) ? settingsRow.data : ((typeof settingsRow.settings === 'object' && settingsRow.settings !== null) ? settingsRow.settings : {}));
+      let extObj: any = {};
+      if (settingsRow.routineText && typeof settingsRow.routineText === 'string') {
+        try {
+          const parsed = JSON.parse(settingsRow.routineText);
+          if (parsed && typeof parsed === 'object') {
+            extObj = parsed;
+          }
+        } catch (e) {}
+      }
+
+      const configObj = {
+        ...(typeof settingsRow.config === 'object' && settingsRow.config !== null ? settingsRow.config : {}),
+        ...(typeof settingsRow.data === 'object' && settingsRow.data !== null ? settingsRow.data : {}),
+        ...(typeof settingsRow.settings === 'object' && settingsRow.settings !== null ? settingsRow.settings : {}),
+        ...extObj
+      };
       
       const getVal = (aliases: string[], fallback: any) => {
         if (configObj && typeof configObj === 'object') {
@@ -1201,14 +1267,26 @@ export async function loadFromSupabase(defaultData: any) {
         nagadNumber: getVal(['nagadNumber', 'nagad_number', 'nagad', 'nagadNo', 'nagad_no', 'nagadNum', 'nagad_num'], defaultData.settings?.nagadNumber || ''),
         rocketNumber: getVal(['rocketNumber', 'rocket_number', 'rocket', 'rocketNo', 'rocket_no', 'rocketNum', 'rocket_num'], defaultData.settings?.rocketNumber || ''),
         paymentInstructions: getVal(['paymentInstructions', 'payment_instructions', 'paymentInstruction', 'payment_instruction', 'paymentInfo', 'payment_info', 'instructions'], defaultData.settings?.paymentInstructions || ''),
-        routine: getArray(['routine', 'classRoutine', 'class_routine', 'schedule'], defaultData.settings?.routine || [])
+        routine: getArray(['routine', 'classRoutine', 'class_routine', 'schedule'], defaultData.settings?.routine || []),
+        heroBanners: getArray(['heroBanners', 'hero_banners', 'banners'], defaultData.settings?.heroBanners || []),
+        academyLogoUrl: getVal(['academyLogoUrl', 'academy_logo_url', 'logoUrl', 'logo_url', 'logo'], defaultData.settings?.academyLogoUrl || '')
       };
 
-      // Load and harmonize deletedUserIds tombstones
+      // Load and harmonize deleted tombstones so deletions persist across deployments
       const configDeleted = (configObj && Array.isArray(configObj.deletedUserIds)) ? configObj.deletedUserIds : [];
       const localDeleted = Array.isArray(defaultData.deletedUserIds) ? defaultData.deletedUserIds : [];
       const combinedDeleted = Array.from(new Set([...localDeleted, ...configDeleted].map((x: any) => String(x).trim().toLowerCase()))).filter(Boolean);
       loadedData.deletedUserIds = combinedDeleted;
+
+      if (configObj && Array.isArray(configObj.deletedCourseIds)) {
+        loadedData.deletedCourseIds = Array.from(new Set([...(defaultData.deletedCourseIds || []), ...configObj.deletedCourseIds]));
+      }
+      if (configObj && Array.isArray(configObj.deletedClassIds)) {
+        loadedData.deletedClassIds = Array.from(new Set([...(defaultData.deletedClassIds || []), ...configObj.deletedClassIds]));
+      }
+      if (configObj && Array.isArray(configObj.deletedNoteIds)) {
+        loadedData.deletedNoteIds = Array.from(new Set([...(defaultData.deletedNoteIds || []), ...configObj.deletedNoteIds]));
+      }
 
       hasLoadedAny = true;
     }

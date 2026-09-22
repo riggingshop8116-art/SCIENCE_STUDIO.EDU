@@ -3045,6 +3045,25 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
       }
 
       const db = readDB();
+
+      let finalHeroBanners = Array.isArray(heroBanners) ? heroBanners : (db.settings?.heroBanners || []);
+      if (Array.isArray(heroBanners) && heroBanners.length > 0) {
+        finalHeroBanners = await Promise.all(heroBanners.map(async (banner: any, bIdx: number) => {
+          if (typeof banner?.imageUrl === 'string' && banner.imageUrl.startsWith('data:')) {
+            const fileName = `banner_${banner.id || bIdx}_${Date.now()}.jpg`;
+            let uploadedUrl = await uploadToSupabaseStorage('course-images', fileName, banner.imageUrl, 'image/jpeg');
+            if (!uploadedUrl) {
+              const cleanBase64 = banner.imageUrl.split(';base64,')[1] || banner.imageUrl;
+              const buffer = Buffer.from(cleanBase64, 'base64');
+              fs.writeFileSync(path.join(uploadsDir, fileName), buffer);
+              uploadedUrl = `/uploads/${fileName}`;
+            }
+            return { ...banner, imageUrl: uploadedUrl || banner.imageUrl };
+          }
+          return banner;
+        }));
+      }
+
       db.settings = {
         academyName: (academyName && String(academyName).trim()) || db.settings?.academyName || "SCIENCE STUDIO by Sakib",
         announcement: announcement !== undefined ? String(announcement) : (db.settings?.announcement || "ADMISSIONS NOW OPEN FOR ACADEMIC YEAR 2026"),
@@ -3065,10 +3084,10 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
         contactAddress: contactAddress !== undefined ? String(contactAddress) : (db.settings?.contactAddress || ""),
         footerDescription: footerDescription !== undefined ? String(footerDescription) : (db.settings?.footerDescription || ""),
         routine: Array.isArray(routine) ? routine : (db.settings?.routine || []),
-        academyLogoUrl: finalAcademyLogoUrl || db.settings?.academyLogoUrl || "",
+        academyLogoUrl: academyLogoUrl !== undefined ? finalAcademyLogoUrl : (db.settings?.academyLogoUrl || ""),
         adminName: adminName !== undefined ? String(adminName) : (db.settings?.adminName || ""),
         adminBio: adminBio !== undefined ? String(adminBio) : (db.settings?.adminBio || ""),
-        adminPhotoUrl: finalAdminPhotoUrl || db.settings?.adminPhotoUrl || "",
+        adminPhotoUrl: adminPhotoUrl !== undefined ? finalAdminPhotoUrl : (db.settings?.adminPhotoUrl || ""),
         adminDesignation: adminDesignation !== undefined ? String(adminDesignation) : (db.settings?.adminDesignation || ""),
         adminEducation: adminEducation !== undefined ? String(adminEducation) : (db.settings?.adminEducation || ""),
         bkashNumber: bkashNumber !== undefined ? String(bkashNumber) : (db.settings?.bkashNumber || "+৮৮০ ১৭০০-০০০০০০"),
@@ -3120,7 +3139,7 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
         labSectionBadge: labSectionBadge !== undefined ? String(labSectionBadge) : (db.settings?.labSectionBadge || "INTERACTIVE VIRTUAL LAB & PLAYGROUND"),
         labSectionTitle: labSectionTitle !== undefined ? String(labSectionTitle) : (db.settings?.labSectionTitle || ""),
         labSectionSubtitle: labSectionSubtitle !== undefined ? String(labSectionSubtitle) : (db.settings?.labSectionSubtitle || ""),
-        heroBanners: Array.isArray(heroBanners) ? heroBanners : (db.settings?.heroBanners || [])
+        heroBanners: finalHeroBanners
       };
 
       // Keep logged in admin user name in sync
