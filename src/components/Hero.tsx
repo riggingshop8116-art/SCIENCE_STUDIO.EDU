@@ -599,9 +599,15 @@ export default function Hero({
         >
           {/* ================= 1. BACKGROUND ROTATING SPACE, BIOLOGY & PHYSICS 3D BANNERS (100% FULL-BLEED) ================= */}
           <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
-            {/* Animated crossfading background 3D images covering the entire hero div */}
+            {/* Animated crossfading background 3D images - lazily mounts only active & adjacent images for smooth crossfade without mobile memory bloat */}
             {scienceBanners.map((b, index) => {
               const isActive = index === currentBannerIndex;
+              const isNearby = Math.abs(index - currentBannerIndex) <= 1 || 
+                (currentBannerIndex === 0 && index === scienceBanners.length - 1) || 
+                (currentBannerIndex === scienceBanners.length - 1 && index === 0);
+              
+              if (!isNearby) return null;
+
               return (
                 <div
                   key={b.id}
@@ -612,6 +618,8 @@ export default function Hero({
                   <img 
                     src={b.image} 
                     alt={b.title} 
+                    loading={isActive ? "eager" : "lazy"}
+                    decoding="async"
                     className="w-full h-full object-cover object-center sm:object-right transform transition-transform duration-[8000ms] ease-out scale-105"
                     referrerPolicy="no-referrer"
                     onError={(e) => {

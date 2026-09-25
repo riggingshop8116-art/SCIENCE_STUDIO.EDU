@@ -268,7 +268,8 @@ export default function ScienceBackground() {
       }
     ];
 
-    setItems(generatedItems);
+    const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
+    setItems(isMobile ? generatedItems.slice(0, 5) : generatedItems);
   }, []);
 
   return (
@@ -285,11 +286,11 @@ export default function ScienceBackground() {
         }}
       />
 
-      {/* 2. Soft Ambient Vignette & Deep Radial Glows */}
-      <div className="absolute top-[5%] left-[15%] w-[36rem] h-[36rem] rounded-full bg-cyan-600/[0.04] blur-[160px] pointer-events-none" />
-      <div className="absolute bottom-[10%] right-[8%] w-[40rem] h-[40rem] rounded-full bg-emerald-600/[0.03] blur-[170px] pointer-events-none" />
-      <div className="absolute top-[40%] left-[55%] w-[32rem] h-[32rem] rounded-full bg-blue-600/[0.03] blur-[150px] pointer-events-none" />
-      <div className="absolute bottom-[35%] left-[5%] w-[32rem] h-[32rem] rounded-full bg-amber-500/[0.04] blur-[130px] pointer-events-none" />
+      {/* 2. Soft Ambient Vignette & Deep Radial Glows - Native Zero-GPU Cost Gradients */}
+      <div className="absolute top-[5%] left-[15%] w-[24rem] sm:w-[36rem] h-[24rem] sm:h-[36rem] rounded-full pointer-events-none" style={{ background: 'radial-gradient(circle, rgba(6, 182, 212, 0.06) 0%, transparent 70%)' }} />
+      <div className="absolute bottom-[10%] right-[8%] w-[24rem] sm:w-[40rem] h-[24rem] sm:h-[40rem] rounded-full pointer-events-none" style={{ background: 'radial-gradient(circle, rgba(16, 185, 129, 0.05) 0%, transparent 70%)' }} />
+      <div className="absolute top-[40%] left-[55%] w-[20rem] sm:w-[32rem] h-[20rem] sm:h-[32rem] rounded-full pointer-events-none" style={{ background: 'radial-gradient(circle, rgba(37, 99, 235, 0.04) 0%, transparent 70%)' }} />
+      <div className="absolute bottom-[35%] left-[5%] w-[20rem] sm:w-[32rem] h-[20rem] sm:h-[32rem] rounded-full pointer-events-none" style={{ background: 'radial-gradient(circle, rgba(245, 158, 11, 0.04) 0%, transparent 70%)' }} />
 
       {/* 4. Floating Particles / Glowing Star Nodes (Subtle, calm ambient) */}
       <div className="absolute inset-0 pointer-events-none opacity-40">

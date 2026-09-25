@@ -14,12 +14,30 @@ export default function handler(req: any, res: any) {
       return res.status(200).end();
     }
 
-    const matchedPath = (req.headers['x-matched-path'] || req.headers['x-forwarded-uri']) as string | undefined;
-    if (matchedPath && typeof matchedPath === 'string') {
-      req.url = matchedPath;
-    } else if (req.url && !req.url.startsWith('/api') && !req.url.startsWith('/_')) {
-      req.url = '/api' + (req.url.startsWith('/') ? '' : '/') + req.url;
+    let targetPath = req.url || '/api';
+    const forwardedUri = (req.headers['x-forwarded-uri'] || req.headers['x-original-url']) as string | undefined;
+    const matchedPath = req.headers['x-matched-path'] as string | undefined;
+
+    if (forwardedUri && typeof forwardedUri === 'string' && forwardedUri !== '/api' && forwardedUri !== '/') {
+      targetPath = forwardedUri;
+    } else if (matchedPath && typeof matchedPath === 'string' && matchedPath !== '/api' && matchedPath !== '/') {
+      targetPath = matchedPath;
     }
+
+    if (targetPath === '/api' || targetPath === '/') {
+      const matchHeader = req.headers['x-now-route-matches'] as string | undefined;
+      if (matchHeader && typeof matchHeader === 'string') {
+        const match = matchHeader.match(/1=([^&]+)/);
+        if (match && match[1]) {
+          targetPath = '/api/' + decodeURIComponent(match[1]);
+        }
+      }
+    }
+
+    if (targetPath && !targetPath.startsWith('/api') && !targetPath.startsWith('/_')) {
+      targetPath = '/api' + (targetPath.startsWith('/') ? '' : '/') + targetPath;
+    }
+    req.url = targetPath;
 
     const handlerApp = app || expressApp;
     return handlerApp(req, res);

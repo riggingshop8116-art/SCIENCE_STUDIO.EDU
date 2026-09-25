@@ -42,21 +42,33 @@ export default function InteractiveScience({ settings }: InteractiveScienceProps
   const [gasPressure, setGasPressure] = useState<number>(50);
   const [gasTemperature, setGasTemperature] = useState<number>(300);
 
-  // Animation loops
+  // Performance-optimized animation loop (runs only when physics or biology is active, throttled to 25fps, pauses when tab is hidden)
   useEffect(() => {
     let animId: number;
-    const loop = () => {
-      if (isPlayingPhysics) {
-        setPhysicsTime(t => t + waveSpeed);
+    let lastTime = performance.now();
+    const FRAME_INTERVAL = 40; // ~25 fps: ultra smooth yet prevents mobile CPU & memory exhaustion
+
+    const loop = (currentTime: number) => {
+      if (document.hidden) {
+        animId = requestAnimationFrame(loop);
+        return;
       }
-      if (isDnaRotating) {
-        setDnaTime(t => t + (dnaSpeed * 0.03));
+
+      const elapsed = currentTime - lastTime;
+      if (elapsed >= FRAME_INTERVAL) {
+        lastTime = currentTime - (elapsed % FRAME_INTERVAL);
+        if (activeSubject === 'physics' && isPlayingPhysics) {
+          setPhysicsTime(t => t + waveSpeed * 1.2);
+        } else if (activeSubject === 'biology' && isDnaRotating) {
+          setDnaTime(t => t + (dnaSpeed * 0.04));
+        }
       }
       animId = requestAnimationFrame(loop);
     };
+
     animId = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(animId);
-  }, [isPlayingPhysics, isDnaRotating, waveSpeed, dnaSpeed]);
+  }, [activeSubject, isPlayingPhysics, isDnaRotating, waveSpeed, dnaSpeed]);
 
   // Get Chemical Element Name based on Proton Count
   const getElementName = (pCount: number) => {

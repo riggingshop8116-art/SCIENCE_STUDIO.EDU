@@ -548,6 +548,32 @@ export async function ensureDBSyncedWithSupabase(force = false): Promise<DBStruc
           return (!uId || !tombstoneSet.has(uId)) && (!uEmail || !tombstoneSet.has(uEmail));
         });
 
+        // Merge and filter deleted courses
+        const combinedDeletedCourses = Array.from(new Set([...(currentDB.deletedCourseIds || []), ...(remoteData.deletedCourseIds || [])]));
+        remoteData.deletedCourseIds = combinedDeletedCourses;
+        const deletedCourseSet = new Set(combinedDeletedCourses);
+        remoteData.courses = (remoteData.courses || []).filter(c => !deletedCourseSet.has(c.id));
+
+        // Merge and filter deleted classes
+        const combinedDeletedClasses = Array.from(new Set([...(currentDB.deletedClassIds || []), ...(remoteData.deletedClassIds || [])]));
+        remoteData.deletedClassIds = combinedDeletedClasses;
+        const deletedClassSet = new Set(combinedDeletedClasses);
+        remoteData.classes = (remoteData.classes || []).filter(c => !deletedClassSet.has(c.id));
+
+        // Merge and filter deleted notes
+        const combinedDeletedNotes = Array.from(new Set([...(currentDB.deletedNoteIds || []), ...(remoteData.deletedNoteIds || [])]));
+        remoteData.deletedNoteIds = combinedDeletedNotes;
+        const deletedNoteSet = new Set(combinedDeletedNotes);
+        remoteData.notes = (remoteData.notes || []).filter(n => !deletedNoteSet.has(n.id));
+
+        // Ensure settings has all tombstones
+        if (remoteData.settings) {
+          remoteData.settings.deletedCourseIds = combinedDeletedCourses;
+          remoteData.settings.deletedClassIds = combinedDeletedClasses;
+          remoteData.settings.deletedNoteIds = combinedDeletedNotes;
+          remoteData.settings.deletedUserIds = combinedDeleted;
+        }
+
         try {
           fs.writeFileSync(DB_PATH, JSON.stringify(remoteData, null, 2));
         } catch (e) {}
@@ -668,8 +694,9 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
   // Security Headers Middleware
   app.use((req, res, next) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
     res.setHeader('X-XSS-Protection', '1; mode=block');
+    // Allow framing so AI Studio preview and parent frames can display the applet
+    res.removeHeader('X-Frame-Options');
     next();
   });
 
@@ -1642,13 +1669,16 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
         const { data: rows, error: sbErr } = await supabaseServer.from('app_classes').select('*');
         if (sbErr && isNetworkError(sbErr)) {
           markSupabaseOffline(sbErr);
-        } else if (Array.isArray(rows) && rows.length > 0) {
-          if (!db.classes) db.classes = [];
-          let updated = false;
-          rows.forEach((r: any) => {
-            if (deletedClassSet.has(r.id)) return;
-            const existingIdx = db.classes!.findIndex(c => c.id === r.id);
-            const classObj = {
+        } else if (Array.isArray(rows)) {
+          const activeSupabaseClasses = rows
+            .filter((r: any) => {
+              if (r.id && deletedClassSet.has(r.id)) {
+                supabaseServer.from('app_classes').delete().eq('id', r.id).then();
+                return false;
+              }
+              return Boolean(r.id);
+            })
+            .map((r: any) => ({
               id: r.id,
               title: r.title,
               subject: r.subject,
@@ -1657,15 +1687,9 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
               courseId: r.course_id || r.courseId || '',
               courseTitle: r.course_title || r.courseTitle || '',
               description: r.description || ''
-            };
-            if (existingIdx !== -1) {
-              db.classes![existingIdx] = { ...db.classes![existingIdx], ...classObj };
-            } else {
-              db.classes!.push(classObj);
-              updated = true;
-            }
-          });
-          if (updated) writeDB(db);
+            }));
+          db.classes = activeSupabaseClasses;
+          writeDB(db);
         }
       } catch (e: any) {
         if (isNetworkError(e)) markSupabaseOffline(e);
@@ -1783,6 +1807,9 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
     if (!db.deletedClassIds.includes(id)) {
       db.deletedClassIds.push(id);
     }
+    if (db.settings) {
+      db.settings.deletedClassIds = db.deletedClassIds;
+    }
     writeDB(db);
 
     try {
@@ -1811,13 +1838,16 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
         const { data: rows, error: sbErr } = await supabaseServer.from('app_notes').select('*');
         if (sbErr && isNetworkError(sbErr)) {
           markSupabaseOffline(sbErr);
-        } else if (Array.isArray(rows) && rows.length > 0) {
-          if (!db.notes) db.notes = [];
-          let updated = false;
-          rows.forEach((r: any) => {
-            if (deletedNoteSet.has(r.id)) return;
-            const existingIdx = db.notes!.findIndex(n => n.id === r.id);
-            const noteObj = {
+        } else if (Array.isArray(rows)) {
+          const activeSupabaseNotes = rows
+            .filter((r: any) => {
+              if (r.id && deletedNoteSet.has(r.id)) {
+                supabaseServer.from('app_notes').delete().eq('id', r.id).then();
+                return false;
+              }
+              return Boolean(r.id);
+            })
+            .map((r: any) => ({
               id: r.id,
               title: r.title,
               subject: r.subject,
@@ -1825,15 +1855,9 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
               courseId: r.course_id || r.courseId || '',
               courseTitle: r.course_title || r.courseTitle || '',
               description: r.description || ''
-            };
-            if (existingIdx !== -1) {
-              db.notes![existingIdx] = { ...db.notes![existingIdx], ...noteObj };
-            } else {
-              db.notes!.push(noteObj);
-              updated = true;
-            }
-          });
-          if (updated) writeDB(db);
+            }));
+          db.notes = activeSupabaseNotes;
+          writeDB(db);
         }
       } catch (e: any) {
         if (isNetworkError(e)) markSupabaseOffline(e);
@@ -1928,6 +1952,9 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
     if (!db.deletedNoteIds.includes(id)) {
       db.deletedNoteIds.push(id);
     }
+    if (db.settings) {
+      db.settings.deletedNoteIds = db.deletedNoteIds;
+    }
     writeDB(db);
 
     try {
@@ -1969,51 +1996,42 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
             return { data: null, error: err };
           });
 
-          if (Array.isArray(sbResponse?.data) && sbResponse.data.length > 0) {
-            let updated = false;
-            sbResponse.data.forEach((r: any) => {
-              if (r.id && deletedCourseSet.has(r.id)) {
-                // Course was deleted by admin; purge from Supabase if still present
-                supabaseServer.from('app_courses').delete().eq('id', r.id).then();
-                return;
-              }
-              const existingIndex = db.courses!.findIndex(c => c.id === r.id);
-              const supervisorVal = r.supervisor || r.instructor || (r.data && (r.data.supervisor || r.data.instructor)) || (existingIndex !== -1 ? (db.courses![existingIndex]?.supervisor || db.courses![existingIndex]?.instructor) : null) || db.settings?.adminName || 'SAKIB HOSEN (Founder & Chief Science Mentor)';
-              const instructorVal = r.instructor || r.supervisor || (r.data && (r.data.instructor || r.data.supervisor)) || (existingIndex !== -1 ? (db.courses![existingIndex]?.instructor || db.courses![existingIndex]?.supervisor) : null) || db.settings?.adminName || 'SAKIB HOSEN (সাকিব স্যার)';
-              const courseObj = {
-                id: r.id,
-                title: r.title,
-                subject: r.subject,
-                supervisor: supervisorVal,
-                instructor: instructorVal,
-                classLevel: r.batch || r.classLevel || r.class_level || '',
-                price: Number(r.price || 0),
-                originalPrice: r.originalPrice ? Number(r.originalPrice) : (r.original_price ? Number(r.original_price) : undefined),
-                duration: r.duration || '',
-                description: r.description || '',
-                features: (Array.isArray(r.features) && r.features.length > 0)
-                  ? r.features
-                  : (existingIndex !== -1 && Array.isArray(db.courses![existingIndex]?.features) && db.courses![existingIndex].features.length > 0
-                      ? db.courses![existingIndex].features
-                      : ['রেকর্ডেড ও লাইভ ক্লাস', 'অধ্যায়ভিত্তিক PDF নোট', 'সাপ্তাহিক অনলাইন পরীক্ষা', '২৪/৭ ডাউট সলভ']),
-                imageUrl: r.imageUrl || r.image_url || '',
-                ...(r.data || {})
-              };
-              if (existingIndex !== -1) {
-                db.courses![existingIndex] = {
-                  ...db.courses![existingIndex],
-                  ...courseObj,
-                  imageUrl: courseObj.imageUrl || db.courses![existingIndex].imageUrl || '',
-                  classLevel: courseObj.classLevel || db.courses![existingIndex].classLevel || ''
+          if (Array.isArray(sbResponse?.data)) {
+            const activeSupabaseCourses = sbResponse.data
+              .filter((r: any) => {
+                if (r.id && deletedCourseSet.has(r.id)) {
+                  supabaseServer.from('app_courses').delete().eq('id', r.id).then();
+                  return false;
+                }
+                return Boolean(r.id);
+              })
+              .map((r: any) => {
+                const existingIndex = (db.courses || []).findIndex(c => c.id === r.id);
+                const supervisorVal = r.supervisor || r.instructor || (r.data && (r.data.supervisor || r.data.instructor)) || (existingIndex !== -1 ? (db.courses![existingIndex]?.supervisor || db.courses![existingIndex]?.instructor) : null) || db.settings?.adminName || 'SAKIB HOSEN (Founder & Chief Science Mentor)';
+                const instructorVal = r.instructor || r.supervisor || (r.data && (r.data.instructor || r.data.supervisor)) || (existingIndex !== -1 ? (db.courses![existingIndex]?.instructor || db.courses![existingIndex]?.supervisor) : null) || db.settings?.adminName || 'SAKIB HOSEN (সাকিব স্যার)';
+                return {
+                  id: r.id,
+                  title: r.title,
+                  subject: r.subject,
+                  supervisor: supervisorVal,
+                  instructor: instructorVal,
+                  classLevel: r.batch || r.classLevel || r.class_level || '',
+                  price: Number(r.price || 0),
+                  originalPrice: r.originalPrice ? Number(r.originalPrice) : (r.original_price ? Number(r.original_price) : undefined),
+                  duration: r.duration || '',
+                  description: r.description || '',
+                  features: (Array.isArray(r.features) && r.features.length > 0)
+                    ? r.features
+                    : (existingIndex !== -1 && Array.isArray(db.courses![existingIndex]?.features) && db.courses![existingIndex].features.length > 0
+                        ? db.courses![existingIndex].features
+                        : ['রেকর্ডেড ও লাইভ ক্লাস', 'অধ্যায়ভিত্তিক PDF নোট', 'সাপ্তাহিক অনলাইন পরীক্ষা', '২৪/৭ ডাউট সলভ']),
+                  imageUrl: r.imageUrl || r.image_url || '',
+                  ...(r.data || {})
                 };
-              } else {
-                db.courses!.unshift(courseObj);
-                updated = true;
-              }
-            });
-            if (updated) {
-              writeDB(db);
-            }
+              });
+
+            db.courses = activeSupabaseCourses;
+            writeDB(db);
           }
         } catch (sbErr: any) {
           if (isNetworkError(sbErr)) markSupabaseOffline(sbErr);
@@ -2200,6 +2218,12 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
             u.enrolledCourseTitles = u.enrolledCourseTitles.filter(t => t !== courseToDelete.title);
           }
         });
+      }
+
+      if (db.settings) {
+        db.settings.deletedCourseIds = db.deletedCourseIds;
+        db.settings.deletedClassIds = db.deletedClassIds;
+        db.settings.deletedNoteIds = db.deletedNoteIds;
       }
 
       writeDB(db);
@@ -2902,6 +2926,9 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
         db.deletedUserIds.push(lower);
       }
     }
+    if (db.settings) {
+      db.settings.deletedUserIds = db.deletedUserIds;
+    }
     writeDB(db);
 
     // Concurrently purge from Supabase app_users table and Auth RPC
@@ -2928,13 +2955,14 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
   });
 
   // Settings: Get static website settings
-  app.get('/api/settings', (req, res) => {
+  app.get('/api/settings', async (req, res) => {
     try {
-      const db = readDB();
+      const db = await ensureDBSyncedWithSupabase();
       return res.json(db.settings || defaultDB.settings);
     } catch (err) {
       console.warn("Error reading settings in /api/settings:", err);
-      return res.json(defaultDB.settings);
+      const db = readDB();
+      return res.json(db.settings || defaultDB.settings);
     }
   });
 
@@ -3139,7 +3167,11 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
         labSectionBadge: labSectionBadge !== undefined ? String(labSectionBadge) : (db.settings?.labSectionBadge || "INTERACTIVE VIRTUAL LAB & PLAYGROUND"),
         labSectionTitle: labSectionTitle !== undefined ? String(labSectionTitle) : (db.settings?.labSectionTitle || ""),
         labSectionSubtitle: labSectionSubtitle !== undefined ? String(labSectionSubtitle) : (db.settings?.labSectionSubtitle || ""),
-        heroBanners: finalHeroBanners
+        heroBanners: finalHeroBanners,
+        deletedCourseIds: db.deletedCourseIds || [],
+        deletedClassIds: db.deletedClassIds || [],
+        deletedNoteIds: db.deletedNoteIds || [],
+        deletedUserIds: db.deletedUserIds || []
       };
 
       // Keep logged in admin user name in sync

@@ -40,8 +40,9 @@ export default function Hero3DCanvas({ className = '' }: Hero3DCanvasProps) {
 
     window.addEventListener('mousemove', handleMouseMove);
 
-    // 3D Particles
-    const particleCount = 65;
+    // 3D Particles - adaptively scaled for mobile vs desktop performance
+    const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
+    const particleCount = isMobile ? 18 : 50;
     const particles: {
       x: number;
       y: number;
@@ -81,12 +82,17 @@ export default function Hero3DCanvas({ className = '' }: Hero3DCanvasProps) {
     }
 
     // 3D Rings for Atom / Quantum Orbits
-    const rings = [
-      { radiusX: 180, radiusY: 70, tiltX: 0.9, tiltY: 0.4, speed: 0.012, angle: 0, color: 'rgba(34, 211, 238, 0.45)', electronPos: 0 },
-      { radiusX: 210, radiusY: 80, tiltX: -0.8, tiltY: 0.6, speed: -0.015, angle: 1.2, color: 'rgba(56, 189, 248, 0.4)', electronPos: 2.1 },
-      { radiusX: 240, radiusY: 90, tiltX: 0.3, tiltY: -0.9, speed: 0.01, angle: 2.4, color: 'rgba(52, 211, 153, 0.35)', electronPos: 4.2 },
-      { radiusX: 160, radiusY: 60, tiltX: -0.5, tiltY: -0.7, speed: -0.018, angle: 3.6, color: 'rgba(245, 158, 11, 0.35)', electronPos: 1.5 },
-    ];
+    const rings = isMobile
+      ? [
+          { radiusX: 160, radiusY: 65, tiltX: 0.9, tiltY: 0.4, speed: 0.012, angle: 0, color: 'rgba(34, 211, 238, 0.45)', electronPos: 0 },
+          { radiusX: 190, radiusY: 75, tiltX: -0.8, tiltY: 0.6, speed: -0.015, angle: 1.2, color: 'rgba(56, 189, 248, 0.4)', electronPos: 2.1 }
+        ]
+      : [
+          { radiusX: 180, radiusY: 70, tiltX: 0.9, tiltY: 0.4, speed: 0.012, angle: 0, color: 'rgba(34, 211, 238, 0.45)', electronPos: 0 },
+          { radiusX: 210, radiusY: 80, tiltX: -0.8, tiltY: 0.6, speed: -0.015, angle: 1.2, color: 'rgba(56, 189, 248, 0.4)', electronPos: 2.1 },
+          { radiusX: 240, radiusY: 90, tiltX: 0.3, tiltY: -0.9, speed: 0.01, angle: 2.4, color: 'rgba(52, 211, 153, 0.35)', electronPos: 4.2 },
+          { radiusX: 160, radiusY: 60, tiltX: -0.5, tiltY: -0.7, speed: -0.018, angle: 3.6, color: 'rgba(245, 158, 11, 0.35)', electronPos: 1.5 },
+        ];
 
     let globalRotation = 0;
 
@@ -176,18 +182,21 @@ export default function Hero3DCanvas({ className = '' }: Hero3DCanvasProps) {
         }
         ctx.stroke();
 
-        // Draw Electron on this ring
+        // Draw Electron on this ring with lightweight hardware glow
         const eIndex = Math.floor(((ring.electronPos % (Math.PI * 2)) / (Math.PI * 2)) * ringPoints.length) % ringPoints.length;
         const electron = ringPoints[eIndex];
         if (electron) {
           const eSize = Math.max(2, 5 * (fov / (fov + electron.z)));
+          // Outer halo
+          ctx.beginPath();
+          ctx.arc(electron.x, electron.y, eSize * 2, 0, Math.PI * 2);
+          ctx.fillStyle = 'rgba(56, 189, 248, 0.35)';
+          ctx.fill();
+          // Inner core
           ctx.beginPath();
           ctx.arc(electron.x, electron.y, eSize, 0, Math.PI * 2);
           ctx.fillStyle = '#ffffff';
-          ctx.shadowColor = '#38bdf8';
-          ctx.shadowBlur = 12;
           ctx.fill();
-          ctx.shadowBlur = 0;
         }
 
         ctx.restore();
@@ -218,11 +227,8 @@ export default function Hero3DCanvas({ className = '' }: Hero3DCanvasProps) {
           ctx.beginPath();
           ctx.arc(projX, projY, projSize, 0, Math.PI * 2);
           ctx.fillStyle = p.color;
-          ctx.globalAlpha = alpha * 0.7;
-          ctx.shadowColor = p.color;
-          ctx.shadowBlur = 8;
+          ctx.globalAlpha = alpha * 0.85;
           ctx.fill();
-          ctx.shadowBlur = 0;
           ctx.globalAlpha = 1.0;
         }
       });

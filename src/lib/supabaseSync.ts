@@ -771,59 +771,32 @@ async function syncSettingsToTable(table: string, s: any) {
 
     const targetRow = (Array.isArray(existingRows) && existingRows.length > 0) ? existingRows[0] : null;
 
-    let payload: Record<string, any> = {
-      id: targetRow?.id !== undefined ? targetRow.id : (table === 'app_settings' ? 'default' : 1),
-      config: s,
-      data: s,
-      settings: s,
-      value: s,
-      payload: s,
-
-      academy_name: s.academyName || '',
-      announcement: s.announcement ?? '',
-      hero_title: s.heroTitle || '',
-      hero_subtitle: s.heroSubtitle ?? '',
-      hero_sub_english: s.heroSubEnglish ?? '',
-      contact_phone: s.contactPhone ?? '',
-      contact_email: s.contactEmail ?? '',
-      contact_address: s.contactAddress ?? '',
-      footer_description: s.footerDescription ?? '',
-      admin_name: s.adminName || '',
-      admin_bio: s.adminBio || '',
-      admin_photo_url: s.adminPhotoUrl || '',
-      admin_designation: s.adminDesignation || '',
-      admin_education: s.adminEducation || '',
-      bkash_number: s.bkashNumber || '',
-      nagad_number: s.nagadNumber || '',
-      rocket_number: s.rocketNumber || '',
-      payment_instructions: s.paymentInstructions || '',
-      subjects: s.subjects || [],
-      class_levels: s.classLevels || [],
-      course_durations: s.courseDurations || [],
-      default_course_features: s.defaultCourseFeatures || [],
-      routine: s.routine || [],
-
-      created_at: targetRow?.created_at || now,
-      updated_at: now
-    };
-
-    if (targetRow) {
+    let payload: Record<string, any> = {};
+    if (targetRow && typeof targetRow === 'object') {
       for (const k of Object.keys(targetRow)) {
-        payload[k] = getValueForSettingColumn(k, s, targetRow, now);
+        if (k === 'id') {
+          payload.id = targetRow.id;
+        } else if (k === 'config' || k === 'data' || k === 'settings' || k === 'value' || k === 'payload') {
+          payload[k] = s;
+        } else {
+          payload[k] = getValueForSettingColumn(k, s, targetRow, now);
+        }
       }
+    } else {
+      payload = {
+        id: (table === 'app_settings' ? 'default' : 1),
+        config: s,
+        updated_at: now
+      };
     }
 
-    let maxRetries = 20;
+    let maxRetries = 5;
     while (maxRetries > 0 && canAttemptSupabase()) {
       maxRetries--;
       let res;
 
-      if (targetRow) {
-        if (payload.id !== undefined && targetRow.id !== undefined) {
-          res = await supabaseServer.from(table).update(payload).eq('id', targetRow.id);
-        } else {
-          res = await supabaseServer.from(table).update(payload).limit(1);
-        }
+      if (targetRow && targetRow.id !== undefined) {
+        res = await supabaseServer.from(table).update(payload).eq('id', targetRow.id);
       } else {
         res = await supabaseServer.from(table).upsert([payload]);
       }
@@ -880,7 +853,14 @@ export async function syncToSupabase(data: any) {
       promises.push(
         (async () => {
           try {
-            await upsertSettingsToSupabase(data.settings);
+            const settingsToSync = {
+              ...data.settings,
+              deletedCourseIds: data.deletedCourseIds || data.settings?.deletedCourseIds || [],
+              deletedClassIds: data.deletedClassIds || data.settings?.deletedClassIds || [],
+              deletedNoteIds: data.deletedNoteIds || data.settings?.deletedNoteIds || [],
+              deletedUserIds: data.deletedUserIds || data.settings?.deletedUserIds || []
+            };
+            await upsertSettingsToSupabase(settingsToSync);
           } catch (e: any) {
             if (isNetworkError(e)) markSupabaseOffline(e);
           }
@@ -1097,6 +1077,11 @@ export async function syncToSupabase(data: any) {
               })), { onConflict: 'id' });
 
             if (upsertErr) {
+              const msg = upsertErr.message || '';
+              if (upsertErr.code === '42P01' || msg.includes('does not exist') || msg.includes('schema cache')) {
+                // Table does not exist; routine is safely saved in app_settings.routineText
+                return;
+              }
               if (isNetworkError(upsertErr)) markSupabaseOffline(upsertErr);
               return;
             }
@@ -1417,18 +1402,21 @@ export async function loadFromSupabase(defaultData: any) {
       const { data: classRows, error: classErr } = await supabaseServer.from('app_classes').select('*');
       if (classErr && isNetworkError(classErr)) {
         markSupabaseOffline(classErr);
-      } else if (Array.isArray(classRows) && classRows.length > 0) {
-        loadedData.classes = classRows.map(r => ({
-          id: r.id,
-          title: r.title,
-          subject: r.subject,
-          videoUrl: r.video_url || r.videoUrl,
-          thumbnailUrl: r.thumbnail_url || r.thumbnailUrl || '',
-          courseId: r.course_id || r.courseId || '',
-          courseTitle: r.course_title || r.courseTitle || '',
-          description: r.description || '',
-          ...(r.data || {})
-        }));
+      } else if (Array.isArray(classRows)) {
+        const delClassSet = new Set(Array.isArray(loadedData.deletedClassIds) ? loadedData.deletedClassIds : []);
+        loadedData.classes = classRows
+          .filter(r => r.id && !delClassSet.has(r.id))
+          .map(r => ({
+            id: r.id,
+            title: r.title,
+            subject: r.subject,
+            videoUrl: r.video_url || r.videoUrl,
+            thumbnailUrl: r.thumbnail_url || r.thumbnailUrl || '',
+            courseId: r.course_id || r.courseId || '',
+            courseTitle: r.course_title || r.courseTitle || '',
+            description: r.description || '',
+            ...(r.data || {})
+          }));
         hasLoadedAny = true;
       }
     } catch (e: any) {
@@ -1442,17 +1430,20 @@ export async function loadFromSupabase(defaultData: any) {
       const { data: noteRows, error: noteErr } = await supabaseServer.from('app_notes').select('*');
       if (noteErr && isNetworkError(noteErr)) {
         markSupabaseOffline(noteErr);
-      } else if (Array.isArray(noteRows) && noteRows.length > 0) {
-        loadedData.notes = noteRows.map(r => ({
-          id: r.id,
-          title: r.title,
-          subject: r.subject,
-          pdfUrl: r.pdf_url || r.pdfUrl,
-          description: r.description || '',
-          courseId: r.course_id || r.courseId || '',
-          courseTitle: r.course_title || r.courseTitle || '',
-          ...(r.data || {})
-        }));
+      } else if (Array.isArray(noteRows)) {
+        const delNoteSet = new Set(Array.isArray(loadedData.deletedNoteIds) ? loadedData.deletedNoteIds : []);
+        loadedData.notes = noteRows
+          .filter(r => r.id && !delNoteSet.has(r.id))
+          .map(r => ({
+            id: r.id,
+            title: r.title,
+            subject: r.subject,
+            pdfUrl: r.pdf_url || r.pdfUrl,
+            description: r.description || '',
+            courseId: r.course_id || r.courseId || '',
+            courseTitle: r.course_title || r.courseTitle || '',
+            ...(r.data || {})
+          }));
         hasLoadedAny = true;
       }
     } catch (e: any) {
@@ -1466,29 +1457,32 @@ export async function loadFromSupabase(defaultData: any) {
       const { data: courseRows, error: courseErr } = await supabaseServer.from('app_courses').select('*');
       if (courseErr && isNetworkError(courseErr)) {
         markSupabaseOffline(courseErr);
-      } else if (Array.isArray(courseRows) && courseRows.length > 0) {
-        loadedData.courses = courseRows.map(r => ({
-          id: r.id,
-          title: r.title,
-          subject: r.subject,
-          instructor: r.instructor || r.supervisor || r.data?.instructor || r.data?.supervisor || 'SAKIB HOSEN (Founder & Chief Science Mentor)',
-          supervisor: r.supervisor || r.instructor || r.data?.supervisor || r.data?.instructor || 'SAKIB HOSEN (Founder & Chief Science Mentor)',
-          classLevel: r.batch || r.classLevel || r.class_level || '',
-          price: Number(r.price || 0),
-          originalPrice: Number(r.originalPrice || r.original_price || 0),
-          duration: r.duration || '',
-          description: r.description || '',
-          badge: r.badge || '',
-          rating: Number(r.rating || 5.0),
-          enrolledCount: Number(r.enrolledCount || r.enrolled_count || 0),
-          features: Array.isArray(r.features) && r.features.length > 0 
-            ? r.features 
-            : (r.data && Array.isArray(r.data.features) && r.data.features.length > 0 
-              ? r.data.features 
-              : ['রেকর্ডেড ও লাইভ ক্লাস', 'অধ্যায়ভিত্তিক PDF নোট', 'সাপ্তাহিক অনলাইন পরীক্ষা', '২৪/৭ ডাউট সলভ']),
-          imageUrl: r.imageUrl || r.image_url || '',
-          ...(r.data || {})
-        }));
+      } else if (Array.isArray(courseRows)) {
+        const delCourseSet = new Set(Array.isArray(loadedData.deletedCourseIds) ? loadedData.deletedCourseIds : []);
+        loadedData.courses = courseRows
+          .filter(r => r.id && !delCourseSet.has(r.id))
+          .map(r => ({
+            id: r.id,
+            title: r.title,
+            subject: r.subject,
+            instructor: r.instructor || r.supervisor || r.data?.instructor || r.data?.supervisor || 'SAKIB HOSEN (Founder & Chief Science Mentor)',
+            supervisor: r.supervisor || r.instructor || r.data?.supervisor || r.data?.instructor || 'SAKIB HOSEN (Founder & Chief Science Mentor)',
+            classLevel: r.batch || r.classLevel || r.class_level || '',
+            price: Number(r.price || 0),
+            originalPrice: Number(r.originalPrice || r.original_price || 0),
+            duration: r.duration || '',
+            description: r.description || '',
+            badge: r.badge || '',
+            rating: Number(r.rating || 5.0),
+            enrolledCount: Number(r.enrolledCount || r.enrolled_count || 0),
+            features: Array.isArray(r.features) && r.features.length > 0 
+              ? r.features 
+              : (r.data && Array.isArray(r.data.features) && r.data.features.length > 0 
+                ? r.data.features 
+                : ['রেকর্ডেড ও লাইভ ক্লাস', 'অধ্যায়ভিত্তিক PDF নোট', 'সাপ্তাহিক অনলাইন পরীক্ষা', '২৪/৭ ডাউট সলভ']),
+            imageUrl: r.imageUrl || r.image_url || '',
+            ...(r.data || {})
+          }));
         hasLoadedAny = true;
       }
     } catch (e: any) {
