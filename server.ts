@@ -452,13 +452,14 @@ function readDB(): DBStructure {
       }
     }
 
-    // Ensure mdshakibhossen2050@gmail.com is present with admin role and valid credentials
+    // Ensure mdshakibhossen2050@gmail.com and admin@sciencestudio.com are present with admin role and approval
     if (parsed.users && Array.isArray(parsed.users)) {
       const shakibUser = parsed.users.find((u: any) => u.email && u.email.toLowerCase() === 'mdshakibhossen2050@gmail.com');
       if (shakibUser) {
         if (shakibUser.role !== 'admin' || !shakibUser.isApproved) {
           shakibUser.role = 'admin';
           shakibUser.isApproved = true;
+          shakibUser.is_approved = true;
           updated = true;
         }
         if (!shakibUser.password) {
@@ -468,14 +469,25 @@ function readDB(): DBStructure {
       } else {
         parsed.users.push({
           id: "usr_super_admin",
-          name: "Super Admin",
+          name: "SAKIB HOSEN",
           email: "mdshakibhossen2050@gmail.com",
           password: "SHAKIB@2050#",
           role: "admin",
           isApproved: true,
+          is_approved: true,
           createdAt: new Date().toISOString()
         });
         updated = true;
+      }
+
+      const adminUser = parsed.users.find((u: any) => u.id === 'usr_admin' || (u.email && u.email.toLowerCase() === 'admin@sciencestudio.com'));
+      if (adminUser) {
+        if (adminUser.role !== 'admin' || !adminUser.isApproved) {
+          adminUser.role = 'admin';
+          adminUser.isApproved = true;
+          adminUser.is_approved = true;
+          updated = true;
+        }
       }
     }
 
@@ -2403,9 +2415,10 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
               const sbPayment = r.payment_method || r.paymentMethod || nested.paymentMethod || '';
               const sbSender = r.sender_phone || r.senderPhone || nested.senderPhone || '';
               const sbPhone = r.phone || nested.phone || r.sender_phone || r.senderPhone || nested.senderPhone || '';
-              const sbApproved = r.is_approved !== undefined && r.is_approved !== null
-                ? Boolean(r.is_approved)
-                : (r.isApproved !== undefined && r.isApproved !== null ? Boolean(r.isApproved) : (nested.isApproved !== undefined ? Boolean(nested.isApproved) : false));
+              const sbApprovedRaw = (r.isApproved !== undefined && r.isApproved !== null)
+                ? Boolean(r.isApproved)
+                : ((r.is_approved !== undefined && r.is_approved !== null) ? Boolean(r.is_approved) : undefined);
+              const sbApproved = sbApprovedRaw !== undefined ? sbApprovedRaw : (nested.isApproved !== undefined ? Boolean(nested.isApproved) : false);
 
               if (existingIndex !== -1) {
                 const localUser = db.users[existingIndex];
@@ -2441,7 +2454,7 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
                   transactionId: localUser.transactionId || sbTrx || '',
                   paymentMethod: localUser.paymentMethod || sbPayment || '',
                   senderPhone: localUser.senderPhone || sbSender || '',
-                  isApproved: sbApproved !== undefined ? sbApproved : (localUser.isApproved !== undefined ? localUser.isApproved : false),
+                  isApproved: localUser.isApproved === true ? true : (sbApproved !== undefined ? sbApproved : false),
                   createdAt: localUser.createdAt || r.created_at || nested.createdAt || new Date().toISOString(),
                   token: localUser.token || nested.token
                 };
@@ -2643,6 +2656,7 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
       }
 
       user.isApproved = Boolean(isApproved);
+      user.is_approved = Boolean(isApproved);
       if (Array.isArray(enrolledCourseTitles) && enrolledCourseTitles.length > 0) {
         user.enrolledCourseTitles = enrolledCourseTitles;
       }

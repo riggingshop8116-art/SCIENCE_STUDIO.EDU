@@ -125,6 +125,23 @@ export default function AdminDashboard({
     return headers;
   };
 
+  // Helper to detect protected administrator accounts
+  const isProtectedAdmin = (targetUser?: User | null) => {
+    if (!targetUser) return false;
+    const cleanId = String(targetUser.id || '').trim().toLowerCase();
+    const cleanEmail = (targetUser.email || '').trim().toLowerCase();
+    const role = (targetUser.role || '').trim().toLowerCase();
+    return (
+      role === 'admin' ||
+      cleanId === 'usr_admin' ||
+      cleanId === 'usr_super_admin' ||
+      cleanEmail === 'admin@sciencestudio.com' ||
+      cleanEmail === 'mdshakibhossen2050@gmail.com' ||
+      (user?.id && cleanId === String(user.id).trim().toLowerCase()) ||
+      (user?.email && cleanEmail === String(user.email).trim().toLowerCase())
+    );
+  };
+
   // Student Table Pagination, Search & Date Filter state
   const [userSearchQuery, setUserSearchQuery] = useState('');
   const [userStatusFilter, setUserStatusFilter] = useState<'all' | 'approved' | 'pending'>('all');
@@ -1900,41 +1917,39 @@ export default function AdminDashboard({
 
   // Toggle user approval status (Approved <-> Pending)
   const handleToggleApproval = async (targetUser: User) => {
+    if (isProtectedAdmin(targetUser)) {
+      return;
+    }
     setActionError('');
     const newApprovalStatus = !targetUser.isApproved;
     // Optimistically update status
-    setUserList(prev => prev.map(u => u.id === targetUser.id ? { ...u, isApproved: newApprovalStatus } : u));
+    setUserList(prev => prev.map(u => u.id === targetUser.id ? { ...u, isApproved: newApprovalStatus, is_approved: newApprovalStatus } : u));
 
+    let supabaseSucceeded = false;
     if (canAttemptSupabase() && targetUser.id) {
       try {
-        const { error: updateErr } = await supabase
+        const { error: err1 } = await supabase
           .from('app_users')
           .update({
             isApproved: newApprovalStatus,
             is_approved: newApprovalStatus,
             updated_at: new Date().toISOString()
           })
-          .or(`id.eq.${targetUser.id},email.ilike.${targetUser.email || ''}`);
+          .eq('id', targetUser.id);
 
-        if (updateErr) {
+        if (!err1) {
+          supabaseSucceeded = true;
+        }
+
+        if (targetUser.email) {
           await supabase
             .from('app_users')
-            .upsert({
-              id: targetUser.id,
-              name: targetUser.name || '',
-              email: targetUser.email || '',
-              phone: targetUser.phone || '',
-              password: (targetUser as any).password || 'student123',
-              role: targetUser.role || 'student',
+            .update({
               isApproved: newApprovalStatus,
               is_approved: newApprovalStatus,
-              enrolledCourseTitles: targetUser.enrolledCourseTitles || [],
-              enrolled_courses: targetUser.enrolledCourseTitles || [],
-              transactionId: targetUser.transactionId || '',
-              paymentMethod: targetUser.paymentMethod || '',
-              senderPhone: targetUser.senderPhone || '',
               updated_at: new Date().toISOString()
-            }, { onConflict: 'id' });
+            })
+            .ilike('email', targetUser.email.trim());
         }
       } catch (sbApproveErr) {
         console.warn('Supabase approval sync notice:', sbApproveErr);
@@ -1952,14 +1967,17 @@ export default function AdminDashboard({
       });
 
       const data = await response.json().catch(() => ({}));
-      if (!response.ok) {
+      if (!response.ok && !supabaseSucceeded) {
         setUserList(prev => prev.map(u => u.id === targetUser.id ? { ...u, isApproved: targetUser.isApproved } : u));
         throw new Error(data.error || 'Failed to update approval status');
       }
 
-      fetchStatsAndUsers();
+      // Keep updated in list
+      setUserList(prev => prev.map(u => u.id === targetUser.id ? { ...u, isApproved: newApprovalStatus, is_approved: newApprovalStatus } : u));
     } catch (err: any) {
-      setActionError(err.message || 'Error occurred while updating approval status');
+      if (!supabaseSucceeded) {
+        setActionError(err.message || 'Error occurred while updating approval status');
+      }
     }
   };
 
@@ -2102,8 +2120,8 @@ export default function AdminDashboard({
 
   // Open Delete User Modal
   const handleOpenDeleteModal = (userItem: User) => {
-    if (userItem.id === 'usr_admin') {
-      alert('প্রধান এডমিন অ্যাকাউন্ট ডিলিট করা নিষিদ্ধ!');
+    if (isProtectedAdmin(userItem)) {
+      alert('প্রধান অ্যাডমিন বা অ্যাডমিনিস্ট্রেটর অ্যাকাউন্ট ডিলিট করা সম্পূর্ণ নিষিদ্ধ ও সংরক্ষিত!');
       return;
     }
     setDeleteUserError('');
@@ -2113,6 +2131,10 @@ export default function AdminDashboard({
   // Confirm Delete user API Call
   const handleConfirmDeleteUser = async () => {
     if (!userToDelete) return;
+    if (isProtectedAdmin(userToDelete)) {
+      setDeleteUserError('অ্যাডমিন অ্যাকাউন্ট ডিলিট করা সম্পূর্ণ নিষিদ্ধ!');
+      return;
+    }
     setIsDeletingUser(true);
     setDeleteUserError('');
     try {
@@ -2121,13 +2143,16 @@ export default function AdminDashboard({
       if (targetId) tombstonedIdsRef.current.add(targetId);
       if (targetEmail) tombstonedIdsRef.current.add(targetEmail);
 
+      let supabaseDeleted = false;
       if (canAttemptSupabase()) {
         try {
           if (userToDelete.id) {
-            await supabase.from('app_users').delete().eq('id', userToDelete.id);
+            const { error: dErr } = await supabase.from('app_users').delete().eq('id', userToDelete.id);
+            if (!dErr) supabaseDeleted = true;
           }
           if (userToDelete.email) {
-            await supabase.from('app_users').delete().ilike('email', userToDelete.email);
+            const { error: dErr2 } = await supabase.from('app_users').delete().ilike('email', userToDelete.email);
+            if (!dErr2) supabaseDeleted = true;
           }
         } catch (sbErr) {
           console.warn('Supabase user direct delete notice:', sbErr);
@@ -2140,7 +2165,7 @@ export default function AdminDashboard({
       });
 
       const data = await response.json().catch(() => ({}));
-      if (!response.ok) {
+      if (!response.ok && !supabaseDeleted) {
         throw new Error(data.error || 'Failed to delete user');
       }
 
@@ -2154,7 +2179,6 @@ export default function AdminDashboard({
         totalStudents: Math.max(0, prev.totalStudents - 1)
       } : null);
       setUserToDelete(null);
-      fetchStatsAndUsers();
     } catch (err: any) {
       setDeleteUserError(err.message || 'ইউজার ডিলিট করতে সমস্যা হয়েছে');
       setActionError(err.message || 'Error occurred while deleting user');
@@ -3570,40 +3594,51 @@ export default function AdminDashboard({
                       </td>
                       <td className="py-3.5 px-4 text-right">
                         <div className="flex items-center justify-end gap-2">
-                          <button
-                            onClick={() => handleToggleApproval(item)}
-                            className={`px-2.5 py-1 rounded text-[11px] font-bold transition-all cursor-pointer border flex items-center gap-1 ${
-                              item.isApproved
-                                ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/30'
-                                : 'bg-amber-500/20 text-amber-300 border-amber-500/40 hover:bg-amber-500/30'
-                            }`}
-                            title={item.isApproved ? 'অনুমোদন বাতিল করতে ক্লিক করুন' : 'অনুমোদন দিতে ক্লিক করুন'}
-                          >
-                            {item.isApproved ? (
-                              <>
-                                <Check className="w-3.5 h-3.5 text-emerald-400" />
-                                <span>Approved (অনুমোদিত)</span>
-                              </>
-                            ) : (
-                              <>
-                                <Unlock className="w-3.5 h-3.5 text-amber-400" />
-                                <span>Pending (অনুমোদন দিন)</span>
-                              </>
-                            )}
-                          </button>
+                          {isProtectedAdmin(item) ? (
+                            <span className="px-2.5 py-1 rounded text-[11px] font-bold bg-purple-500/15 border border-purple-500/30 text-purple-300 flex items-center gap-1 select-none">
+                              <Shield className="w-3.5 h-3.5 text-purple-400" />
+                              <span>অ্যাডমিন (Admin)</span>
+                            </span>
+                          ) : (
+                            <button
+                              onClick={() => handleToggleApproval(item)}
+                              className={`px-2.5 py-1 rounded text-[11px] font-bold transition-all cursor-pointer border flex items-center gap-1 ${
+                                item.isApproved
+                                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/30'
+                                  : 'bg-amber-500/20 text-amber-300 border-amber-500/40 hover:bg-amber-500/30'
+                              }`}
+                              title={item.isApproved ? 'অনুমোদন বাতিল করতে ক্লিক করুন' : 'অনুমোদন দিতে ক্লিক করুন'}
+                            >
+                              {item.isApproved ? (
+                                <>
+                                  <Check className="w-3.5 h-3.5 text-emerald-400" />
+                                  <span>Approved (অনুমোদিত)</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Unlock className="w-3.5 h-3.5 text-amber-400" />
+                                  <span>Pending (অনুমোদন দিন)</span>
+                                </>
+                              )}
+                            </button>
+                          )}
 
-                          <button
-                            onClick={() => handleOpenDeleteModal(item)}
-                            disabled={item.id === 'usr_admin'}
-                            className={`p-1.5 rounded transition-all ${
-                              item.id === 'usr_admin'
-                                ? 'bg-slate-800 text-slate-600 border border-white/5 cursor-not-allowed opacity-50'
-                                : 'bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 cursor-pointer border border-rose-500/20'
-                            }`}
-                            title={item.id === 'usr_admin' ? 'প্রধান এডমিন ডিলিট করা নিষিদ্ধ' : 'স্টুডেন্ট অ্যাকাউন্ট ডিলিট করুন'}
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                          {isProtectedAdmin(item) ? (
+                            <span
+                              className="p-1.5 rounded bg-slate-800/80 text-slate-500 border border-white/5 cursor-not-allowed opacity-40 select-none"
+                              title="অ্যাডমিন অ্যাকাউন্ট সুরক্ষিত ও ডিলিট নিষিদ্ধ"
+                            >
+                              <Shield className="w-4 h-4 text-cyan-400/60" />
+                            </span>
+                          ) : (
+                            <button
+                              onClick={() => handleOpenDeleteModal(item)}
+                              className="p-1.5 rounded transition-all bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 cursor-pointer border border-rose-500/20"
+                              title="স্টুডেন্ট অ্যাকাউন্ট ডিলিট করুন"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
