@@ -5,6 +5,7 @@ import {
   Sparkles, BookOpen, Phone, Mail, Save, Image as ImageIcon
 } from 'lucide-react';
 import { compressImageFile } from '../utils/imageHelper';
+import { supabase, canAttemptSupabase } from '../lib/supabase';
 
 interface StudentProfileModalProps {
   user: User;
@@ -56,12 +57,23 @@ export default function StudentProfileModal({
     try {
       setIsCompressing(true);
       setErrorMsg('');
-      const compressedDataUrl = await compressImageFile(file, 600, 600, 0.85);
+      const compressedDataUrl = await compressImageFile(file, 400, 400, 0.75);
       setPhotoUrl(compressedDataUrl);
       setPreviewPhoto(compressedDataUrl);
     } catch (err: any) {
-      console.error("Image compression error:", err);
-      setErrorMsg("ছবি আপলোড করতে সমস্যা হয়েছে। অন্য একটি ফাইল চেষ্টা করুন।");
+      console.error("Image compression note, using fallback reader:", err);
+      try {
+        const reader = new FileReader();
+        reader.onload = () => {
+          if (typeof reader.result === 'string') {
+            setPhotoUrl(reader.result);
+            setPreviewPhoto(reader.result);
+          }
+        };
+        reader.readAsDataURL(file);
+      } catch (readErr) {
+        setErrorMsg("ছবি নির্বাচন করতে সমস্যা হয়েছে। অন্য একটি ছবি চেষ্টা করুন।");
+      }
     } finally {
       setIsCompressing(false);
     }
@@ -87,40 +99,87 @@ export default function StudentProfileModal({
 
     try {
       const token = localStorage.getItem('science_studio_token') || `token-${user.id}`;
-      const res = await fetch('/api/user/profile', {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          name: name.trim(),
-          studentClass: finalClass,
-          photoUrl: photoUrl || previewPhoto,
-          phone: phone.trim()
-        })
-      });
+      const finalPhoto = photoUrl || previewPhoto;
+      const cleanPhone = phone.trim();
 
-      const data = await res.json();
+      // 1. Server API update with complete authorization headers
+      let data: any = null;
+      let serverError: string | null = null;
+      let networkFailed = false;
 
-      if (!res.ok) {
-        throw new Error(data.error || "প্রোফাইল সেভ করতে ব্যর্থ হয়েছে।");
+      try {
+        const res = await fetch('/api/user/profile', {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+            'x-user-id': user.id,
+            'x-user-email': user.email,
+            'x-user-role': user.role || 'student'
+          },
+          body: JSON.stringify({
+            name: name.trim(),
+            studentClass: finalClass,
+            photoUrl: finalPhoto,
+            phone: cleanPhone
+          })
+        });
+
+        const resText = await res.text();
+        try {
+          data = JSON.parse(resText);
+        } catch {
+          data = null;
+        }
+
+        if (!res.ok) {
+          serverError = data?.error || `প্রোফাইল সেভ করতে সমস্যা হয়েছে (${res.status})।`;
+          if (res.status === 400 && data?.error) {
+            throw new Error(data.error);
+          }
+        }
+      } catch (err: any) {
+        if (err.message && !err.message.includes('fetch') && !err.message.includes('network')) {
+          throw err;
+        }
+        networkFailed = true;
+        console.warn("Server profile PUT network note:", err);
+      }
+
+      const returnedUser = data?.user || {};
+      const updatedPhotoUrl = returnedUser.photoUrl || returnedUser.avatarUrl || (finalPhoto && !finalPhoto.startsWith('data:') ? finalPhoto : (user.photoUrl || user.avatarUrl || ''));
+
+      // 2. Direct client persistence to Supabase app_users table (clean URL)
+      if (canAttemptSupabase() && user.id) {
+        try {
+          await supabase.from('app_users').update({
+            name: name.trim(),
+            batch: finalClass,
+            student_class: finalClass,
+            phone: cleanPhone,
+            avatar: updatedPhotoUrl,
+            photo_url: updatedPhotoUrl,
+            updated_at: new Date().toISOString()
+          }).or(`id.eq.${user.id},email.ilike.${user.email}`);
+        } catch (sbSyncErr) {
+          console.warn("Direct Supabase user profile update note:", sbSyncErr);
+        }
       }
 
       const updatedUser: User = {
         ...user,
-        name: data.user.name,
-        studentClass: data.user.studentClass,
-        photoUrl: data.user.photoUrl || data.user.avatarUrl,
-        avatarUrl: data.user.photoUrl || data.user.avatarUrl,
-        phone: data.user.phone
+        name: returnedUser.name || name.trim(),
+        studentClass: returnedUser.studentClass || finalClass,
+        photoUrl: updatedPhotoUrl || finalPhoto,
+        avatarUrl: updatedPhotoUrl || finalPhoto,
+        phone: returnedUser.phone || cleanPhone
       };
 
       // Save updated user to localStorage for instant reload persistence
       try {
         localStorage.setItem('science_studio_user', JSON.stringify(updatedUser));
       } catch (err) {
-        console.error(err);
+        console.error("Local storage save notice:", err);
       }
 
       onUpdateUser(updatedUser);
@@ -128,7 +187,7 @@ export default function StudentProfileModal({
 
       setTimeout(() => {
         onClose();
-      }, 1200);
+      }, 1000);
 
     } catch (err: any) {
       console.error("Profile submit error:", err);

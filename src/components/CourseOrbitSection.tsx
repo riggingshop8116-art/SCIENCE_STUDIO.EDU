@@ -241,8 +241,8 @@ export default function CourseOrbitSection({
     setTimeout(() => setIsRotating(false), 500);
   };
 
-  // Dynamic auto rotation timer based on admin settings
-  const speedSeconds = settings?.orbitSpeedSeconds || 6;
+  // Dynamic auto rotation timer (minimum 15 seconds to ensure smooth readability & low GPU usage)
+  const speedSeconds = Math.max(15, settings?.orbitSpeedSeconds || 15);
   useEffect(() => {
     if (!autoRotate || totalCourses === 0) return;
     const interval = setInterval(() => {

@@ -128,6 +128,10 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
     setShowPlayerSettings(false);
   }, [activeVideo?.id]);
 
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+  }, []);
+
   const [copiedClassLink, setCopiedClassLink] = useState<boolean>(false);
 
   const handleShareClass = () => {
@@ -2273,6 +2277,10 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
                 onClick={() => {
                   setSelectedCourseForPayment(null);
                   setPaymentSuccessMessage('');
+                  window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+                  setTimeout(() => {
+                    window.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
+                  }, 50);
                 }}
                 className="mt-2 px-6 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 text-slate-950 font-extrabold cursor-pointer hover:from-emerald-400 hover:to-teal-400 transition-all shadow-[0_0_20px_rgba(16,185,129,0.4)]"
               >

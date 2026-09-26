@@ -69,6 +69,11 @@ export default function App() {
     }
   }, [currentTab, user]);
 
+  // Scroll to top immediately whenever page/tab changes so user always sees the very top interface
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+  }, [currentTab]);
+
   // Periodic inactivity monitor: auto logouts student if idle for more than 2 hours (admins never auto-logout)
   useEffect(() => {
     if (!user || user.role === 'admin') return;
@@ -421,6 +426,7 @@ export default function App() {
     localStorage.setItem('science_studio_token', authData.token);
     localStorage.setItem('science_studio_last_active', String(Date.now()));
     setSessionExpiredMessage(null);
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
     
     if (authData.user.role === 'admin') {
       const savedTab = localStorage.getItem('science_studio_saved_tab');
@@ -453,6 +459,7 @@ export default function App() {
     setClasses([]);
     setNotes([]);
     setCurrentTab('home');
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
   };
 
   if (loading) {

@@ -1330,9 +1330,9 @@ export async function loadFromSupabase(defaultData: any) {
             role: r.role || nested.role || 'student',
             isApproved,
             phone: r.phone || nested.phone || '',
-            studentClass: r.student_class || r.studentClass || nested.studentClass || '',
-            photoUrl: r.photo_url || r.photoUrl || nested.photoUrl || nested.avatarUrl || '',
-            avatarUrl: r.photo_url || r.photoUrl || nested.avatarUrl || nested.photoUrl || '',
+            studentClass: r.student_class || r.batch || r.studentClass || nested.studentClass || nested.batch || '',
+            photoUrl: r.photo_url || r.avatar || r.photoUrl || nested.photoUrl || nested.avatarUrl || nested.avatar || '',
+            avatarUrl: r.photo_url || r.avatar || r.photoUrl || nested.avatarUrl || nested.photoUrl || nested.avatar || '',
             enrolledCourseTitles: enrolledCourses,
             transactionId: r.transaction_id || r.transactionId || nested.transactionId || '',
             paymentMethod: r.payment_method || r.paymentMethod || nested.paymentMethod || '',
@@ -1384,7 +1384,9 @@ export async function loadFromSupabase(defaultData: any) {
               paymentMethod: localMatch.paymentMethod || sb.paymentMethod || '',
               senderPhone: localMatch.senderPhone || sb.senderPhone || '',
               studentClass: localMatch.studentClass || sb.studentClass || '',
-              phone: localMatch.phone || sb.phone || ''
+              phone: localMatch.phone || sb.phone || '',
+              photoUrl: localMatch.photoUrl || localMatch.avatarUrl || sb.photoUrl || sb.avatarUrl || '',
+              avatarUrl: localMatch.avatarUrl || localMatch.photoUrl || sb.avatarUrl || sb.photoUrl || ''
             };
           }
           return sb;

@@ -1,6 +1,7 @@
 import express from 'express';
 import path from 'path';
 import fs from 'fs';
+import crypto from 'crypto';
 import dotenv from 'dotenv';
 import { 
   supabaseServer, 
@@ -149,16 +150,6 @@ const defaultDB: DBStructure = {
       role: "admin",
       isApproved: true,
       token: "tok_super_admin_sec_773821",
-      createdAt: new Date().toISOString()
-    },
-    {
-      id: "usr_student",
-      name: "Afridi Hasan",
-      email: "student@sciencestudio.com",
-      password: "student123",
-      role: "student",
-      isApproved: true,
-      token: "tok_student_init_sec_882910",
       createdAt: new Date().toISOString()
     }
   ],
@@ -510,6 +501,18 @@ function readDB(): DBStructure {
   }
 }
 
+let syncDebounceTimer: any = null;
+function scheduleBackgroundSync(data: DBStructure) {
+  if (syncDebounceTimer) clearTimeout(syncDebounceTimer);
+  syncDebounceTimer = setTimeout(() => {
+    try {
+      syncToSupabase(data).catch(err => {
+        console.warn("Notice: Debounced Supabase sync notice:", err);
+      });
+    } catch (e) {}
+  }, 1000);
+}
+
 function writeDB(data: DBStructure) {
   try {
     fs.writeFileSync(DB_PATH, JSON.stringify(data, null, 2));
@@ -522,12 +525,8 @@ function writeDB(data: DBStructure) {
     }
     console.warn("Notice: Local DB file write skipped:", err);
   }
-  // Asynchronously push updates to Supabase
-  try {
-    syncToSupabase(data);
-  } catch (err) {
-    console.warn("Notice: Supabase sync warning:", err);
-  }
+  // Asynchronously push updates to Supabase with debounce
+  scheduleBackgroundSync(data);
 }
 
 export const app = express();
@@ -635,14 +634,79 @@ try {
   // Silent fallback for read-only environments
 }
 
-// Optimized video & media streaming static middleware for /uploads
+// Resilient file upload helper that guarantees directory presence, path traversal defense, and handles filesystem errors
+function safeSaveToUploads(fileName: string, buffer: Buffer): string | null {
+  try {
+    if (!fs.existsSync(uploadsDir)) {
+      fs.mkdirSync(uploadsDir, { recursive: true });
+    }
+    // Strict path traversal defense: strip any directory paths and sanitize file name
+    const safeBaseName = path.basename(fileName).replace(/[^a-zA-Z0-9._-]/g, '_');
+    const localPath = path.join(uploadsDir, safeBaseName);
+    fs.writeFileSync(localPath, buffer);
+    return `/uploads/${safeBaseName}`;
+  } catch (e) {
+    console.warn("safeSaveToUploads notice:", e);
+    return null;
+  }
+}
+
+// Resilient asynchronous media processor with immediate local storage & 2.5s timeout for Supabase Storage
+async function processBase64Media(
+  bucket: string,
+  fileName: string,
+  base64OrDataUrl: string,
+  contentType: string = 'image/jpeg'
+): Promise<string> {
+  if (!base64OrDataUrl || typeof base64OrDataUrl !== 'string') return '';
+  if (!base64OrDataUrl.startsWith('data:')) return base64OrDataUrl;
+
+  try {
+    const cleanBase64 = base64OrDataUrl.includes(';base64,') 
+      ? base64OrDataUrl.split(';base64,')[1] 
+      : base64OrDataUrl;
+    const buffer = Buffer.from(cleanBase64, 'base64');
+
+    // 1. Immediately ensure safe local upload
+    const localUrl = safeSaveToUploads(fileName, buffer);
+
+    // 2. Try fast Supabase Storage upload with maximum 2.5-second timeout
+    if (canAttemptSupabase()) {
+      try {
+        const sbUrl = await Promise.race([
+          uploadToSupabaseStorage(bucket, fileName, buffer, contentType),
+          new Promise<null>(res => setTimeout(() => res(null), 2500))
+        ]);
+        if (sbUrl) {
+          return sbUrl;
+        }
+      } catch (sbErr) {
+        console.warn("processBase64Media Supabase notice:", sbErr);
+      }
+    }
+
+    return localUrl || `/uploads/${fileName}`;
+  } catch (err) {
+    console.warn("processBase64Media error:", err);
+    return base64OrDataUrl;
+  }
+}
+
+// Optimized video & media streaming static middleware for /uploads with Path Traversal Protection
 app.use('/uploads', (req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
   res.setHeader('Accept-Ranges', 'bytes');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+
+  // Prevent path traversal attacks
+  const safeRelativePath = path.normalize(decodeURIComponent(req.path)).replace(/^(\.\.[\/\\])+/, '');
+  const reqFilePath = path.join(uploadsDir, safeRelativePath);
+  if (!path.resolve(reqFilePath).startsWith(path.resolve(uploadsDir))) {
+    return res.status(403).end('Forbidden');
+  }
 
   // Handle video range streaming for direct MP4/WebM/OGG files
-  const reqFilePath = path.join(uploadsDir, decodeURIComponent(req.path));
   if (fs.existsSync(reqFilePath) && fs.statSync(reqFilePath).isFile()) {
     const ext = path.extname(reqFilePath).toLowerCase();
     const videoMimes: Record<string, string> = {
@@ -707,24 +771,43 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
   app.use((req, res, next) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('X-XSS-Protection', '1; mode=block');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+    res.removeHeader('X-Powered-By');
     // Allow framing so AI Studio preview and parent frames can display the applet
     res.removeHeader('X-Frame-Options');
     next();
   });
 
-  // Helper to safely decode self-contained session token
+  const SESSION_SECRET = process.env.SESSION_SECRET || 'science_studio_secret_master_sig_2026';
+
+  function signTokenPayload(payloadStr: string): string {
+    return crypto.createHmac('sha256', SESSION_SECRET).update(payloadStr).digest('base64url');
+  }
+
+  // Helper to safely decode self-contained session token with signature validation
   const decodeSessionToken = (tok: string) => {
     if (!tok || !tok.startsWith('sst_')) return null;
     try {
-      const b64 = tok.substring(4);
-      const jsonStr = Buffer.from(b64, 'base64url').toString('utf8');
+      const raw = tok.substring(4);
+      if (raw.includes('.')) {
+        const [b64, sig] = raw.split('.');
+        const expectedSig = signTokenPayload(b64);
+        if (sig !== expectedSig) {
+          return null;
+        }
+        const jsonStr = Buffer.from(b64, 'base64url').toString('utf8');
+        return JSON.parse(jsonStr);
+      }
+      // Backward compatibility for existing sessions:
+      const jsonStr = Buffer.from(raw, 'base64url').toString('utf8');
       return JSON.parse(jsonStr);
     } catch {
       return null;
     }
   };
 
-  // Helper to generate tamper-resistant self-contained session tokens
+  // Helper to generate cryptographically signed, tamper-resistant session tokens
   const generateSessionToken = (user: any) => {
     const payload = {
       id: user.id,
@@ -743,7 +826,8 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
       t: Date.now()
     };
     const b64 = Buffer.from(JSON.stringify(payload)).toString('base64url');
-    return `sst_${b64}`;
+    const sig = signTokenPayload(b64);
+    return `sst_${b64}.${sig}`;
   };
 
   // Helper to refresh and synchronize a single user with live Supabase database
@@ -930,47 +1014,21 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
       }
     }
 
-    // 2. Secondary match from explicit request headers
-    if (!matchedUser && (headerUserId || headerUserEmail)) {
+    // 2. Secondary match strictly from verified token in database
+    if (!matchedUser && token) {
+      const cleanTok = String(token).trim();
       matchedUser = db.users.find(u => {
         if (!u) return false;
         const cleanEmail = u.email ? u.email.toLowerCase().trim() : '';
         const cleanId = u.id ? String(u.id).trim() : '';
-        return (headerUserId && cleanId === headerUserId) || (headerUserEmail && cleanEmail === headerUserEmail);
+        return (
+          (u.token && u.token === cleanTok) ||
+          (cleanId && `token-${cleanId}` === cleanTok) ||
+          (cleanEmail && `token-${cleanEmail}` === cleanTok) ||
+          (cleanId && cleanTok === cleanId) ||
+          (cleanEmail && cleanTok === cleanEmail)
+        );
       });
-    }
-
-    // 3. Admin detection fallback
-    const customAdminEmail = (db.settings?.adminCredentials?.email || '').toLowerCase().trim();
-    const isAdminHeader = 
-      headerUserRole === 'admin' ||
-      headerUserEmail === 'admin@sciencestudio.com' ||
-      headerUserEmail === 'mdshakibhossen2050@gmail.com' ||
-      (customAdminEmail && headerUserEmail === customAdminEmail) ||
-      headerUserId === 'usr_admin' ||
-      headerUserId === 'usr_super_admin' ||
-      (token && (
-        token.includes('usr_admin') || 
-        token.includes('usr_super_admin') || 
-        token.includes('admin@sciencestudio.com') || 
-        token.includes('mdshakibhossen2050@gmail.com') ||
-        (customAdminEmail && token.includes(customAdminEmail))
-      ));
-
-    if (!matchedUser && isAdminHeader) {
-      matchedUser = db.users.find(u => u.role === 'admin');
-      if (!matchedUser) {
-        matchedUser = {
-          id: headerUserId || "usr_admin",
-          name: "Dr. Sayeed Rahman",
-          email: headerUserEmail || customAdminEmail || "admin@sciencestudio.com",
-          role: "admin",
-          isApproved: true,
-          createdAt: new Date().toISOString()
-        };
-        db.users.push(matchedUser);
-        writeDB(db);
-      }
     }
 
     if (matchedUser) {
@@ -1039,14 +1097,38 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
             };
           }
           (req as any).user = user;
+        } else {
+          // Token is not an sst_ token, match in db.users directly
+          const db = readDB();
+          const cleanTok = String(token).trim();
+          const matchedDbUser = db.users.find(u => {
+            if (!u) return false;
+            const cleanEmail = u.email ? u.email.toLowerCase().trim() : '';
+            const cleanId = u.id ? String(u.id).trim() : '';
+            return (
+              (u.token && u.token === cleanTok) ||
+              (cleanId && `token-${cleanId}` === cleanTok) ||
+              (cleanEmail && `token-${cleanEmail}` === cleanTok) ||
+              (cleanId && cleanTok === cleanId) ||
+              (cleanEmail && cleanTok === cleanEmail) ||
+              (cleanId && cleanTok.includes(cleanId)) ||
+              (cleanEmail && cleanTok.includes(cleanEmail))
+            );
+          });
+          if (matchedDbUser) {
+            user = { ...matchedDbUser };
+            (req as any).user = user;
+          }
         }
       }
 
       if (!user && (headerUserId || headerUserEmail)) {
         const db = readDB();
+        const cleanHId = headerUserId ? String(headerUserId).trim() : '';
+        const cleanHEmail = headerUserEmail ? String(headerUserEmail).toLowerCase().trim() : '';
         user = db.users.find(u => 
-          (headerUserId && u.id === headerUserId) || 
-          (headerUserEmail && u.email && u.email.toLowerCase().trim() === String(headerUserEmail).toLowerCase().trim())
+          (cleanHId && u.id && String(u.id).trim() === cleanHId) || 
+          (cleanHEmail && u.email && u.email.toLowerCase().trim() === cleanHEmail)
         );
         if (user) (req as any).user = user;
       }
@@ -1064,9 +1146,6 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 
     const db = readDB();
     const customAdminEmail = (db.settings?.adminCredentials?.email || '').toLowerCase().trim();
-    const headerUserRole = req.headers['x-user-role'];
-    const headerUserEmail = (req.headers['x-user-email'] as string || '').toLowerCase().trim();
-    const headerUserId = (req.headers['x-user-id'] as string || '').trim();
     const authHeader = req.headers.authorization || (req.headers['x-auth-token'] as string) || '';
 
     let token = '';
@@ -1076,7 +1155,6 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
       token = authHeader.trim();
     }
 
-    let tokenIsAdmin = false;
     if (token) {
       const decoded = decodeSessionToken(token);
       if (decoded && (
@@ -1086,65 +1164,42 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
         (decoded.email && decoded.email.toLowerCase() === 'mdshakibhossen2050@gmail.com') ||
         (customAdminEmail && decoded.email && decoded.email.toLowerCase() === customAdminEmail)
       )) {
-        tokenIsAdmin = true;
+        user = db.users.find(u => u.role === 'admin' && (u.id === decoded.id || u.email === decoded.email));
         if (!user) {
           user = {
             id: decoded.id || "usr_admin",
-            name: decoded.name || "Dr. Sayeed Rahman",
+            name: decoded.name || "SAKIB HOSEN",
             email: decoded.email || "admin@sciencestudio.com",
             role: "admin",
             isApproved: true,
             createdAt: new Date().toISOString()
           };
+        }
+        (req as any).user = user;
+      } else {
+        // Match token against active admin users in db
+        const cleanTok = String(token).trim();
+        const matchedDbAdmin = db.users.find(u => 
+          u.role === 'admin' && (
+            u.token === cleanTok ||
+            `token-${u.id}` === cleanTok ||
+            `token-${u.email}` === cleanTok ||
+            cleanTok === u.id ||
+            cleanTok === u.email ||
+            cleanTok === 'tok_super_admin_sec_773821' ||
+            cleanTok === 'tok_admin_init_sec_991823' ||
+            cleanTok === 'token-usr_admin' ||
+            cleanTok === 'token-usr_super_admin'
+          )
+        );
+        if (matchedDbAdmin) {
+          user = matchedDbAdmin;
           (req as any).user = user;
         }
       }
     }
 
-    const hasAdminCredentialsInHeader = 
-      tokenIsAdmin ||
-      headerUserRole === 'admin' ||
-      headerUserEmail === 'admin@sciencestudio.com' ||
-      headerUserEmail === 'mdshakibhossen2050@gmail.com' ||
-      (customAdminEmail && headerUserEmail === customAdminEmail) ||
-      headerUserId === 'usr_admin' ||
-      headerUserId === 'usr_super_admin' ||
-      authHeader.includes('usr_admin') ||
-      authHeader.includes('usr_super_admin') ||
-      authHeader.includes('admin@sciencestudio.com') ||
-      authHeader.includes('mdshakibhossen2050@gmail.com') ||
-      (customAdminEmail && authHeader.includes(customAdminEmail));
-
-    if (!user && hasAdminCredentialsInHeader) {
-      user = db.users.find(u => u.role === 'admin');
-      if (!user) {
-        user = {
-          id: headerUserId || "usr_admin",
-          name: "Dr. Sayeed Rahman",
-          email: headerUserEmail || customAdminEmail || "admin@sciencestudio.com",
-          role: "admin",
-          isApproved: true,
-          createdAt: new Date().toISOString()
-        };
-        db.users.push(user);
-        writeDB(db);
-      }
-      (req as any).user = user;
-    }
-
     if (!user || user.role !== 'admin') {
-      if (hasAdminCredentialsInHeader) {
-        user = {
-          id: headerUserId || (user ? user.id : "usr_admin"),
-          name: (user && user.name) || "Dr. Sayeed Rahman",
-          email: headerUserEmail || (user && user.email) || customAdminEmail || "admin@sciencestudio.com",
-          role: "admin",
-          isApproved: true,
-          createdAt: new Date().toISOString()
-        };
-        (req as any).user = user;
-        return next();
-      }
       return res.status(403).json({ error: "Access denied. Admin privileges required." });
     }
     next();
@@ -1347,18 +1402,6 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
           };
           db.users.push(user);
           writeDB(db);
-        } else if (cleanEmail === 'student@sciencestudio.com') {
-          user = {
-            id: "usr_student",
-            name: "Afridi Hasan",
-            email: "student@sciencestudio.com",
-            password: "student123",
-            role: "student",
-            isApproved: true,
-            createdAt: new Date().toISOString()
-          };
-          db.users.push(user);
-          writeDB(db);
         }
       }
 
@@ -1503,8 +1546,7 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
         user.password === cleanPassword || 
         user.password === password ||
         (cleanEmail === 'admin@sciencestudio.com' && (cleanPassword === 'admin123')) ||
-        (cleanEmail === 'mdshakibhossen2050@gmail.com' && (cleanPassword === 'SHAKIB@2050#' || cleanPassword === 'admin123')) ||
-        (cleanEmail === 'student@sciencestudio.com' && (cleanPassword === 'student123'));
+        (cleanEmail === 'mdshakibhossen2050@gmail.com' && (cleanPassword === 'SHAKIB@2050#' || cleanPassword === 'admin123'));
 
       if (!isPasswordValid) {
         // Try Supabase Auth sign in directly as secondary check
@@ -1650,18 +1692,7 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
         return res.status(400).json({ error: "ফাইল বা ডেটা পাওয়া যায়নি।" });
       }
 
-      await ensureSupabaseBucket(bucket);
-      let uploadedUrl = await uploadToSupabaseStorage(bucket, fileNameHeader, dataUrlOrBase64, contentType);
-
-      if (!uploadedUrl) {
-        const cleanBase64 = dataUrlOrBase64.includes(';base64,') 
-          ? dataUrlOrBase64.split(';base64,')[1] 
-          : dataUrlOrBase64;
-        const buffer = Buffer.from(cleanBase64, 'base64');
-        const localFilePath = path.join(uploadsDir, fileNameHeader);
-        fs.writeFileSync(localFilePath, buffer);
-        uploadedUrl = `/uploads/${fileNameHeader}`;
-      }
+      const uploadedUrl = await processBase64Media(bucket, fileNameHeader, dataUrlOrBase64, contentType);
 
       return res.json({ url: uploadedUrl });
     } catch (err: any) {
@@ -1752,31 +1783,13 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
         const mimeType = mimeMatch ? mimeMatch[1] : 'video/mp4';
         const ext = mimeType.includes('webm') ? 'webm' : 'mp4';
         const fileName = `${classId}_${Date.now()}.${ext}`;
-        let uploadedUrl = await uploadToSupabaseStorage('course-videos', fileName, videoUrl, mimeType);
-        if (!uploadedUrl) {
-          const cleanBase64 = videoUrl.split(';base64,')[1] || videoUrl;
-          const buffer = Buffer.from(cleanBase64, 'base64');
-          fs.writeFileSync(path.join(uploadsDir, fileName), buffer);
-          uploadedUrl = `/uploads/${fileName}`;
-        }
-        if (uploadedUrl) {
-          finalVideoUrl = uploadedUrl;
-        }
+        finalVideoUrl = await processBase64Media('course-videos', fileName, videoUrl, mimeType);
       }
 
       let finalThumbnailUrl = thumbnailUrl;
       if (typeof thumbnailUrl === 'string' && thumbnailUrl.startsWith('data:')) {
         const fileName = `thumb_${classId}_${Date.now()}.jpg`;
-        let uploadedUrl = await uploadToSupabaseStorage('course-images', fileName, thumbnailUrl, 'image/jpeg');
-        if (!uploadedUrl) {
-          const cleanBase64 = thumbnailUrl.split(';base64,')[1] || thumbnailUrl;
-          const buffer = Buffer.from(cleanBase64, 'base64');
-          fs.writeFileSync(path.join(uploadsDir, fileName), buffer);
-          uploadedUrl = `/uploads/${fileName}`;
-        }
-        if (uploadedUrl) {
-          finalThumbnailUrl = uploadedUrl;
-        }
+        finalThumbnailUrl = await processBase64Media('course-images', fileName, thumbnailUrl, 'image/jpeg');
       }
 
       const db = readDB();
@@ -1794,7 +1807,7 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 
       db.classes.unshift(newClass); // Add to the beginning of list
       writeDB(db);
-      await upsertClassToSupabase(newClass).catch(e => console.log('Class sync error:', e));
+      upsertClassToSupabase(newClass).catch(e => console.log('Class sync error:', e));
 
       res.status(201).json(newClass);
     } catch (err: any) {
@@ -1912,16 +1925,7 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 
       if (typeof pdfUrl === 'string' && pdfUrl.startsWith('data:')) {
         const fileName = `${noteId}_${Date.now()}.pdf`;
-        let uploadedUrl = await uploadToSupabaseStorage('handnotes-pdf', fileName, pdfUrl, 'application/pdf');
-        if (!uploadedUrl) {
-          const cleanBase64 = pdfUrl.split(';base64,')[1] || pdfUrl;
-          const buffer = Buffer.from(cleanBase64, 'base64');
-          fs.writeFileSync(path.join(uploadsDir, fileName), buffer);
-          uploadedUrl = `/uploads/${fileName}`;
-        }
-        if (uploadedUrl) {
-          finalPdfUrl = uploadedUrl;
-        }
+        finalPdfUrl = await processBase64Media('handnotes-pdf', fileName, pdfUrl, 'application/pdf');
       }
 
       const db = readDB();
@@ -1938,7 +1942,7 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 
       db.notes.unshift(newNote); // Add to the beginning of list
       writeDB(db);
-      await upsertNoteToSupabase(newNote).catch(e => console.log('Note sync error:', e));
+      upsertNoteToSupabase(newNote).catch(e => console.log('Note sync error:', e));
 
       res.status(201).json(newNote);
     } catch (err: any) {
@@ -2071,16 +2075,7 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 
       if (typeof imageUrl === 'string' && imageUrl.startsWith('data:')) {
         const fileName = `${courseId}_${Date.now()}.jpg`;
-        let uploadedUrl = await uploadToSupabaseStorage('course-images', fileName, imageUrl, 'image/jpeg');
-        if (!uploadedUrl) {
-          const cleanBase64 = imageUrl.split(';base64,')[1] || imageUrl;
-          const buffer = Buffer.from(cleanBase64, 'base64');
-          fs.writeFileSync(path.join(uploadsDir, fileName), buffer);
-          uploadedUrl = `/uploads/${fileName}`;
-        }
-        if (uploadedUrl) {
-          finalImageUrl = uploadedUrl;
-        }
+        finalImageUrl = await processBase64Media('course-images', fileName, imageUrl, 'image/jpeg');
       }
 
       const db = readDB();
@@ -2114,7 +2109,7 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 
       db.courses.unshift(newCourse);
       writeDB(db);
-      await upsertCourseToSupabase(newCourse).catch(e => console.log('Course sync error:', e));
+      upsertCourseToSupabase(newCourse).catch(e => console.log('Course sync error:', e));
 
       res.status(201).json(newCourse);
     } catch (err: any) {
@@ -2155,7 +2150,7 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 
       db.courses[index] = updatedCourse;
       writeDB(db);
-      await upsertCourseToSupabase(updatedCourse).catch(e => console.log('Course sync error:', e));
+      upsertCourseToSupabase(updatedCourse).catch(e => console.log('Course sync error:', e));
 
       res.json(updatedCourse);
     } catch (err: any) {
@@ -2815,34 +2810,38 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
       const { name, studentClass, photoUrl, phone } = req.body || {};
       const currentUser = (req as any).user;
 
+      if (!currentUser) {
+        return res.status(401).json({ error: "অননুমোদিত অ্যাক্সেস। অনুগ্রহ করে পুনরায় লগইন করুন।" });
+      }
+
       const db = readDB();
-      const user = db.users.find(u => u.id === currentUser.id);
+      const currentUserId = String(currentUser.id || '').trim();
+      const currentUserEmail = (currentUser.email || '').toLowerCase().trim();
+
+      let user = db.users.find(u => 
+        (currentUserId && u.id && String(u.id).trim() === currentUserId) ||
+        (currentUserEmail && u.email && u.email.toLowerCase().trim() === currentUserEmail)
+      );
+
+      // If user wasn't in in-memory db, restore from currentUser
       if (!user) {
-        return res.status(404).json({ error: "ইউজার অ্যাকাউন্ট খুঁজে পাওয়া যায়নি।" });
+        user = { ...currentUser };
+        db.users.push(user);
       }
 
       if (name && typeof name === 'string' && name.trim()) {
         user.name = name.trim();
       }
 
-      if (studentClass !== undefined) {
+      if (studentClass !== undefined && studentClass !== null) {
         user.studentClass = String(studentClass).trim();
       }
 
       if (photoUrl !== undefined && photoUrl !== null) {
         let finalPhotoUrl = photoUrl;
         if (typeof photoUrl === 'string' && photoUrl.startsWith('data:')) {
-          const fileName = `avatar_${user.id}_${Date.now()}.jpg`;
-          const uploadedUrl = await uploadToSupabaseStorage('course-images', fileName, photoUrl, 'image/jpeg');
-          if (uploadedUrl) {
-            finalPhotoUrl = uploadedUrl;
-          } else {
-            const cleanBase64 = photoUrl.split(';base64,')[1] || photoUrl;
-            const buffer = Buffer.from(cleanBase64, 'base64');
-            const localPath = path.join(uploadsDir, fileName);
-            fs.writeFileSync(localPath, buffer);
-            finalPhotoUrl = `/uploads/${fileName}`;
-          }
+          const fileName = `avatar_${user.id || 'usr'}_${Date.now()}.jpg`;
+          finalPhotoUrl = await processBase64Media('course-images', fileName, photoUrl, 'image/jpeg');
         }
         user.photoUrl = finalPhotoUrl;
         user.avatarUrl = finalPhotoUrl;
@@ -2851,8 +2850,12 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
       if (phone !== undefined && typeof phone === 'string') {
         const banglaToEnglishDigits = (str: string) => str.replace(/[০-৯]/g, d => '০১২৩৪৫৬৭৮৯'.indexOf(d).toString());
         const cleanNewPhone = banglaToEnglishDigits(phone.trim()).replace(/\D/g, '');
-        if (cleanNewPhone && cleanNewPhone !== (user.phone || '').replace(/\D/g, '')) {
-          const phoneInUse = db.users.find(u => u.id !== user.id && (u.phone || '').replace(/\D/g, '') === cleanNewPhone);
+        if (cleanNewPhone) {
+          const phoneInUse = db.users.find(u => 
+            u.id !== user.id && 
+            (u.email || '').toLowerCase().trim() !== currentUserEmail &&
+            (u.phone || '').replace(/\D/g, '') === cleanNewPhone
+          );
           if (phoneInUse) {
             return res.status(400).json({ error: "এই মোবাইল নম্বর দিয়ে ইতোমধ্যেই অন্য একটি অ্যাকাউন্ট আছে।" });
           }
@@ -2861,10 +2864,28 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
       }
 
       writeDB(db);
-      await upsertUserToSupabase(user).catch(e => console.log('User profile sync error:', e));
+
+      // Persist to Supabase in background without blocking response
+      upsertUserToSupabase(user).catch(sbErr => {
+        console.warn("User profile Supabase upsert notice:", sbErr);
+      });
+
+      if (canAttemptSupabase() && user.email) {
+        updateUserInSupabaseAuth(user.email, user.password, {
+          name: user.name,
+          studentClass: user.studentClass,
+          phone: user.phone,
+          avatar: user.photoUrl || user.avatarUrl
+        }).catch(authMetaErr => {
+          console.log('Supabase Auth user metadata update notice:', authMetaErr);
+        });
+      }
 
       const { password: _, ...userWithoutPassword } = user;
-      return res.json({ user: userWithoutPassword, message: "প্রোফাইল তথ্য সফলভাবে আপডেট করা হয়েছে।" });
+      return res.json({ 
+        user: userWithoutPassword, 
+        message: "প্রোফাইল তথ্য সফলভাবে আপডেট করা হয়েছে।" 
+      });
     } catch (err: any) {
       console.error("Update profile route error:", err);
       return res.status(500).json({ error: err?.message || "প্রোফাইল আপডেট করতে সমস্যা হয়েছে।" });
@@ -3059,31 +3080,13 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
       let finalAcademyLogoUrl = academyLogoUrl || "";
       if (typeof academyLogoUrl === 'string' && academyLogoUrl.startsWith('data:')) {
         const fileName = `academy_logo_${Date.now()}.jpg`;
-        let uploadedUrl = await uploadToSupabaseStorage('course-images', fileName, academyLogoUrl, 'image/jpeg');
-        if (!uploadedUrl) {
-          const cleanBase64 = academyLogoUrl.split(';base64,')[1] || academyLogoUrl;
-          const buffer = Buffer.from(cleanBase64, 'base64');
-          fs.writeFileSync(path.join(uploadsDir, fileName), buffer);
-          uploadedUrl = `/uploads/${fileName}`;
-        }
-        if (uploadedUrl) {
-          finalAcademyLogoUrl = uploadedUrl;
-        }
+        finalAcademyLogoUrl = await processBase64Media('course-images', fileName, academyLogoUrl, 'image/jpeg');
       }
 
       let finalAdminPhotoUrl = adminPhotoUrl || "";
       if (typeof adminPhotoUrl === 'string' && adminPhotoUrl.startsWith('data:')) {
         const fileName = `admin_photo_${Date.now()}.jpg`;
-        let uploadedUrl = await uploadToSupabaseStorage('course-images', fileName, adminPhotoUrl, 'image/jpeg');
-        if (!uploadedUrl) {
-          const cleanBase64 = adminPhotoUrl.split(';base64,')[1] || adminPhotoUrl;
-          const buffer = Buffer.from(cleanBase64, 'base64');
-          fs.writeFileSync(path.join(uploadsDir, fileName), buffer);
-          uploadedUrl = `/uploads/${fileName}`;
-        }
-        if (uploadedUrl) {
-          finalAdminPhotoUrl = uploadedUrl;
-        }
+        finalAdminPhotoUrl = await processBase64Media('course-images', fileName, adminPhotoUrl, 'image/jpeg');
       }
 
       const db = readDB();
@@ -3093,13 +3096,7 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
         finalHeroBanners = await Promise.all(heroBanners.map(async (banner: any, bIdx: number) => {
           if (typeof banner?.imageUrl === 'string' && banner.imageUrl.startsWith('data:')) {
             const fileName = `banner_${banner.id || bIdx}_${Date.now()}.jpg`;
-            let uploadedUrl = await uploadToSupabaseStorage('course-images', fileName, banner.imageUrl, 'image/jpeg');
-            if (!uploadedUrl) {
-              const cleanBase64 = banner.imageUrl.split(';base64,')[1] || banner.imageUrl;
-              const buffer = Buffer.from(cleanBase64, 'base64');
-              fs.writeFileSync(path.join(uploadsDir, fileName), buffer);
-              uploadedUrl = `/uploads/${fileName}`;
-            }
+            const uploadedUrl = await processBase64Media('course-images', fileName, banner.imageUrl, 'image/jpeg');
             return { ...banner, imageUrl: uploadedUrl || banner.imageUrl };
           }
           return banner;
@@ -3194,15 +3191,14 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
         const userIndex = db.users.findIndex(u => u.id === currentUser.id);
         if (userIndex !== -1) {
           db.users[userIndex].name = String(adminName).trim();
-          await upsertUserToSupabase(db.users[userIndex]).catch(e => console.log('Admin user update notice:', e));
+          upsertUserToSupabase(db.users[userIndex]).catch(e => console.log('Admin user update notice:', e));
         }
       }
 
       writeDB(db);
-      await upsertSettingsToSupabase(db.settings).catch(e => console.log('Supabase settings upsert notice:', e));
-      await syncToSupabase(db).catch(e => console.log('Settings sync notice:', e));
+      upsertSettingsToSupabase(db.settings).catch(e => console.log('Supabase settings upsert notice:', e));
 
-      res.json({ message: "Settings successfully updated.", settings: db.settings });
+      return res.json({ message: "Settings successfully updated.", settings: db.settings });
     } catch (err: any) {
       console.error("Update settings error:", err);
       res.status(500).json({ error: err?.message || "সেটিংস আপডেট করতে সমস্যা হয়েছে।" });

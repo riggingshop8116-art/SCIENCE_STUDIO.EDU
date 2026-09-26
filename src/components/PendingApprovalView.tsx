@@ -64,6 +64,15 @@ export default function PendingApprovalView({
   const [editError, setEditError] = useState('');
   const [editSuccess, setEditSuccess] = useState('');
 
+  // Always scroll to the very top when PendingApprovalView renders
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+    const timer = setTimeout(() => {
+      window.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
+    }, 50);
+    return () => clearTimeout(timer);
+  }, []);
+
   // Handle Copy to clipboard
   const handleCopy = (text: string, fieldName: string) => {
     if (!text) return;

@@ -14,7 +14,7 @@ export function HeroLabShowcase({ onExploreLab }: HeroLabShowcaseProps) {
   const [isPlaying, setIsPlaying] = useState<boolean>(true);
   const [speed, setSpeed] = useState<number>(1);
 
-  // Auto transition tab every 7 seconds
+  // Auto transition tab every 15 seconds to minimize device load
   useEffect(() => {
     if (!isPlaying) return;
     const tabInterval = setInterval(() => {
@@ -24,17 +24,17 @@ export function HeroLabShowcase({ onExploreLab }: HeroLabShowcaseProps) {
         if (prev === 'dna') return 'circle';
         return 'wave';
       });
-    }, 7000);
+    }, 15000);
 
     return () => clearInterval(tabInterval);
   }, [isPlaying]);
 
-  // Real-time animation frame loop
+  // Real-time animation frame loop (optimized for low CPU load)
   useEffect(() => {
     if (!isPlaying) return;
     const animFrame = setInterval(() => {
-      setTime((t) => t + 0.08 * speed);
-    }, 30);
+      setTime((t) => t + 0.05 * speed);
+    }, 45);
 
     return () => clearInterval(animFrame);
   }, [isPlaying, speed]);

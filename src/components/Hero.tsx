@@ -459,13 +459,13 @@ export default function Hero({
     return defaultScienceBanners;
   }, [settings?.heroBanners, defaultScienceBanners]);
 
-  // Scientific Banner Auto-Rotation Timer (Changes smoothly every 5.5 seconds)
+  // Scientific Banner Auto-Rotation Timer (Comfortable 15 seconds interval to reduce device strain)
   const [currentBannerIndex, setCurrentBannerIndex] = useState(0);
 
   useEffect(() => {
     const bannerInterval = setInterval(() => {
       setCurrentBannerIndex((prev) => (prev + 1) % scienceBanners.length);
-    }, 5500);
+    }, 15000);
 
     return () => clearInterval(bannerInterval);
   }, [scienceBanners.length]);
@@ -496,7 +496,7 @@ export default function Hero({
 
     slideIntervalRef.current = setInterval(() => {
       nextSlide();
-    }, 7000);
+    }, 15000);
 
     return () => {
       if (slideIntervalRef.current) clearInterval(slideIntervalRef.current);

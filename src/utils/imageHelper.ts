@@ -1,12 +1,16 @@
 export function compressImageFile(
   file: File, 
-  maxWidth = 1000, 
-  maxHeight = 1000, 
+  maxWidth = 500, 
+  maxHeight = 500, 
   quality = 0.75
 ): Promise<string> {
   return new Promise((resolve, reject) => {
-    if (!file.type.startsWith('image/')) {
-      reject(new Error('Selected file is not an image.'));
+    if (!file.type || !file.type.startsWith('image/')) {
+      // If file doesn't have standard image type, still attempt to read as data URL
+      const fallbackReader = new FileReader();
+      fallbackReader.onload = () => resolve(fallbackReader.result as string);
+      fallbackReader.onerror = () => reject(new Error('ফাইলটি সঠিক ইমেজ ফরম্যাটে নেই।'));
+      fallbackReader.readAsDataURL(file);
       return;
     }
 
@@ -15,8 +19,8 @@ export function compressImageFile(
       const img = new Image();
       img.onload = () => {
         try {
-          let width = img.width;
-          let height = img.height;
+          let width = img.width || 500;
+          let height = img.height || 500;
 
           if (width > maxWidth || height > maxHeight) {
             if (width / height > maxWidth / maxHeight) {
@@ -29,11 +33,13 @@ export function compressImageFile(
           }
 
           const canvas = document.createElement('canvas');
-          canvas.width = width;
-          canvas.height = height;
+          canvas.width = Math.max(1, width);
+          canvas.height = Math.max(1, height);
           const ctx = canvas.getContext('2d');
 
           if (ctx) {
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'high';
             ctx.drawImage(img, 0, 0, width, height);
             // Convert to JPEG Data URL with quality compression
             const compressedDataUrl = canvas.toDataURL('image/jpeg', quality);
@@ -46,7 +52,15 @@ export function compressImageFile(
         }
       };
 
-      img.onerror = () => reject(new Error('Image loading failed'));
+      img.onerror = () => {
+        // Fallback directly to original data url if Image decoder fails
+        if (e.target?.result) {
+          resolve(e.target.result as string);
+        } else {
+          reject(new Error('ছবি লোড করতে সমস্যা হয়েছে।'));
+        }
+      };
+
       img.src = e.target?.result as string;
     };
 

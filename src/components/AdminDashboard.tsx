@@ -634,7 +634,7 @@ export default function AdminDashboard({
       return;
     }
     try {
-      const compressedDataUrl = await compressImageFile(file, 1000, 1000, 0.75);
+      const compressedDataUrl = await compressImageFile(file, 800, 500, 0.75);
       setCourseImageUrl(compressedDataUrl);
       setCourseError('');
     } catch (err: any) {
@@ -1230,12 +1230,12 @@ export default function AdminDashboard({
           onRefreshSettings();
         }
       } else {
-        const errData = await response.json();
-        setActionError(errData.error || 'সেটিংস সেভ করতে কোনো সমস্যা হয়েছে।');
+        const errData = await parseJsonResponse(response);
+        setActionError(errData.error || errData.message || 'সেটিংস সেভ করতে কোনো সমস্যা হয়েছে।');
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      setActionError('সার্ভার কানেকশন এরর। আবার চেষ্টা করুন।');
+      setActionError(err.message || 'সার্ভার কানেকশন এরর। আবার চেষ্টা করুন।');
     } finally {
       setSettingsLoading(false);
     }
@@ -1268,7 +1268,7 @@ export default function AdminDashboard({
       return;
     }
     try {
-      const compressedDataUrl = await compressImageFile(file, 1000, 1000, 0.75);
+      const compressedDataUrl = await compressImageFile(file, 800, 450, 0.75);
       setClassThumbnailUrl(compressedDataUrl);
       setActionError('');
     } catch (err: any) {
@@ -4697,16 +4697,21 @@ export default function AdminDashboard({
                         type="file"
                         accept="image/*"
                         className="hidden"
-                        onChange={(e) => {
+                        onChange={async (e) => {
                           const file = e.target.files?.[0];
                           if (file) {
-                            const reader = new FileReader();
-                            reader.onloadend = () => {
-                              if (typeof reader.result === 'string') {
-                                setAcademyLogoUrl(reader.result);
-                              }
-                            };
-                            reader.readAsDataURL(file);
+                            try {
+                              const compressed = await compressImageFile(file, 400, 400, 0.8);
+                              setAcademyLogoUrl(compressed);
+                            } catch {
+                              const reader = new FileReader();
+                              reader.onloadend = () => {
+                                if (typeof reader.result === 'string') {
+                                  setAcademyLogoUrl(reader.result);
+                                }
+                              };
+                              reader.readAsDataURL(file);
+                            }
                           }
                         }}
                       />
@@ -5736,16 +5741,21 @@ export default function AdminDashboard({
                       id="admin-photo-upload-input" 
                       accept="image/*" 
                       className="hidden" 
-                      onChange={(e) => {
+                      onChange={async (e) => {
                         const file = e.target.files?.[0];
                         if (file) {
-                          const reader = new FileReader();
-                          reader.onloadend = () => {
-                            if (typeof reader.result === 'string') {
-                              setAdminPhotoUrl(reader.result);
-                            }
-                          };
-                          reader.readAsDataURL(file);
+                          try {
+                            const compressed = await compressImageFile(file, 500, 500, 0.8);
+                            setAdminPhotoUrl(compressed);
+                          } catch {
+                            const reader = new FileReader();
+                            reader.onloadend = () => {
+                              if (typeof reader.result === 'string') {
+                                setAdminPhotoUrl(reader.result);
+                              }
+                            };
+                            reader.readAsDataURL(file);
+                          }
                         }
                       }}
                     />
