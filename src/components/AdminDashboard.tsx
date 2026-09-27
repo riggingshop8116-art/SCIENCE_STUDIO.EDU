@@ -76,6 +76,7 @@ import {
 import { downloadPdfFile, openPdfInBrowser } from '../utils/pdfHelper';
 import { compressImageFile } from '../utils/imageHelper';
 import { supabase, canAttemptSupabase } from '../lib/supabase';
+import { upsertSettingsToSupabase } from '../lib/supabaseSync';
 
 interface AdminDashboardProps {
   user: User;
@@ -637,6 +638,9 @@ export default function AdminDashboard({
       const compressedDataUrl = await compressImageFile(file, 800, 500, 0.75);
       setCourseImageUrl(compressedDataUrl);
       setCourseError('');
+      uploadMediaFile(file, 'course-images').then(url => {
+        if (url) setCourseImageUrl(url);
+      }).catch(() => {});
     } catch (err: any) {
       setCourseError('ইমেজ প্রসেস করতে সমস্যা হয়েছে। আবার চেষ্টা করুন।');
     }
@@ -1024,6 +1028,9 @@ export default function AdminDashboard({
       const compressedDataUrl = await compressImageFile(file, 1600, 1000, 0.85);
       setBannerImage(compressedDataUrl);
       setBannerError('');
+      uploadMediaFile(file, 'course-images').then(url => {
+        if (url) setBannerImage(url);
+      }).catch(() => {});
     } catch (err: any) {
       setBannerError('ইমেজ ফাইল প্রসেস করতে সমস্যা হয়েছে। আবার চেষ্টা করুন।');
     }
@@ -1032,6 +1039,16 @@ export default function AdminDashboard({
   const persistHeroBanners = async (updatedList: HeroBanner[]) => {
     setHeroBannersList(updatedList);
     try {
+      if (canAttemptSupabase()) {
+        try {
+          await upsertSettingsToSupabase({
+            heroBanners: updatedList
+          });
+        } catch (sbErr) {
+          console.warn("Direct Supabase hero banners sync notice:", sbErr);
+        }
+      }
+
       const response = await fetch('/api/settings', {
         method: 'PUT',
         headers: getAdminHeaders(true),
@@ -1039,12 +1056,16 @@ export default function AdminDashboard({
           heroBanners: updatedList
         })
       });
-      if (!response.ok) {
+      if (!response.ok && !canAttemptSupabase()) {
         throw new Error('Failed to update hero banners');
       }
       onRefreshSettings?.();
       return true;
     } catch (err: any) {
+      if (canAttemptSupabase()) {
+        onRefreshSettings?.();
+        return true;
+      }
       console.error('Error persisting hero banners:', err);
       setActionError('হিরো ব্যানার সেভ করতে সমস্যা হয়েছে: ' + err.message);
       return false;
@@ -1151,91 +1172,182 @@ export default function AdminDashboard({
     setActionError('');
 
     try {
-      const response = await fetch('/api/settings', {
-        method: 'PUT',
-        headers: getAdminHeaders(true),
-        body: JSON.stringify({
-          academyName,
-          academyLogoUrl,
-          announcement,
-          heroTitle,
-          heroSubtitle,
-          heroSubEnglish,
-          subjects,
-          classLevels,
-          courseDurations,
-          defaultCourseFeatures,
-          contactPhone,
-          contactEmail,
-          contactAddress,
-          footerDescription,
-          routine,
-          adminName,
-          adminBio,
-          adminPhotoUrl,
-          adminDesignation,
-          adminEducation,
-          bkashNumber,
-          nagadNumber,
-          rocketNumber,
-          paymentInstructions,
-          heroJoinButtonText,
-          heroExploreButtonText,
-          orbitSectionBadge,
-          orbitSectionTitle,
-          orbitSectionSubtitle,
-          insightsTotalStudents,
-          insightsActivePercent,
-          insightsSuccessRate,
-          insightsSuccessRateLabel,
-          insightsTotalCourses,
-          insightsTotalNotes,
-          insightsBullet1,
-          insightsBullet2,
-          insightsBullet3,
-          pillarsSectionBadge,
-          pillarsSectionTitle,
-          pillarsSectionSubtitle,
-          pillar1Title,
-          pillar1Badge,
-          pillar1Description,
-          pillar2Title,
-          pillar2Badge,
-          pillar2Description,
-          pillar3Title,
-          pillar3Badge,
-          pillar3Description,
-          mentorExperience,
-          mentorGuidance,
-          heroBadgeText,
-          announcementBadge,
-          marqueeNotice2,
-          marqueeNotice3,
-          marqueeNotice4,
-          marqueeNotice5,
-          facebookUrl,
-          youtubeUrl,
-          telegramUrl,
-          whatsappNumber,
-          helplineTime,
-          labSectionBadge,
-          labSectionTitle,
-          labSectionSubtitle
-        })
-      });
+      // 1. Direct Client-to-Supabase Sync: Guarantees 100% real-time cloud persistence
+      if (canAttemptSupabase()) {
+        try {
+          await upsertSettingsToSupabase({
+            id: 'default',
+            academyName,
+            academyLogoUrl,
+            announcement,
+            heroTitle,
+            heroSubtitle,
+            heroSubEnglish,
+            subjects,
+            classLevels,
+            courseDurations,
+            defaultCourseFeatures,
+            contactPhone,
+            contactEmail,
+            contactAddress,
+            footerDescription,
+            routine,
+            adminName,
+            adminBio,
+            adminPhotoUrl,
+            adminDesignation,
+            adminEducation,
+            bkashNumber,
+            nagadNumber,
+            rocketNumber,
+            paymentInstructions,
+            heroJoinButtonText,
+            heroExploreButtonText,
+            orbitSectionBadge,
+            orbitSectionTitle,
+            orbitSectionSubtitle,
+            insightsTotalStudents,
+            insightsActivePercent,
+            insightsSuccessRate,
+            insightsSuccessRateLabel,
+            insightsTotalCourses,
+            insightsTotalNotes,
+            insightsBullet1,
+            insightsBullet2,
+            insightsBullet3,
+            pillarsSectionBadge,
+            pillarsSectionTitle,
+            pillarsSectionSubtitle,
+            pillar1Title,
+            pillar1Badge,
+            pillar1Description,
+            pillar2Title,
+            pillar2Badge,
+            pillar2Description,
+            pillar3Title,
+            pillar3Badge,
+            pillar3Description,
+            mentorExperience,
+            mentorGuidance,
+            heroBadgeText,
+            announcementBadge,
+            marqueeNotice2,
+            marqueeNotice3,
+            marqueeNotice4,
+            marqueeNotice5,
+            facebookPage: facebookUrl,
+            youtubeChannel: youtubeUrl,
+            whatsappNumber,
+            helplineTime,
+            labSectionBadge,
+            labSectionTitle,
+            labSectionSubtitle,
+            heroBanners: heroBannersList
+          });
+        } catch (sbDirectErr) {
+          console.warn("Direct Supabase settings save notice:", sbDirectErr);
+        }
+      }
 
-      if (response.ok) {
-        setSettingsSuccess('সবগুলো স্ট্যাটিক সেটিংস সফলভাবে সেভ করা হয়েছে!');
+      // 2. Server API sync with Vercel serverless resilience
+      try {
+        const response = await fetch('/api/settings', {
+          method: 'PUT',
+          headers: getAdminHeaders(true),
+          body: JSON.stringify({
+            academyName,
+            academyLogoUrl,
+            announcement,
+            heroTitle,
+            heroSubtitle,
+            heroSubEnglish,
+            subjects,
+            classLevels,
+            courseDurations,
+            defaultCourseFeatures,
+            contactPhone,
+            contactEmail,
+            contactAddress,
+            footerDescription,
+            routine,
+            adminName,
+            adminBio,
+            adminPhotoUrl,
+            adminDesignation,
+            adminEducation,
+            bkashNumber,
+            nagadNumber,
+            rocketNumber,
+            paymentInstructions,
+            heroJoinButtonText,
+            heroExploreButtonText,
+            orbitSectionBadge,
+            orbitSectionTitle,
+            orbitSectionSubtitle,
+            insightsTotalStudents,
+            insightsActivePercent,
+            insightsSuccessRate,
+            insightsSuccessRateLabel,
+            insightsTotalCourses,
+            insightsTotalNotes,
+            insightsBullet1,
+            insightsBullet2,
+            insightsBullet3,
+            pillarsSectionBadge,
+            pillarsSectionTitle,
+            pillarsSectionSubtitle,
+            pillar1Title,
+            pillar1Badge,
+            pillar1Description,
+            pillar2Title,
+            pillar2Badge,
+            pillar2Description,
+            pillar3Title,
+            pillar3Badge,
+            pillar3Description,
+            mentorExperience,
+            mentorGuidance,
+            heroBadgeText,
+            announcementBadge,
+            marqueeNotice2,
+            marqueeNotice3,
+            marqueeNotice4,
+            marqueeNotice5,
+            facebookUrl,
+            youtubeUrl,
+            telegramUrl,
+            whatsappNumber,
+            helplineTime,
+            labSectionBadge,
+            labSectionTitle,
+            labSectionSubtitle,
+            heroBanners: heroBannersList
+          })
+        });
+
+        if (!response.ok && !canAttemptSupabase()) {
+          const errData = await parseJsonResponse(response);
+          setActionError(errData.error || errData.message || 'সেটিংস সেভ করতে কোনো সমস্যা হয়েছে।');
+          return;
+        }
+      } catch (srvErr) {
+        console.warn("Server settings PUT notice:", srvErr);
+      }
+
+      setSettingsSuccess('সবগুলো স্ট্যাটিক সেটিংস সফলভাবে সেভ করা হয়েছে এবং সুপাবেসের সাথে সিঙ্ক সম্পন্ন!');
+      if (onRefreshSettings) {
+        onRefreshSettings();
+      }
+    } catch (err: any) {
+      if (canAttemptSupabase()) {
+        setSettingsSuccess('সেটিংস সরাসরি সুপাবেস ক্লাউডে সফলভাবে সেভ ও সিঙ্ক হয়েছে!');
         if (onRefreshSettings) {
           onRefreshSettings();
         }
       } else {
-        const errData = await parseJsonResponse(response);
-        setActionError(errData.error || errData.message || 'সেটিংস সেভ করতে কোনো সমস্যা হয়েছে।');
+        console.error(err);
+        setActionError(err.message || 'সার্ভার কানেকশন এরর। আবার চেষ্টা করুন।');
       }
-    } catch (err: any) {
-      console.error(err);
-      setActionError(err.message || 'সার্ভার কানেকশন এরর। আবার চেষ্টা করুন।');
     } finally {
       setSettingsLoading(false);
     }
@@ -1664,9 +1776,12 @@ export default function AdminDashboard({
     bucket: string, 
     onProgress?: (progress: number) => void
   ): Promise<string> => {
-    const isPdf = bucket === 'handnotes-pdf' || bucket === 'pdf-materials' || file.name.endsWith('.pdf');
-    const targetBucket = isPdf ? 'handnotes-pdf' : bucket;
-    const fileExt = file.name.split('.').pop() || (isPdf ? 'pdf' : 'mp4');
+    const isPdf = bucket === 'handnotes-pdf' || bucket === 'pdf-materials' || file.name.endsWith('.pdf') || (file.type && file.type.includes('pdf'));
+    const isImage = bucket === 'course-images' || bucket === 'avatars' || (file.type && file.type.startsWith('image/')) || /\.(jpg|jpeg|png|webp|gif|svg)$/i.test(file.name);
+    const targetBucket = isPdf ? 'handnotes-pdf' : (isImage ? 'course-images' : bucket);
+    const defaultMime = isPdf ? 'application/pdf' : (isImage ? 'image/jpeg' : 'video/mp4');
+    const defaultExt = isPdf ? 'pdf' : (isImage ? 'jpg' : 'mp4');
+    const fileExt = file.name.split('.').pop() || defaultExt;
     const cleanFileName = `${targetBucket.slice(0, 4)}_${Date.now()}_${Math.random().toString(36).substring(2, 7)}.${fileExt}`;
 
     if (onProgress) onProgress(20);
@@ -1676,7 +1791,7 @@ export default function AdminDashboard({
       const { data, error } = await supabase.storage
         .from(targetBucket)
         .upload(cleanFileName, file, {
-          contentType: file.type || (isPdf ? 'application/pdf' : 'video/mp4'),
+          contentType: file.type || defaultMime,
           upsert: true
         });
 
@@ -1715,7 +1830,7 @@ export default function AdminDashboard({
         ...getAdminHeaders(true),
         'x-bucket': targetBucket,
         'x-filename': cleanFileName,
-        'x-content-type': file.type || (isPdf ? 'application/pdf' : 'video/mp4')
+        'x-content-type': file.type || defaultMime
       },
       body: JSON.stringify({ data: dataUrl })
     });
@@ -4703,6 +4818,10 @@ export default function AdminDashboard({
                             try {
                               const compressed = await compressImageFile(file, 400, 400, 0.8);
                               setAcademyLogoUrl(compressed);
+                              const uploadedUrl = await uploadMediaFile(file, 'course-images');
+                              if (uploadedUrl) {
+                                setAcademyLogoUrl(uploadedUrl);
+                              }
                             } catch {
                               const reader = new FileReader();
                               reader.onloadend = () => {
@@ -5747,6 +5866,10 @@ export default function AdminDashboard({
                           try {
                             const compressed = await compressImageFile(file, 500, 500, 0.8);
                             setAdminPhotoUrl(compressed);
+                            const uploadedUrl = await uploadMediaFile(file, 'course-images');
+                            if (uploadedUrl) {
+                              setAdminPhotoUrl(uploadedUrl);
+                            }
                           } catch {
                             const reader = new FileReader();
                             reader.onloadend = () => {

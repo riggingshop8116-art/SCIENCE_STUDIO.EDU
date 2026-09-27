@@ -622,6 +622,15 @@ app.use(async (req, res, next) => {
   next();
 });
 
+// Ensure seamless compatibility with Vercel Serverless Functions:
+// If req.body is already populated by Vercel runtime, mark req._body = true so Express body-parser won't hang!
+app.use((req, res, next) => {
+  if (req.body !== undefined && req.body !== null) {
+    (req as any)._body = true;
+  }
+  next();
+});
+
 app.use(express.json({ limit: '200mb' }));
 app.use(express.urlencoded({ limit: '200mb', extended: true }));
 

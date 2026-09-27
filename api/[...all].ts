@@ -70,6 +70,12 @@ export default function handler(req: any, res: any) {
 
     req.url = targetPath;
 
+    // Vercel Serverless runtime already parses JSON/URL-encoded bodies.
+    // Setting req._body = true prevents Express body-parser from hanging on consumed stream!
+    if (req.body !== undefined && req.body !== null) {
+      req._body = true;
+    }
+
     const handlerApp = app || expressApp;
     return handlerApp(req, res);
   } catch (err: any) {

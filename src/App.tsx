@@ -162,7 +162,23 @@ export default function App() {
         try {
           const { data: sbSettings } = await supabase.from('app_settings').select('*').limit(1);
           if (Array.isArray(sbSettings) && sbSettings.length > 0 && sbSettings[0]) {
-            setSettings(prev => ({ ...prev, ...sbSettings[0] }));
+            const raw = sbSettings[0];
+            let extended: any = {};
+            if (raw.routineText) {
+              try {
+                extended = JSON.parse(raw.routineText);
+              } catch {}
+            }
+            const merged = {
+              ...raw,
+              ...extended,
+              academyLogoUrl: extended.academyLogoUrl || raw.academyLogoUrl || raw.academy_logo_url || '',
+              adminPhotoUrl: extended.adminPhotoUrl || raw.adminPhotoUrl || raw.admin_photo_url || '',
+              heroBanners: Array.isArray(extended.heroBanners) && extended.heroBanners.length > 0 
+                ? extended.heroBanners 
+                : (Array.isArray(raw.heroBanners) ? raw.heroBanners : undefined)
+            };
+            setSettings(prev => ({ ...prev, ...merged }));
           }
         } catch (e) {
           console.warn("Supabase settings client fetch notice:", e);
