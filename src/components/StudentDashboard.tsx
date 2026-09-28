@@ -271,6 +271,9 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
         // Also sync directly with Supabase app_users table and Auth metadata
         if (canAttemptSupabase()) {
           try {
+            const preservedAvatar = user.photoUrl || user.avatarUrl || (user as any).avatar || (user as any).photo_url || (typeof window !== 'undefined' ? localStorage.getItem(`scicenter_avatar_${user.id}`) : '') || '';
+            const preservedClass = user.studentClass || (user as any).student_class || (user as any).batch || (typeof window !== 'undefined' ? localStorage.getItem(`scicenter_class_${user.id}`) : '') || '';
+
             const { error: sbUpErr } = await supabase
               .from('app_users')
               .update({
@@ -281,6 +284,10 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
                 transaction_id: transactionId.trim(),
                 paymentMethod: paymentMethod,
                 senderPhone: senderPhone.trim(),
+                avatar: preservedAvatar || undefined,
+                photo_url: preservedAvatar || undefined,
+                batch: preservedClass || undefined,
+                student_class: preservedClass || undefined,
                 isApproved: false,
                 is_approved: false,
                 updated_at: new Date().toISOString()
@@ -297,6 +304,10 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
                   phone: user.phone || '',
                   password: (user as any).password || 'student123',
                   role: 'student',
+                  avatar: preservedAvatar,
+                  photo_url: preservedAvatar,
+                  batch: preservedClass,
+                  student_class: preservedClass,
                   enrolledCourseTitles: updatedEnrolled,
                   enrolled_courses: updatedEnrolled,
                   course: courseTitle,
@@ -315,6 +326,9 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
         }
 
         if (supabase) {
+          const userPhotoForAuth = user.photoUrl || user.avatarUrl || (user as any).avatar || (user as any).photo_url || (typeof window !== 'undefined' ? localStorage.getItem(`scicenter_avatar_${user.id}`) : '') || '';
+          const userClassForAuth = user.studentClass || (user as any).student_class || (user as any).batch || (typeof window !== 'undefined' ? localStorage.getItem(`scicenter_class_${user.id}`) : '') || '';
+
           supabase.auth.updateUser({
             data: {
               enrolledCourseTitles: updatedEnrolled,
@@ -322,6 +336,9 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
               transactionId: transactionId.trim(),
               paymentMethod: paymentMethod,
               senderPhone: senderPhone.trim(),
+              avatar: userPhotoForAuth || undefined,
+              photoUrl: userPhotoForAuth || undefined,
+              studentClass: userClassForAuth || undefined,
               isApproved: false
             }
           }).catch(() => {});
@@ -597,6 +614,21 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
   );
   const isPendingApproval = !user.isApproved && hasEnrolledOrTrx;
 
+  const resolvedUserAvatar = 
+    user.photoUrl || 
+    user.avatarUrl || 
+    (user as any).avatar || 
+    (user as any).photo_url || 
+    (typeof window !== 'undefined' ? localStorage.getItem(`scicenter_avatar_${user.id}`) : '') || 
+    '';
+
+  const resolvedUserClass = 
+    user.studentClass || 
+    (user as any).student_class || 
+    (user as any).batch || 
+    (typeof window !== 'undefined' ? localStorage.getItem(`scicenter_class_${user.id}`) : '') || 
+    '';
+
   const studentDisplayName = (() => {
     const raw = (user?.name || '').trim();
     if (raw && raw.toLowerCase() !== 'student' && raw.toLowerCase() !== 'user' && raw !== 'স্টুডেন্ট') {
@@ -619,9 +651,9 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
             className="relative w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-cyan-500/10 border-2 border-cyan-400/60 overflow-hidden flex items-center justify-center shrink-0 cursor-pointer group shadow-[0_0_15px_rgba(34,211,238,0.2)]"
             title="প্রোফাইল পরিবর্তন করতে ক্লিক করুন"
           >
-            {user.photoUrl || user.avatarUrl ? (
+            {resolvedUserAvatar ? (
               <img 
-                src={user.photoUrl || user.avatarUrl} 
+                src={resolvedUserAvatar} 
                 alt={studentDisplayName} 
                 className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
               />
@@ -648,10 +680,10 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
             </div>
 
             <div className="flex flex-wrap items-center gap-2 sm:gap-3 mt-1">
-              {user.studentClass && (
+              {resolvedUserClass && (
                 <span className="text-xs font-mono font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-2.5 py-0.5 rounded-md flex items-center gap-1">
                   <BookOpen className="w-3.5 h-3.5" />
-                  <span>শ্রেণী: {user.studentClass}</span>
+                  <span>শ্রেণী: {resolvedUserClass}</span>
                 </span>
               )}
               {user.phone && (

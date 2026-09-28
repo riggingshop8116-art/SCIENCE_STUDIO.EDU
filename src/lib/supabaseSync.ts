@@ -331,7 +331,7 @@ export async function upsertUserToSupabase(u: any) {
       ? u.enrolledCourseTitles 
       : (u.course ? [u.course] : (Array.isArray(u.enrolled_courses) ? u.enrolled_courses : []));
 
-    const userAvatar = u.photoUrl || u.avatarUrl || u.avatar || '';
+    const userAvatar = u.photoUrl || u.avatarUrl || u.avatar || u.photo_url || '';
     const cleanId = String(u.id).trim();
 
     // Supabase app_users strictly contains:
@@ -364,6 +364,7 @@ export async function upsertUserToSupabase(u: any) {
 
     if (userAvatar) {
       payload.avatar = userAvatar;
+      payload.photo_url = userAvatar;
     }
 
     let maxRetries = 4;
@@ -692,13 +693,23 @@ export async function upsertSettingsToSupabase(st: any) {
     const payload: any = {
       id: 'default',
       academyName: st.academyName || 'SCIENCE STUDIO by Sakib',
+      academyLogoUrl: st.academyLogoUrl || '',
+      logo_url: st.academyLogoUrl || '',
+      heroBanners: Array.isArray(st.heroBanners) ? st.heroBanners : [],
+      classLevels: Array.isArray(st.classLevels) ? st.classLevels : [],
+      courseDurations: Array.isArray(st.courseDurations) ? st.courseDurations : [],
+      defaultCourseFeatures: Array.isArray(st.defaultCourseFeatures) ? st.defaultCourseFeatures : [],
       announcement: st.announcement ?? 'ADMISSIONS NOW OPEN FOR ACADEMIC YEAR 2026',
       showAnnouncement: Boolean(st.showAnnouncement ?? true),
       contactPhone: st.contactPhone ?? '',
       contactEmail: st.contactEmail ?? '',
       whatsappNumber: st.whatsappNumber ?? '',
       facebookPage: st.facebookUrl || st.facebookPage || '',
+      facebookUrl: st.facebookUrl || '',
       youtubeChannel: st.youtubeUrl || st.youtubeChannel || '',
+      youtubeUrl: st.youtubeUrl || '',
+      telegramUrl: st.telegramUrl || '',
+      helplineTime: st.helplineTime || '',
       bkashNumber: st.bkashNumber ?? '',
       nagadNumber: st.nagadNumber ?? '',
       rocketNumber: st.rocketNumber ?? '',
@@ -909,6 +920,7 @@ export async function syncToSupabase(data: any) {
                 const enrolledList = Array.isArray(u.enrolledCourseTitles) 
                   ? u.enrolledCourseTitles 
                   : (u.course ? [u.course] : (Array.isArray(u.enrolled_courses) ? u.enrolled_courses : []));
+                const uAvatar = u.photoUrl || u.avatarUrl || u.avatar || u.photo_url || '';
                 return {
                   id: u.id,
                   name: u.name || '',
@@ -919,10 +931,12 @@ export async function syncToSupabase(data: any) {
                   isApproved: isApprovedVal,
                   course: enrolledList.length > 0 ? enrolledList[0] : (u.course || ''),
                   batch: u.studentClass || u.batch || '',
+                  student_class: u.studentClass || u.batch || '',
                   enrolledCourseTitles: enrolledList,
                   enrolledCourseIds: Array.isArray(u.enrolledCourseIds) ? u.enrolledCourseIds : [],
                   transactionId: u.transactionId || u.transaction_id || '',
-                  avatar: u.photoUrl || u.avatarUrl || u.avatar || '',
+                  avatar: uAvatar,
+                  photo_url: uAvatar,
                   joinedAt: u.joinedAt || u.createdAt || u.created_at || new Date().toISOString(),
                   updated_at: new Date().toISOString()
                 };

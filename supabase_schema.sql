@@ -49,13 +49,23 @@ CREATE TABLE IF NOT EXISTS public.app_settings (
 );
 
 ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS "academyName" TEXT DEFAULT 'SCIENCE STUDIO by Sakib';
+ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS "academyLogoUrl" TEXT DEFAULT '';
+ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS logo_url TEXT DEFAULT '';
 ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS "announcement" TEXT DEFAULT 'ADMISSIONS NOW OPEN FOR ACADEMIC YEAR 2026';
 ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS "showAnnouncement" BOOLEAN DEFAULT true;
 ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS "contactPhone" TEXT DEFAULT '';
 ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS "contactEmail" TEXT DEFAULT '';
 ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS "whatsappNumber" TEXT DEFAULT '';
 ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS "facebookPage" TEXT DEFAULT '';
+ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS "facebookUrl" TEXT DEFAULT '';
+ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS facebook_url TEXT DEFAULT '';
 ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS "youtubeChannel" TEXT DEFAULT '';
+ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS "youtubeUrl" TEXT DEFAULT '';
+ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS youtube_url TEXT DEFAULT '';
+ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS "telegramUrl" TEXT DEFAULT '';
+ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS telegram_url TEXT DEFAULT '';
+ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS "helplineTime" TEXT DEFAULT '';
+ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS helpline_time TEXT DEFAULT '';
 ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS "bkashNumber" TEXT DEFAULT '';
 ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS "nagadNumber" TEXT DEFAULT '';
 ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS "rocketNumber" TEXT DEFAULT '';
@@ -68,6 +78,15 @@ ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS "heroSubEnglish" TEXT D
 ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS "heroJoinButtonText" TEXT DEFAULT 'ভর্তি হন / রেজিস্ট্রেশন করুন';
 ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS "heroExploreButtonText" TEXT DEFAULT 'কোর্সসমূহ দেখুন';
 ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS "heroClassroomBgUrl" TEXT DEFAULT '';
+ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS "heroBanners" JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS hero_banners JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS "classLevels" JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS class_levels JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS "courseDurations" JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS course_durations JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS "defaultCourseFeatures" JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS default_course_features JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS "routine" JSONB DEFAULT '[]'::jsonb;
 ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS "adminName" TEXT DEFAULT '';
 ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS "adminBio" TEXT DEFAULT '';
 ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS "adminPhotoUrl" TEXT DEFAULT '';
@@ -77,6 +96,48 @@ ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS "contactAddress" TEXT D
 ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS "footerDescription" TEXT DEFAULT '';
 ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS "paymentInstructions" TEXT DEFAULT '';
 ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS "subjects" JSONB DEFAULT '["Physics", "Chemistry", "Biology", "Mathematics", "General Science"]'::jsonb;
+ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS "marqueeNotice2" TEXT DEFAULT '';
+ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS "marqueeNotice3" TEXT DEFAULT '';
+ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS "marqueeNotice4" TEXT DEFAULT '';
+ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS "marqueeNotice5" TEXT DEFAULT '';
+ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS "orbitSectionBadge" TEXT DEFAULT '';
+ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS "orbitSectionTitle" TEXT DEFAULT '';
+ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS "orbitSectionSubtitle" TEXT DEFAULT '';
+ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS "orbitAutoRotate" BOOLEAN DEFAULT true;
+ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS "orbitSpeedSeconds" NUMERIC DEFAULT 6;
+ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS "insightsTotalStudents" TEXT DEFAULT '১,৪৫০+';
+ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS "insightsActivePercent" TEXT DEFAULT '৯৮%';
+ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS "insightsSuccessRate" TEXT DEFAULT '৯৯.২%';
+ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS "insightsSuccessRateLabel" TEXT DEFAULT 'প্লাস পাওয়ার হার';
+ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS "insightsTotalCourses" TEXT DEFAULT '১৪+';
+ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS "insightsTotalNotes" TEXT DEFAULT '৩৫০+';
+ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS "insightsBullet1" TEXT DEFAULT '';
+ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS "insightsBullet2" TEXT DEFAULT '';
+ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS "insightsBullet3" TEXT DEFAULT '';
+ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS "insightsRegisterButtonText" TEXT DEFAULT '';
+ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS "pillarsSectionBadge" TEXT DEFAULT '';
+ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS "pillarsSectionTitle" TEXT DEFAULT '';
+ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS "pillarsSectionSubtitle" TEXT DEFAULT '';
+ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS "pillar1Title" TEXT DEFAULT '';
+ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS "pillar1Badge" TEXT DEFAULT '';
+ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS "pillar1Description" TEXT DEFAULT '';
+ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS "pillar2Title" TEXT DEFAULT '';
+ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS "pillar2Badge" TEXT DEFAULT '';
+ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS "pillar2Description" TEXT DEFAULT '';
+ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS "pillar3Title" TEXT DEFAULT '';
+ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS "pillar3Badge" TEXT DEFAULT '';
+ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS "pillar3Description" TEXT DEFAULT '';
+ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS "mentorExperience" TEXT DEFAULT '';
+ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS "mentorGuidance" TEXT DEFAULT '';
+ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS "heroBadgeText" TEXT DEFAULT '';
+ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS "announcementBadge" TEXT DEFAULT '';
+ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS "labSectionBadge" TEXT DEFAULT '';
+ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS "labSectionTitle" TEXT DEFAULT '';
+ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS "labSectionSubtitle" TEXT DEFAULT '';
+ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS "deletedCourseIds" JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS "deletedClassIds" JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS "deletedNoteIds" JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS "deletedUserIds" JSONB DEFAULT '[]'::jsonb;
 
 -- B. Legacy / Fallback Settings Table
 CREATE TABLE IF NOT EXISTS public.settings (
@@ -239,13 +300,19 @@ ALTER TABLE public.app_classes ADD COLUMN IF NOT EXISTS "driveUrl" TEXT DEFAULT 
 ALTER TABLE public.app_classes ADD COLUMN IF NOT EXISTS data JSONB DEFAULT '{}'::jsonb;
 ALTER TABLE public.app_classes ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now());
 ALTER TABLE public.app_classes ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now());
+DO $$ BEGIN
+  ALTER TABLE public.app_classes ALTER COLUMN "videoUrl" DROP NOT NULL;
+EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE public.app_classes ALTER COLUMN video_url DROP NOT NULL;
+EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 -- F. App Notes Table
 CREATE TABLE IF NOT EXISTS public.app_notes (
   id TEXT PRIMARY KEY,
   title TEXT NOT NULL,
   subject TEXT NOT NULL,
-  "pdfUrl" TEXT NOT NULL,
+  "pdfUrl" TEXT DEFAULT '',
   pdf_url TEXT DEFAULT '',
   "courseTitle" TEXT DEFAULT '',
   course_title TEXT DEFAULT '',
@@ -272,6 +339,12 @@ ALTER TABLE public.app_notes ADD COLUMN IF NOT EXISTS description TEXT DEFAULT '
 ALTER TABLE public.app_notes ADD COLUMN IF NOT EXISTS data JSONB DEFAULT '{}'::jsonb;
 ALTER TABLE public.app_notes ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now());
 ALTER TABLE public.app_notes ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now());
+DO $$ BEGIN
+  ALTER TABLE public.app_notes ALTER COLUMN "pdfUrl" DROP NOT NULL;
+EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE public.app_notes ALTER COLUMN pdf_url DROP NOT NULL;
+EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 -- G. Routine Table
 CREATE TABLE IF NOT EXISTS public.routine (
@@ -312,19 +385,29 @@ CREATE POLICY "Public full access routine" ON public.routine FOR ALL USING (true
 -- -----------------------------------------------------------------------------
 -- 4. STORAGE BUCKETS & POLICIES (Course Images, Avatars, Notes PDF, Course Videos)
 -- -----------------------------------------------------------------------------
-INSERT INTO storage.buckets (id, name, public, file_size_limit)
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 VALUES 
-  ('course-images', 'course-images', true, 524288000),
-  ('avatars', 'avatars', true, 524288000),
-  ('handnotes-pdf', 'handnotes-pdf', true, 524288000),
-  ('course-videos', 'course-videos', true, 524288000)
-ON CONFLICT (id) DO UPDATE SET public = true, file_size_limit = 524288000;
+  ('course-images', 'course-images', true, 1073741824, null),
+  ('avatars', 'avatars', true, 1073741824, null),
+  ('handnotes-pdf', 'handnotes-pdf', true, 1073741824, null),
+  ('course-videos', 'course-videos', true, 1073741824, null),
+  ('pdf-materials', 'pdf-materials', true, 1073741824, null)
+ON CONFLICT (id) DO UPDATE SET 
+  public = true, 
+  file_size_limit = 1073741824,
+  allowed_mime_types = null;
+
+DO $$ BEGIN
+  ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
+EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 DROP POLICY IF EXISTS "Public storage select objects" ON storage.objects;
 DROP POLICY IF EXISTS "Public storage insert objects" ON storage.objects;
 DROP POLICY IF EXISTS "Public storage update objects" ON storage.objects;
 DROP POLICY IF EXISTS "Public storage delete objects" ON storage.objects;
+DROP POLICY IF EXISTS "Public full access storage objects" ON storage.objects;
 
+CREATE POLICY "Public full access storage objects" ON storage.objects FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Public storage select objects" ON storage.objects FOR SELECT USING (true);
 CREATE POLICY "Public storage insert objects" ON storage.objects FOR INSERT WITH CHECK (true);
 CREATE POLICY "Public storage update objects" ON storage.objects FOR UPDATE USING (true);

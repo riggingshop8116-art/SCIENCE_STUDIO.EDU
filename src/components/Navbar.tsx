@@ -67,6 +67,16 @@ export default function Navbar({
     return user.role === 'admin' ? 'এডমিন' : 'শিক্ষার্থী';
   })();
 
+  const navUserAvatar = user ? (
+    user.photoUrl || 
+    user.avatarUrl || 
+    (user as any).avatar || 
+    (user as any).photo_url || 
+    (typeof window !== 'undefined' ? localStorage.getItem(`scicenter_avatar_${user.id}`) : '') || 
+    (user.role === 'admin' ? (settings?.adminPhotoUrl || '') : '') || 
+    ''
+  ) : '';
+
   return (
     <header className="w-full z-50 sticky top-0 backdrop-blur-2xl bg-[#060b18]/95 border-b border-white/10 shadow-lg transition-all duration-300" id="app-header">
       {/* Floating Navbar with Balanced Spacing */}
@@ -219,9 +229,9 @@ export default function Navbar({
                     className="flex items-center gap-1.5 sm:gap-2 bg-slate-900/90 hover:bg-slate-800/90 border border-cyan-500/30 hover:border-cyan-400/60 rounded-xl py-1 px-1.5 sm:px-2.5 cursor-pointer transition-all shadow-sm"
                   >
                     <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-lg overflow-hidden flex items-center justify-center shrink-0 ${user.role === 'admin' ? 'bg-rose-500/15 border border-rose-500/40 text-rose-400' : 'bg-cyan-500/15 border border-cyan-500/40 text-cyan-400'}`}>
-                      {(user.photoUrl || user.avatarUrl || (user.role === 'admin' ? settings?.adminPhotoUrl : '')) ? (
+                      {navUserAvatar ? (
                         <img 
-                          src={user.photoUrl || user.avatarUrl || (user.role === 'admin' ? settings?.adminPhotoUrl : '')} 
+                          src={navUserAvatar} 
                           alt={userDisplayName} 
                           className="w-full h-full object-cover"
                           onError={(e) => {
@@ -283,9 +293,9 @@ export default function Navbar({
                       >
                         <div className="flex items-center gap-2.5 pb-2.5 mb-2.5 border-b border-white/10">
                           <div className={`w-10 h-10 rounded-xl overflow-hidden flex items-center justify-center shrink-0 ${user.role === 'admin' ? 'bg-rose-500/20 text-rose-400' : 'bg-cyan-500/20 text-cyan-400'}`}>
-                            {(user.photoUrl || user.avatarUrl || (user.role === 'admin' ? settings?.adminPhotoUrl : '')) ? (
+                            {navUserAvatar ? (
                               <img 
-                                src={user.photoUrl || user.avatarUrl || (user.role === 'admin' ? settings?.adminPhotoUrl : '')} 
+                                src={navUserAvatar} 
                                 alt={userDisplayName} 
                                 className="w-full h-full object-cover"
                                 onError={(e) => {

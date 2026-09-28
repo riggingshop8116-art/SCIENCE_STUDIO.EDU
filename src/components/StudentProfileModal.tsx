@@ -50,9 +50,12 @@ export default function StudentProfileModal({
   // Combine default and custom class choices
   const availableClasses = Array.from(new Set([...DEFAULT_CLASS_LEVELS, ...(classLevels || [])]));
 
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    setSelectedFile(file);
 
     try {
       setIsCompressing(true);
@@ -60,6 +63,39 @@ export default function StudentProfileModal({
       const compressedDataUrl = await compressImageFile(file, 400, 400, 0.75);
       setPhotoUrl(compressedDataUrl);
       setPreviewPhoto(compressedDataUrl);
+
+      // Fast async direct upload to Supabase Storage (avatars bucket)
+      if (canAttemptSupabase()) {
+        try {
+          const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
+          const fileName = `avatar_${user.id || 'usr'}_${Date.now()}.${ext}`;
+          
+          let publicUrl = '';
+          const { data: upData, error: upErr } = await supabase.storage
+            .from('avatars')
+            .upload(fileName, file, { upsert: true, contentType: file.type || 'image/jpeg' });
+
+          if (!upErr && upData) {
+            const { data: pUrlData } = supabase.storage.from('avatars').getPublicUrl(fileName);
+            publicUrl = pUrlData?.publicUrl || '';
+          } else {
+            // Fallback to course-images bucket if avatars bucket isn't ready
+            const { data: upData2, error: upErr2 } = await supabase.storage
+              .from('course-images')
+              .upload(fileName, file, { upsert: true, contentType: file.type || 'image/jpeg' });
+            if (!upErr2 && upData2) {
+              const { data: pUrlData2 } = supabase.storage.from('course-images').getPublicUrl(fileName);
+              publicUrl = pUrlData2?.publicUrl || '';
+            }
+          }
+
+          if (publicUrl) {
+            setPhotoUrl(publicUrl);
+          }
+        } catch (sbErr) {
+          console.warn("Direct storage upload preview note:", sbErr);
+        }
+      }
     } catch (err: any) {
       console.error("Image compression note, using fallback reader:", err);
       try {
@@ -99,8 +135,38 @@ export default function StudentProfileModal({
 
     try {
       const token = localStorage.getItem('science_studio_token') || `token-${user.id}`;
-      const finalPhoto = photoUrl || previewPhoto;
+      let finalPhoto = photoUrl || previewPhoto || user.photoUrl || user.avatarUrl || '';
       const cleanPhone = phone.trim();
+
+      // If photo is still base64 and we have the file or data URL, try direct Supabase upload
+      if (canAttemptSupabase() && finalPhoto && finalPhoto.startsWith('data:')) {
+        try {
+          const fileName = `avatar_${user.id || 'usr'}_${Date.now()}.jpg`;
+          let uploadedUrl = '';
+          
+          if (selectedFile) {
+            const { data: upData, error: upErr } = await supabase.storage
+              .from('avatars')
+              .upload(fileName, selectedFile, { upsert: true, contentType: selectedFile.type || 'image/jpeg' });
+            if (!upErr && upData) {
+              uploadedUrl = supabase.storage.from('avatars').getPublicUrl(fileName)?.data?.publicUrl || '';
+            } else {
+              const { data: upData2 } = await supabase.storage
+                .from('course-images')
+                .upload(fileName, selectedFile, { upsert: true, contentType: selectedFile.type || 'image/jpeg' });
+              if (upData2) {
+                uploadedUrl = supabase.storage.from('course-images').getPublicUrl(fileName)?.data?.publicUrl || '';
+              }
+            }
+          }
+
+          if (uploadedUrl) {
+            finalPhoto = uploadedUrl;
+          }
+        } catch (sbStorageErr) {
+          console.warn("Direct avatar upload on submit note:", sbStorageErr);
+        }
+      }
 
       // 1. Server API update with complete authorization headers
       let data: any = null;
@@ -147,9 +213,17 @@ export default function StudentProfileModal({
       }
 
       const returnedUser = data?.user || {};
-      const updatedPhotoUrl = returnedUser.photoUrl || returnedUser.avatarUrl || (finalPhoto && !finalPhoto.startsWith('data:') ? finalPhoto : (user.photoUrl || user.avatarUrl || ''));
+      // Strict fallback resolution: never let the photo disappear or be set to empty!
+      const updatedPhotoUrl = 
+        returnedUser.photoUrl || 
+        returnedUser.avatarUrl || 
+        (finalPhoto && !finalPhoto.startsWith('data:') ? finalPhoto : '') ||
+        finalPhoto || 
+        user.photoUrl || 
+        user.avatarUrl || 
+        '';
 
-      // 2. Direct client persistence to Supabase app_users table (clean URL)
+      // 2. Direct client persistence to Supabase app_users table (authoritative)
       if (canAttemptSupabase() && user.id) {
         try {
           await supabase.from('app_users').update({
@@ -161,6 +235,20 @@ export default function StudentProfileModal({
             photo_url: updatedPhotoUrl,
             updated_at: new Date().toISOString()
           }).or(`id.eq.${user.id},email.ilike.${user.email}`);
+
+          // Also update metadata in Supabase Auth if session active
+          try {
+            supabase.auth.updateUser({
+              data: {
+                name: name.trim(),
+                studentClass: finalClass,
+                phone: cleanPhone,
+                avatar: updatedPhotoUrl,
+                photoUrl: updatedPhotoUrl,
+                avatarUrl: updatedPhotoUrl
+              }
+            }).catch(() => {});
+          } catch (_) {}
         } catch (sbSyncErr) {
           console.warn("Direct Supabase user profile update note:", sbSyncErr);
         }
@@ -170,13 +258,15 @@ export default function StudentProfileModal({
         ...user,
         name: returnedUser.name || name.trim(),
         studentClass: returnedUser.studentClass || finalClass,
-        photoUrl: updatedPhotoUrl || finalPhoto,
-        avatarUrl: updatedPhotoUrl || finalPhoto,
+        photoUrl: updatedPhotoUrl,
+        avatarUrl: updatedPhotoUrl,
         phone: returnedUser.phone || cleanPhone
       };
 
-      // Save updated user to localStorage for instant reload persistence
+      // Save updated user & dedicated avatar fallback to localStorage
       try {
+        localStorage.setItem(`scicenter_avatar_${user.id}`, updatedPhotoUrl);
+        localStorage.setItem(`scicenter_class_${user.id}`, finalClass);
         localStorage.setItem('science_studio_user', JSON.stringify(updatedUser));
       } catch (err) {
         console.error("Local storage save notice:", err);

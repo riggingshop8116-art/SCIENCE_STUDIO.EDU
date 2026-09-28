@@ -143,7 +143,16 @@ export default function PendingApprovalView({
                 text: '🎉 অভিনন্দন! আপনার অ্যাকাউন্টটি সফলভাবে অ্যাডমিন কর্তৃক অনুমোদিত হয়েছে। ক্লাসরুম আনলক করা হচ্ছে...'
               });
               if (onUpdateUser) {
-                onUpdateUser(data.user);
+                const incoming = data.user;
+                const finalAvatar = incoming.photoUrl || incoming.avatarUrl || incoming.avatar || incoming.photo_url || user.photoUrl || user.avatarUrl || (typeof window !== 'undefined' ? localStorage.getItem(`scicenter_avatar_${user.id}`) : '') || '';
+                const finalClass = incoming.studentClass || incoming.batch || incoming.student_class || user.studentClass || (typeof window !== 'undefined' ? localStorage.getItem(`scicenter_class_${user.id}`) : '') || '';
+                onUpdateUser({
+                  ...user,
+                  ...incoming,
+                  photoUrl: finalAvatar,
+                  avatarUrl: finalAvatar,
+                  studentClass: finalClass
+                });
               }
               return;
             } else if (isManual) {
@@ -201,9 +210,15 @@ export default function PendingApprovalView({
                   text: '🎉 অভিনন্দন! আপনার অ্যাকাউন্টটি অনুমোদিত হয়েছে। ক্লাসরুম আনলক করা হচ্ছে...'
                 });
                 if (onUpdateUser) {
+                  const p = payload.new;
+                  const finalAvatar = p.avatar || p.photo_url || p.photoUrl || p.avatarUrl || user.photoUrl || user.avatarUrl || (typeof window !== 'undefined' ? localStorage.getItem(`scicenter_avatar_${user.id}`) : '') || '';
+                  const finalClass = p.student_class || p.batch || p.studentClass || user.studentClass || (typeof window !== 'undefined' ? localStorage.getItem(`scicenter_class_${user.id}`) : '') || '';
                   onUpdateUser({
                     ...user,
-                    ...payload.new,
+                    ...p,
+                    photoUrl: finalAvatar,
+                    avatarUrl: finalAvatar,
+                    studentClass: finalClass,
                     isApproved: true
                   });
                 }

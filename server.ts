@@ -625,6 +625,15 @@ app.use(async (req, res, next) => {
 // Ensure seamless compatibility with Vercel Serverless Functions:
 // If req.body is already populated by Vercel runtime, mark req._body = true so Express body-parser won't hang!
 app.use((req, res, next) => {
+  if (typeof req.body === 'string') {
+    try {
+      req.body = JSON.parse(req.body);
+    } catch (_) {}
+  } else if (Buffer.isBuffer(req.body)) {
+    try {
+      req.body = JSON.parse(req.body.toString('utf8'));
+    } catch (_) {}
+  }
   if (req.body !== undefined && req.body !== null) {
     (req as any)._body = true;
   }
@@ -778,13 +787,18 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 
   // Security Headers Middleware
   app.use((req, res, next) => {
-    res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('X-XSS-Protection', '1; mode=block');
-    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-    res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
-    res.removeHeader('X-Powered-By');
-    // Allow framing so AI Studio preview and parent frames can display the applet
-    res.removeHeader('X-Frame-Options');
+    try {
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.setHeader('X-XSS-Protection', '1; mode=block');
+      res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+      res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+      if (typeof (res as any).removeHeader === 'function') {
+        try {
+          (res as any).removeHeader('X-Powered-By');
+          (res as any).removeHeader('X-Frame-Options');
+        } catch (_) {}
+      }
+    } catch (_) {}
     next();
   });
 
@@ -1778,7 +1792,7 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
   // Classes: Create a new class (Admin only)
   app.post('/api/classes', requireAdmin, async (req, res) => {
     try {
-      const { title, subject, courseId, courseTitle, videoUrl, thumbnailUrl, description } = req.body;
+      const { title, subject, courseId, courseTitle, videoUrl, thumbnailUrl, description } = req.body || {};
       if (!title || !subject || !videoUrl) {
         return res.status(400).json({ error: "কোর্সের শিরোনাম, বিষয় এবং ভিডিও আবশ্যক।" });
       }
@@ -1924,7 +1938,7 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
   // Notes: Create a new note (Admin only)
   app.post('/api/notes', requireAdmin, async (req, res) => {
     try {
-      const { title, subject, courseId, courseTitle, pdfUrl, description } = req.body;
+      const { title, subject, courseId, courseTitle, pdfUrl, description } = req.body || {};
       if (!title || !subject || !pdfUrl) {
         return res.status(400).json({ error: "Title, Subject, and PDF URL are required." });
       }

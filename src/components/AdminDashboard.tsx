@@ -1530,6 +1530,23 @@ export default function AdminDashboard({
               ? sb.enrolled_courses
               : (existing.enrolledCourseTitles || (sb.course ? [sb.course] : [])));
 
+          const userAvatar = 
+            sb.avatar || 
+            sb.photo_url || 
+            (sb as any).photoUrl || 
+            (sb as any).avatarUrl || 
+            existing.photoUrl || 
+            existing.avatarUrl || 
+            existing.avatar || 
+            '';
+
+          const userClass = 
+            sb.student_class || 
+            sb.batch || 
+            (sb as any).studentClass || 
+            existing.studentClass || 
+            '';
+
           const mergedUser = {
             ...existing,
             ...sb,
@@ -1543,7 +1560,11 @@ export default function AdminDashboard({
             transactionId: sb.transactionId || sb.transaction_id || existing.transactionId || '',
             paymentMethod: sb.paymentMethod || sb.payment_method || existing.paymentMethod || '',
             senderPhone: sb.senderPhone || sb.sender_phone || existing.senderPhone || '',
-            studentClass: sb.batch || sb.studentClass || existing.studentClass || '',
+            studentClass: userClass,
+            photoUrl: userAvatar,
+            avatarUrl: userAvatar,
+            avatar: userAvatar,
+            photo_url: userAvatar,
             createdAt: sb.joinedAt || sb.created_at || existing.createdAt || new Date().toISOString()
           };
 
@@ -1639,103 +1660,149 @@ export default function AdminDashboard({
     }
 
     try {
+      const courseId = 'crs_' + Math.random().toString(36).substring(2, 9);
+    const resolvedLevel = courseClassLevel === 'Custom' ? customClassLevel : courseClassLevel;
+    const resolvedFeatures = courseFeatures.split('\n').map(f => f.trim()).filter(Boolean);
+    const resolvedImage = courseImageUrl || 'https://images.unsplash.com/photo-1636466497217-26a8cbeaf0aa?w=800&auto=format&fit=crop&q=80';
+    const resolvedSupervisor = settings?.adminName || 'SAKIB HOSEN (Founder & Chief Science Mentor)';
+    const resolvedInstructor = settings?.adminName || 'SAKIB HOSEN (সাকিব স্যার)';
+
+    let supabaseCreated = false;
+    // 1. Direct Supabase Client Insertion: 100% instant persistence in Cloud
+    if (canAttemptSupabase()) {
+      try {
+        const { error: sbErr } = await supabase.from('app_courses').insert({
+          id: courseId,
+          title: courseTitle.trim(),
+          subject: courseSubject.trim(),
+          class_level: resolvedLevel,
+          batch: resolvedLevel,
+          image_url: resolvedImage,
+          price: Number(coursePrice) || 0,
+          original_price: courseOriginalPrice ? Number(courseOriginalPrice) : null,
+          duration: courseDuration ? courseDuration.trim() : '',
+          description: courseDescription ? courseDescription.trim() : '',
+          features: resolvedFeatures.length > 0 ? resolvedFeatures : ['রেকর্ডেড ও লাইভ ভিডিও ক্লাস', 'অধ্যায়ভিত্তিক এইচডি পিডিএফ লেকচার শিট'],
+          instructor: resolvedInstructor,
+          supervisor: resolvedSupervisor,
+          created_at: new Date().toISOString()
+        });
+        if (!sbErr) {
+          supabaseCreated = true;
+        } else {
+          console.warn("Direct Supabase course insert note:", sbErr);
+        }
+      } catch (sbEx) {
+        console.warn("Direct Supabase course insert exception:", sbEx);
+      }
+    }
+
+    // 2. Server API sync with Vercel serverless resilience
+    try {
       const response = await fetch('/api/courses', {
         method: 'POST',
         headers: getAdminHeaders(true),
         body: JSON.stringify({
+          id: courseId,
           title: courseTitle,
           subject: courseSubject,
-          classLevel: courseClassLevel === 'Custom' ? customClassLevel : courseClassLevel,
-          imageUrl: courseImageUrl,
+          classLevel: resolvedLevel,
+          imageUrl: resolvedImage,
           price: Number(coursePrice),
           originalPrice: courseOriginalPrice ? Number(courseOriginalPrice) : undefined,
           duration: courseDuration,
           description: courseDescription,
-          features: courseFeatures.split('\n').filter(Boolean),
-          supervisor: settings?.adminName || 'সাকিব হাসান (Sakib Hasan)',
-          instructor: settings?.adminName || 'সাকিব হাসান (Sakib Hasan)'
+          features: resolvedFeatures,
+          supervisor: resolvedSupervisor,
+          instructor: resolvedInstructor
         })
       });
 
-      const responseText = await response.text();
-      let data: any = {};
-      try {
-        data = responseText ? JSON.parse(responseText) : {};
-      } catch {
-        // Response was not valid JSON
-      }
-
-      if (!response.ok) {
+      if (!response.ok && !supabaseCreated) {
+        const responseText = await response.text().catch(() => '');
+        let data: any = {};
+        try { data = JSON.parse(responseText); } catch {}
         throw new Error(data.error || `কোর্স পাবলিশ করতে ব্যর্থ হয়েছে (স্ট্যাটাস: ${response.status})`);
       }
-
-      setCourseSuccess('কোর্সটি সফলভাবে পাবলিশ করা হয়েছে!');
-      setCourseTitle('');
-      setCourseClassLevel('HSC');
-      setCustomClassLevel('');
-      setCourseImageUrl('');
-      setCoursePrice('');
-      setCourseOriginalPrice('');
-      setCourseDuration('');
-      setCourseDescription('');
-      setCourseFeatures('');
-      fetchCourses();
-      if (onRefreshData) {
-        onRefreshData();
+    } catch (apiErr: any) {
+      if (!supabaseCreated) {
+        throw apiErr;
       }
-      if (onRefreshSettings) {
-        onRefreshSettings();
-      }
-    } catch (err: any) {
-      setCourseError(err.message || 'কোর্স পাবলিশ করতে সমস্যা হয়েছে।');
-    } finally {
-      setCourseLoading(false);
     }
-  };
 
-  // Open Delete Course Modal
-  const handleOpenDeleteCourseModal = (courseItem: Course) => {
-    setDeleteCourseError('');
-    setCourseToDelete(courseItem);
-  };
+    setCourseSuccess('কোর্সটি সফলভাবে পাবলিশ করা হয়েছে!');
+    setCourseTitle('');
+    setCourseClassLevel('HSC');
+    setCustomClassLevel('');
+    setCourseImageUrl('');
+    setCoursePrice('');
+    setCourseOriginalPrice('');
+    setCourseDuration('');
+    setCourseDescription('');
+    setCourseFeatures('');
+    fetchCourses();
+    if (onRefreshData) {
+      onRefreshData();
+    }
+    if (onRefreshSettings) {
+      onRefreshSettings();
+    }
+  } catch (err: any) {
+    setCourseError(err.message || 'কোর্স পাবলিশ করতে সমস্যা হয়েছে।');
+  } finally {
+    setCourseLoading(false);
+  }
+};
 
-  // Confirm Delete Course API Call
-  const handleConfirmDeleteCourse = async () => {
-    if (!courseToDelete) return;
-    setIsDeletingCourse(true);
-    setDeleteCourseError('');
-    try {
-      if (canAttemptSupabase() && courseToDelete.id) {
-        try {
-          await supabase.from('courses').delete().eq('id', courseToDelete.id);
-        } catch (sbErr) {
-          console.warn('Supabase course direct delete:', sbErr);
-        }
+// Open Delete Course Modal
+const handleOpenDeleteCourseModal = (courseItem: Course) => {
+  setDeleteCourseError('');
+  setCourseToDelete(courseItem);
+};
+
+// Confirm Delete Course API Call
+const handleConfirmDeleteCourse = async () => {
+  if (!courseToDelete) return;
+  setIsDeletingCourse(true);
+  setDeleteCourseError('');
+  try {
+    let supabaseDeleted = false;
+    if (canAttemptSupabase() && courseToDelete.id) {
+      try {
+        const { error } = await supabase.from('app_courses').delete().eq('id', courseToDelete.id);
+        if (!error) supabaseDeleted = true;
+      } catch (sbErr) {
+        console.warn('Supabase app_courses direct delete:', sbErr);
       }
+    }
 
+    try {
       const response = await fetch(`/api/courses/${courseToDelete.id}`, {
         method: 'DELETE',
         headers: getAdminHeaders(false)
       });
-      if (response.ok) {
-        setCoursesList(prev => prev.filter(c => c.id !== courseToDelete.id));
-        fetchCourses();
-        onRefreshData();
-        if (onRefreshSettings) {
-          onRefreshSettings();
-        }
-        setCourseToDelete(null);
-      } else {
+      if (!response.ok && !supabaseDeleted) {
         const errData = await response.json().catch(() => ({}));
-        setDeleteCourseError(errData.error || 'কোর্স রিমুভ করতে ব্যর্থ হয়েছে');
+        throw new Error(errData.error || 'কোর্স রিমুভ করতে ব্যর্থ হয়েছে');
       }
-    } catch (err: any) {
-      console.error("Error deleting course:", err);
-      setDeleteCourseError(err.message || 'কোর্স রিমুভ করতে ত্রুটি ঘটেছে');
-    } finally {
-      setIsDeletingCourse(false);
+    } catch (apiErr: any) {
+      if (!supabaseDeleted) throw apiErr;
     }
-  };
+
+    setCoursesList(prev => prev.filter(c => c.id !== courseToDelete.id));
+    fetchCourses();
+    onRefreshData();
+    if (onRefreshSettings) {
+      onRefreshSettings();
+    }
+    setCourseToDelete(null);
+  } catch (err: any) {
+    console.error("Error deleting course:", err);
+    setDeleteCourseError(err.message || 'কোর্স রিমুভ করতে ত্রুটি ঘটেছে');
+  } finally {
+    setIsDeletingCourse(false);
+  }
+};
 
   // Helper to safely parse API JSON response without crashing on HTML error pages
   const parseJsonResponse = async (res: Response) => {
@@ -1813,7 +1880,13 @@ export default function AdminDashboard({
       console.log('Direct upload exception:', e);
     }
 
-    // 2. Server API fallback
+    // 2. Server API fallback (supported for files up to 4.2 MB on serverless platforms)
+    if (file.size > 4.2 * 1024 * 1024) {
+      throw new Error(
+        'ফাইলের সাইজ ৪.২ MB-এর বেশি হওয়ায় এটি সরাসরি সুপাবেস স্টোরেজে আপলোড হওয়া আবশ্যক। অনুগ্রহ করে Supabase SQL Editor-এ supabase_schema.sql স্ক্রিপ্টটি রান করে বাকেট পারমিশন একটিভ করুন অথবা YouTube / Google Drive লিংক ব্যবহার করুন।'
+      );
+    }
+
     if (onProgress) onProgress(50);
     const reader = new FileReader();
     const dataUrl = await new Promise<string>((resolve, reject) => {
@@ -1886,11 +1959,13 @@ export default function AdminDashboard({
   // Handle adding a class video
   const handleAddClass = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (classUploadMode === 'file' && !classVideoUrl) {
+    let activeVideoUrl = classVideoUrl;
+    if (classUploadMode === 'file' && !activeVideoUrl) {
       if (classFile) {
         try {
           setClassLoading(true);
           const uploadedUrl = await uploadMediaFile(classFile, 'course-videos', setClassUploadProgress);
+          activeVideoUrl = uploadedUrl;
           setClassVideoUrl(uploadedUrl);
         } catch (err: any) {
           setActionError(err.message || 'ভিডিও ফাইল আপলোড করা যায়নি।');
@@ -1902,7 +1977,7 @@ export default function AdminDashboard({
         return;
       }
     }
-    if (classUploadMode === 'link' && !classVideoUrl) {
+    if (classUploadMode === 'link' && !activeVideoUrl) {
       setActionError('দয়া করে একটি ভিডিও লিংক প্রদান করুন!');
       return;
     }
@@ -1912,13 +1987,45 @@ export default function AdminDashboard({
     setActionError('');
 
     // Ensure link format is suitable for embed
-    let formattedUrl = formatVideoEmbedUrl(classVideoUrl);
+    let formattedUrl = formatVideoEmbedUrl(activeVideoUrl);
+    const classId = 'cls_' + Math.random().toString(36).substring(2, 9);
+    let supabaseSuccess = false;
 
+    // 1. Direct Supabase Client Insertion: 100% instant persistence in Cloud
+    if (canAttemptSupabase()) {
+      try {
+        const { error: sbErr } = await supabase.from('app_classes').insert({
+          id: classId,
+          title: classTitle.trim(),
+          subject: classSubject.trim(),
+          course_id: selectedUploadCourse?.id || '',
+          course_title: selectedUploadCourse?.title || '',
+          courseId: selectedUploadCourse?.id || '',
+          courseTitle: selectedUploadCourse?.title || '',
+          video_url: formattedUrl,
+          videoUrl: formattedUrl,
+          thumbnail_url: classThumbnailUrl.trim() || '',
+          thumbnailUrl: classThumbnailUrl.trim() || '',
+          description: classDescription ? classDescription.trim() : '',
+          created_at: new Date().toISOString()
+        });
+        if (!sbErr) {
+          supabaseSuccess = true;
+        } else {
+          console.warn("Direct Supabase class insert note:", sbErr);
+        }
+      } catch (sbEx) {
+        console.warn("Direct Supabase class insert exception:", sbEx);
+      }
+    }
+
+    // 2. Server API sync with Vercel serverless resilience
     try {
       const response = await fetch('/api/classes', {
         method: 'POST',
         headers: getAdminHeaders(true),
         body: JSON.stringify({
+          id: classId,
           title: classTitle,
           subject: classSubject,
           courseId: selectedUploadCourse?.id,
@@ -1929,31 +2036,38 @@ export default function AdminDashboard({
         })
       });
 
-      const data = await parseJsonResponse(response);
-
-      setClassSuccess('ক্লাসটি সফলভাবে যুক্ত হয়েছে!');
-      setClassTitle('');
-      setClassVideoUrl('');
-      setClassThumbnailUrl('');
-      setClassDescription('');
-      setClassFile(null);
-      setClassUploadProgress(0);
-      onRefreshData(); // refresh parent states
-    } catch (err: any) {
-      setActionError(err.message || 'ক্লাস যুক্ত করতে সমস্যা তৈরি হয়েছে।');
-    } finally {
-      setClassLoading(false);
+      if (!response.ok && !supabaseSuccess) {
+        await parseJsonResponse(response);
+      }
+    } catch (apiErr: any) {
+      if (!supabaseSuccess) {
+        setActionError(apiErr.message || 'ক্লাস যুক্ত করতে সমস্যা তৈরি হয়েছে।');
+        setClassLoading(false);
+        return;
+      }
     }
+
+    setClassSuccess('ক্লাসটি সফলভাবে যুক্ত হয়েছে!');
+    setClassTitle('');
+    setClassVideoUrl('');
+    setClassThumbnailUrl('');
+    setClassDescription('');
+    setClassFile(null);
+    setClassUploadProgress(0);
+    onRefreshData(); // refresh parent states
+    setClassLoading(false);
   };
 
   // Handle adding a PDF note
   const handleAddNote = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (noteUploadMode === 'file' && !notePdfUrl) {
+    let activePdfUrl = notePdfUrl;
+    if (noteUploadMode === 'file' && !activePdfUrl) {
       if (noteFile) {
         try {
           setNoteLoading(true);
           const uploadedUrl = await uploadMediaFile(noteFile, 'handnotes-pdf', setNoteUploadProgress);
+          activePdfUrl = uploadedUrl;
           setNotePdfUrl(uploadedUrl);
         } catch (err: any) {
           setActionError(err.message || 'পিডিএফ লেকচার শিট আপলোড করা যায়নি।');
@@ -1965,7 +2079,7 @@ export default function AdminDashboard({
         return;
       }
     }
-    if (noteUploadMode === 'link' && !notePdfUrl) {
+    if (noteUploadMode === 'link' && !activePdfUrl) {
       setActionError('দয়া করে একটি পিডিএফ লিংক প্রদান করুন!');
       return;
     }
@@ -1974,34 +2088,71 @@ export default function AdminDashboard({
     setNoteSuccess('');
     setActionError('');
 
+    const noteId = 'not_' + Math.random().toString(36).substring(2, 9);
+    const finalPdf = activePdfUrl || "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf";
+    let supabaseSuccess = false;
+
+    // 1. Direct Supabase Client Insertion: 100% instant persistence in Cloud
+    if (canAttemptSupabase()) {
+      try {
+        const { error: sbErr } = await supabase.from('app_notes').insert({
+          id: noteId,
+          title: noteTitle.trim(),
+          subject: noteSubject.trim(),
+          course_id: selectedUploadCourse?.id || '',
+          course_title: selectedUploadCourse?.title || '',
+          courseId: selectedUploadCourse?.id || '',
+          courseTitle: selectedUploadCourse?.title || '',
+          pdf_url: finalPdf,
+          pdfUrl: finalPdf,
+          description: noteDescription ? noteDescription.trim() : '',
+          created_at: new Date().toISOString()
+        });
+        if (!sbErr) {
+          supabaseSuccess = true;
+        } else {
+          console.warn("Direct Supabase note insert note:", sbErr);
+        }
+      } catch (sbEx) {
+        console.warn("Direct Supabase note insert exception:", sbEx);
+      }
+    }
+
+    // 2. Server API sync with Vercel serverless resilience
     try {
       const response = await fetch('/api/notes', {
         method: 'POST',
         headers: getAdminHeaders(true),
         body: JSON.stringify({
+          id: noteId,
           title: noteTitle,
           subject: noteSubject,
           courseId: selectedUploadCourse?.id,
           courseTitle: selectedUploadCourse?.title,
-          pdfUrl: notePdfUrl || "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf",
+          pdfUrl: finalPdf,
           description: noteDescription
         })
       });
 
-      const data = await parseJsonResponse(response);
-
-      setNoteSuccess('পিডিএফ লেকচার শিট সফলভাবে যুক্ত হয়েছে!');
-      setNoteTitle('');
-      setNotePdfUrl('');
-      setNoteDescription('');
-      setNoteFile(null);
-      setNoteUploadProgress(0);
-      onRefreshData();
-    } catch (err: any) {
-      setActionError(err.message || 'পিডিএফ নোট যুক্ত করতে সমস্যা হয়েছে।');
-    } finally {
-      setNoteLoading(false);
+      if (!response.ok && !supabaseSuccess) {
+        await parseJsonResponse(response);
+      }
+    } catch (apiErr: any) {
+      if (!supabaseSuccess) {
+        setActionError(apiErr.message || 'পিডিএফ নোট যুক্ত করতে সমস্যা হয়েছে।');
+        setNoteLoading(false);
+        return;
+      }
     }
+
+    setNoteSuccess('পিডিএফ লেকচার শিট সফলভাবে যুক্ত হয়েছে!');
+    setNoteTitle('');
+    setNotePdfUrl('');
+    setNoteDescription('');
+    setNoteFile(null);
+    setNoteUploadProgress(0);
+    onRefreshData();
+    setNoteLoading(false);
   };
 
   // Toggle user role (student <-> admin)
@@ -2314,22 +2465,28 @@ export default function AdminDashboard({
     setIsDeletingClass(true);
     setDeleteClassError('');
     try {
+      let supabaseDeleted = false;
       if (canAttemptSupabase() && classToDelete.id) {
         try {
-          await supabase.from('classes').delete().eq('id', classToDelete.id);
+          const { error } = await supabase.from('app_classes').delete().eq('id', classToDelete.id);
+          if (!error) supabaseDeleted = true;
         } catch (sbErr) {
-          console.warn('Supabase class direct delete notice:', sbErr);
+          console.warn('Supabase app_classes direct delete notice:', sbErr);
         }
       }
 
-      const response = await fetch(`/api/classes/${classToDelete.id}`, {
-        method: 'DELETE',
-        headers: getAdminHeaders(false)
-      });
+      try {
+        const response = await fetch(`/api/classes/${classToDelete.id}`, {
+          method: 'DELETE',
+          headers: getAdminHeaders(false)
+        });
 
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to delete class');
+        if (!response.ok && !supabaseDeleted) {
+          const data = await response.json().catch(() => ({}));
+          throw new Error(data.error || 'Failed to delete class');
+        }
+      } catch (apiErr: any) {
+        if (!supabaseDeleted) throw apiErr;
       }
 
       fetchCourses();
@@ -2355,22 +2512,28 @@ export default function AdminDashboard({
     setIsDeletingNote(true);
     setDeleteNoteError('');
     try {
+      let supabaseDeleted = false;
       if (canAttemptSupabase() && noteToDelete.id) {
         try {
-          await supabase.from('notes').delete().eq('id', noteToDelete.id);
+          const { error } = await supabase.from('app_notes').delete().eq('id', noteToDelete.id);
+          if (!error) supabaseDeleted = true;
         } catch (sbErr) {
-          console.warn('Supabase note direct delete notice:', sbErr);
+          console.warn('Supabase app_notes direct delete notice:', sbErr);
         }
       }
 
-      const response = await fetch(`/api/notes/${noteToDelete.id}`, {
-        method: 'DELETE',
-        headers: getAdminHeaders(false)
-      });
+      try {
+        const response = await fetch(`/api/notes/${noteToDelete.id}`, {
+          method: 'DELETE',
+          headers: getAdminHeaders(false)
+        });
 
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to delete note');
+        if (!response.ok && !supabaseDeleted) {
+          const data = await response.json().catch(() => ({}));
+          throw new Error(data.error || 'Failed to delete note');
+        }
+      } catch (apiErr: any) {
+        if (!supabaseDeleted) throw apiErr;
       }
 
       fetchCourses();

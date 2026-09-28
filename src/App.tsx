@@ -235,6 +235,8 @@ export default function App() {
           const jsonStr = decodeURIComponent(escape(atob(b64.replace(/-/g, '+').replace(/_/g, '/'))));
           const parsed = JSON.parse(jsonStr);
           if (parsed && parsed.id && parsed.role) {
+            const localStoredAvatar = typeof window !== 'undefined' ? (localStorage.getItem(`scicenter_avatar_${parsed.id}`) || '') : '';
+            const localStoredClass = typeof window !== 'undefined' ? (localStorage.getItem(`scicenter_class_${parsed.id}`) || '') : '';
             decodedUser = {
               id: parsed.id,
               name: parsed.name,
@@ -243,7 +245,9 @@ export default function App() {
               isApproved: parsed.isApproved !== undefined ? Boolean(parsed.isApproved) : true,
               enrolledCourseTitles: Array.isArray(parsed.enrolledCourseTitles) ? parsed.enrolledCourseTitles : [],
               phone: parsed.phone || '',
-              studentClass: parsed.studentClass || '',
+              studentClass: parsed.studentClass || localStoredClass || '',
+              photoUrl: parsed.photoUrl || parsed.avatarUrl || parsed.avatar || localStoredAvatar || '',
+              avatarUrl: parsed.avatarUrl || parsed.photoUrl || parsed.avatar || localStoredAvatar || '',
               token
             };
           }
@@ -290,6 +294,24 @@ export default function App() {
                   ? sbProfile.enrolled_courses
                   : (decodedUser.enrolledCourseTitles || []));
 
+              const profilePhoto = 
+                sbProfile.avatar || 
+                sbProfile.photo_url || 
+                (sbProfile as any).photoUrl || 
+                (sbProfile as any).avatarUrl || 
+                decodedUser.photoUrl || 
+                decodedUser.avatarUrl || 
+                (typeof window !== 'undefined' ? localStorage.getItem(`scicenter_avatar_${decodedUser.id}`) : '') || 
+                '';
+
+              const profileClass = 
+                sbProfile.student_class || 
+                sbProfile.batch || 
+                (sbProfile as any).studentClass || 
+                decodedUser.studentClass || 
+                (typeof window !== 'undefined' ? localStorage.getItem(`scicenter_class_${decodedUser.id}`) : '') || 
+                '';
+
               decodedUser = {
                 ...decodedUser,
                 ...sbProfile,
@@ -297,6 +319,9 @@ export default function App() {
                 name: (sbProfile.name && sbProfile.name !== 'Student' && sbProfile.name !== 'স্টুডেন্ট') ? sbProfile.name : decodedUser.name,
                 isApproved: approvedValue,
                 enrolledCourseTitles: enrolled,
+                studentClass: profileClass,
+                photoUrl: profilePhoto,
+                avatarUrl: profilePhoto,
                 transactionId: sbProfile.transactionId || sbProfile.transaction_id || decodedUser.transactionId || '',
                 paymentMethod: sbProfile.paymentMethod || sbProfile.payment_method || decodedUser.paymentMethod || '',
                 senderPhone: sbProfile.senderPhone || sbProfile.sender_phone || decodedUser.senderPhone || ''
@@ -329,7 +354,15 @@ export default function App() {
         if (response.ok && contentType && contentType.includes('application/json')) {
           const data = await response.json();
           if (data && data.user) {
-            setUser(data.user);
+            const finalAvatar = data.user.photoUrl || data.user.avatarUrl || data.user.avatar || (data.user as any).photo_url || decodedUser?.photoUrl || (typeof window !== 'undefined' ? localStorage.getItem(`scicenter_avatar_${data.user.id}`) : '') || '';
+            const finalClass = data.user.studentClass || data.user.batch || (data.user as any).student_class || decodedUser?.studentClass || (typeof window !== 'undefined' ? localStorage.getItem(`scicenter_class_${data.user.id}`) : '') || '';
+            const reconciledUser = {
+              ...data.user,
+              photoUrl: finalAvatar,
+              avatarUrl: finalAvatar,
+              studentClass: finalClass
+            };
+            setUser(reconciledUser);
             localStorage.setItem('science_studio_last_active', String(Date.now()));
 
             // State Preservation: Return user to the exact tab they were working on before leaving
