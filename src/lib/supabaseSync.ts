@@ -478,18 +478,34 @@ export async function upsertNoteToSupabase(n: any) {
 export async function upsertCourseToSupabase(cr: any) {
   if (!canAttemptSupabase() || !cr || !cr.id) return;
   try {
+    const courseImage = cr.imageUrl || cr.image_url || cr.banner || cr.bannerUrl || '';
+    const classLvl = cr.classLevel || cr.batch || cr.class_level || '';
+    const origPrice = cr.originalPrice !== undefined && cr.originalPrice !== null ? Number(cr.originalPrice) : null;
+    const priceNum = Number(cr.price || 0);
+
     const payload: any = {
       id: cr.id,
       title: cr.title,
       subject: cr.subject,
-      price: Number(cr.price || 0),
-      originalPrice: cr.originalPrice !== undefined && cr.originalPrice !== null ? Number(cr.originalPrice) : null,
-      imageUrl: cr.imageUrl || '',
-      batch: cr.classLevel || cr.batch || '',
+      price: priceNum,
+      originalPrice: origPrice,
+      original_price: origPrice,
+      imageUrl: courseImage,
+      image_url: courseImage,
+      batch: classLvl,
+      class_level: classLvl,
       duration: cr.duration || '',
       description: cr.description || '',
       instructor: cr.instructor || cr.supervisor || 'SAKIB HOSEN (Founder & Chief Science Mentor)',
+      supervisor: cr.supervisor || cr.instructor || 'SAKIB HOSEN (Founder & Chief Science Mentor)',
       features: Array.isArray(cr.features) ? cr.features : [],
+      data: {
+        imageUrl: courseImage,
+        image_url: courseImage,
+        classLevel: classLvl,
+        features: Array.isArray(cr.features) ? cr.features : [],
+        ...(cr.data || {})
+      },
       updated_at: new Date().toISOString()
     };
 
@@ -1048,20 +1064,36 @@ export async function syncToSupabase(data: any) {
             if (data.courses.length > 0) {
               const { error: upsertErr } = await supabaseServer
                 .from('app_courses')
-                .upsert(data.courses.map((cr: any) => ({
-                  id: cr.id,
-                  title: cr.title,
-                  subject: cr.subject,
-                  instructor: cr.instructor || cr.supervisor || 'SAKIB HOSEN (Founder & Chief Science Mentor)',
-                  price: Number(cr.price || 0),
-                  originalPrice: cr.originalPrice !== undefined && cr.originalPrice !== null ? Number(cr.originalPrice) : null,
-                  imageUrl: cr.imageUrl || '',
-                  batch: cr.classLevel || cr.batch || '',
-                  duration: cr.duration || '',
-                  description: cr.description || '',
-                  features: Array.isArray(cr.features) ? cr.features : [],
-                  updated_at: new Date().toISOString()
-                })), { onConflict: 'id' });
+                .upsert(data.courses.map((cr: any) => {
+                  const courseImg = cr.imageUrl || cr.image_url || cr.banner || cr.bannerUrl || '';
+                  const cLvl = cr.classLevel || cr.batch || cr.class_level || '';
+                  const origP = cr.originalPrice !== undefined && cr.originalPrice !== null ? Number(cr.originalPrice) : null;
+                  return {
+                    id: cr.id,
+                    title: cr.title,
+                    subject: cr.subject,
+                    instructor: cr.instructor || cr.supervisor || 'SAKIB HOSEN (Founder & Chief Science Mentor)',
+                    supervisor: cr.supervisor || cr.instructor || 'SAKIB HOSEN (Founder & Chief Science Mentor)',
+                    price: Number(cr.price || 0),
+                    originalPrice: origP,
+                    original_price: origP,
+                    imageUrl: courseImg,
+                    image_url: courseImg,
+                    batch: cLvl,
+                    class_level: cLvl,
+                    duration: cr.duration || '',
+                    description: cr.description || '',
+                    features: Array.isArray(cr.features) ? cr.features : [],
+                    data: {
+                      imageUrl: courseImg,
+                      image_url: courseImg,
+                      classLevel: cLvl,
+                      features: Array.isArray(cr.features) ? cr.features : [],
+                      ...(cr.data || {})
+                    },
+                    updated_at: new Date().toISOString()
+                  };
+                }), { onConflict: 'id' });
 
               if (upsertErr && isNetworkError(upsertErr)) {
                 markSupabaseOffline(upsertErr);
@@ -1485,28 +1517,32 @@ export async function loadFromSupabase(defaultData: any) {
         const delCourseSet = new Set(Array.isArray(loadedData.deletedCourseIds) ? loadedData.deletedCourseIds : []);
         loadedData.courses = courseRows
           .filter(r => r.id && !delCourseSet.has(r.id))
-          .map(r => ({
-            id: r.id,
-            title: r.title,
-            subject: r.subject,
-            instructor: r.instructor || r.supervisor || r.data?.instructor || r.data?.supervisor || 'SAKIB HOSEN (Founder & Chief Science Mentor)',
-            supervisor: r.supervisor || r.instructor || r.data?.supervisor || r.data?.instructor || 'SAKIB HOSEN (Founder & Chief Science Mentor)',
-            classLevel: r.batch || r.classLevel || r.class_level || '',
-            price: Number(r.price || 0),
-            originalPrice: Number(r.originalPrice || r.original_price || 0),
-            duration: r.duration || '',
-            description: r.description || '',
-            badge: r.badge || '',
-            rating: Number(r.rating || 5.0),
-            enrolledCount: Number(r.enrolledCount || r.enrolled_count || 0),
-            features: Array.isArray(r.features) && r.features.length > 0 
-              ? r.features 
-              : (r.data && Array.isArray(r.data.features) && r.data.features.length > 0 
-                ? r.data.features 
-                : ['রেকর্ডেড ও লাইভ ক্লাস', 'অধ্যায়ভিত্তিক PDF নোট', 'সাপ্তাহিক অনলাইন পরীক্ষা', '২৪/৭ ডাউট সলভ']),
-            imageUrl: r.imageUrl || r.image_url || '',
-            ...(r.data || {})
-          }));
+          .map(r => {
+            const courseBanner = r.imageUrl || r.image_url || r.banner || r.bannerUrl || (r.data && (r.data.imageUrl || r.data.image_url)) || '';
+            return {
+              ...(r.data || {}),
+              id: r.id,
+              title: r.title,
+              subject: r.subject,
+              instructor: r.instructor || r.supervisor || r.data?.instructor || r.data?.supervisor || 'SAKIB HOSEN (Founder & Chief Science Mentor)',
+              supervisor: r.supervisor || r.instructor || r.data?.supervisor || r.data?.instructor || 'SAKIB HOSEN (Founder & Chief Science Mentor)',
+              classLevel: r.batch || r.classLevel || r.class_level || '',
+              price: Number(r.price || 0),
+              originalPrice: Number(r.originalPrice || r.original_price || 0),
+              duration: r.duration || '',
+              description: r.description || '',
+              badge: r.badge || '',
+              rating: Number(r.rating || 5.0),
+              enrolledCount: Number(r.enrolledCount || r.enrolled_count || 0),
+              features: Array.isArray(r.features) && r.features.length > 0 
+                ? r.features 
+                : (r.data && Array.isArray(r.data.features) && r.data.features.length > 0 
+                  ? r.data.features 
+                  : ['রেকর্ডেড ও লাইভ ক্লাস', 'অধ্যায়ভিত্তিক PDF নোট', 'সাপ্তাহিক অনলাইন পরীক্ষা', '২৪/৭ ডাউট সলভ']),
+              imageUrl: courseBanner,
+              image_url: courseBanner
+            };
+          });
         hasLoadedAny = true;
       }
     } catch (e: any) {

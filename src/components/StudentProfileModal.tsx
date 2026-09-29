@@ -213,10 +213,13 @@ export default function StudentProfileModal({
       }
 
       const returnedUser = data?.user || {};
-      // Strict fallback resolution: never let the photo disappear or be set to empty!
+      // Strict fallback resolution: never let the photo disappear, and reject broken ephemeral /uploads/ paths!
+      const returnedPhoto = (returnedUser.photoUrl && !returnedUser.photoUrl.startsWith('/uploads/')) 
+        ? returnedUser.photoUrl 
+        : ((returnedUser.avatarUrl && !returnedUser.avatarUrl.startsWith('/uploads/')) ? returnedUser.avatarUrl : '');
+
       const updatedPhotoUrl = 
-        returnedUser.photoUrl || 
-        returnedUser.avatarUrl || 
+        returnedPhoto || 
         (finalPhoto && !finalPhoto.startsWith('data:') ? finalPhoto : '') ||
         finalPhoto || 
         user.photoUrl || 

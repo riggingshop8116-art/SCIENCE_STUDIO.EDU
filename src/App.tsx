@@ -136,21 +136,25 @@ export default function App() {
         try {
           const { data: sbCourses } = await supabase.from('app_courses').select('*');
           if (Array.isArray(sbCourses) && sbCourses.length > 0) {
-            const mappedCourses = sbCourses.map((r: any) => ({
-              id: r.id,
-              title: r.title,
-              subject: r.subject,
-              supervisor: r.supervisor || r.instructor || (r.data && (r.data.supervisor || r.data.instructor)) || 'SAKIB HOSEN (Founder & Chief Science Mentor)',
-              instructor: r.instructor || r.supervisor || (r.data && (r.data.instructor || r.data.supervisor)) || 'SAKIB HOSEN (সাকিব স্যার)',
-              classLevel: r.batch || r.classLevel || r.class_level || '',
-              price: Number(r.price || 0),
-              originalPrice: r.originalPrice ? Number(r.originalPrice) : (r.original_price ? Number(r.original_price) : undefined),
-              duration: r.duration || '',
-              description: r.description || '',
-              features: (Array.isArray(r.features) && r.features.length > 0) ? r.features : ['রেকর্ডেড ও লাইভ ক্লাস', 'অধ্যায়ভিত্তিক PDF নোট', 'সাপ্তাহিক অনলাইন পরীক্ষা', '২৪/৭ ডাউট সলভ'],
-              imageUrl: r.imageUrl || r.image_url || '',
-              ...(r.data || {})
-            }));
+            const mappedCourses = sbCourses.map((r: any) => {
+              const courseBanner = r.imageUrl || r.image_url || r.banner || r.bannerUrl || (r.data && (r.data.imageUrl || r.data.image_url)) || '';
+              return {
+                ...(r.data || {}),
+                id: r.id,
+                title: r.title,
+                subject: r.subject,
+                supervisor: r.supervisor || r.instructor || (r.data && (r.data.supervisor || r.data.instructor)) || 'SAKIB HOSEN (Founder & Chief Science Mentor)',
+                instructor: r.instructor || r.supervisor || (r.data && (r.data.instructor || r.data.supervisor)) || 'SAKIB HOSEN (সাকিব স্যার)',
+                classLevel: r.batch || r.classLevel || r.class_level || '',
+                price: Number(r.price || 0),
+                originalPrice: r.originalPrice ? Number(r.originalPrice) : (r.original_price ? Number(r.original_price) : undefined),
+                duration: r.duration || '',
+                description: r.description || '',
+                features: (Array.isArray(r.features) && r.features.length > 0) ? r.features : ['রেকর্ডেড ও লাইভ ক্লাস', 'অধ্যায়ভিত্তিক PDF নোট', 'সাপ্তাহিক অনলাইন পরীক্ষা', '২৪/৭ ডাউট সলভ'],
+                imageUrl: courseBanner,
+                image_url: courseBanner
+              };
+            });
             setCourses(mappedCourses);
           }
         } catch (e) {
@@ -235,8 +239,9 @@ export default function App() {
           const jsonStr = decodeURIComponent(escape(atob(b64.replace(/-/g, '+').replace(/_/g, '/'))));
           const parsed = JSON.parse(jsonStr);
           if (parsed && parsed.id && parsed.role) {
-            const localStoredAvatar = typeof window !== 'undefined' ? (localStorage.getItem(`scicenter_avatar_${parsed.id}`) || '') : '';
-            const localStoredClass = typeof window !== 'undefined' ? (localStorage.getItem(`scicenter_class_${parsed.id}`) || '') : '';
+            const cleanParsedEmail = (parsed.email || '').toLowerCase().trim();
+            const localStoredAvatar = typeof window !== 'undefined' ? (localStorage.getItem(`scicenter_avatar_${parsed.id}`) || (cleanParsedEmail ? localStorage.getItem(`scicenter_avatar_${cleanParsedEmail}`) : '') || '') : '';
+            const localStoredClass = typeof window !== 'undefined' ? (localStorage.getItem(`scicenter_class_${parsed.id}`) || (cleanParsedEmail ? localStorage.getItem(`scicenter_class_${cleanParsedEmail}`) : '') || '') : '';
             decodedUser = {
               id: parsed.id,
               name: parsed.name,
@@ -294,6 +299,7 @@ export default function App() {
                   ? sbProfile.enrolled_courses
                   : (decodedUser.enrolledCourseTitles || []));
 
+              const cleanSbEmail = (decodedUser.email || '').toLowerCase().trim();
               const profilePhoto = 
                 sbProfile.avatar || 
                 sbProfile.photo_url || 
@@ -301,7 +307,7 @@ export default function App() {
                 (sbProfile as any).avatarUrl || 
                 decodedUser.photoUrl || 
                 decodedUser.avatarUrl || 
-                (typeof window !== 'undefined' ? localStorage.getItem(`scicenter_avatar_${decodedUser.id}`) : '') || 
+                (typeof window !== 'undefined' ? (localStorage.getItem(`scicenter_avatar_${decodedUser.id}`) || (cleanSbEmail ? localStorage.getItem(`scicenter_avatar_${cleanSbEmail}`) : '')) : '') || 
                 '';
 
               const profileClass = 
@@ -309,7 +315,7 @@ export default function App() {
                 sbProfile.batch || 
                 (sbProfile as any).studentClass || 
                 decodedUser.studentClass || 
-                (typeof window !== 'undefined' ? localStorage.getItem(`scicenter_class_${decodedUser.id}`) : '') || 
+                (typeof window !== 'undefined' ? (localStorage.getItem(`scicenter_class_${decodedUser.id}`) || (cleanSbEmail ? localStorage.getItem(`scicenter_class_${cleanSbEmail}`) : '')) : '') || 
                 '';
 
               decodedUser = {
@@ -354,8 +360,9 @@ export default function App() {
         if (response.ok && contentType && contentType.includes('application/json')) {
           const data = await response.json();
           if (data && data.user) {
-            const finalAvatar = data.user.photoUrl || data.user.avatarUrl || data.user.avatar || (data.user as any).photo_url || decodedUser?.photoUrl || (typeof window !== 'undefined' ? localStorage.getItem(`scicenter_avatar_${data.user.id}`) : '') || '';
-            const finalClass = data.user.studentClass || data.user.batch || (data.user as any).student_class || decodedUser?.studentClass || (typeof window !== 'undefined' ? localStorage.getItem(`scicenter_class_${data.user.id}`) : '') || '';
+            const cleanMeEmail = (data.user.email || '').toLowerCase().trim();
+            const finalAvatar = data.user.photoUrl || data.user.avatarUrl || data.user.avatar || (data.user as any).photo_url || decodedUser?.photoUrl || (typeof window !== 'undefined' ? (localStorage.getItem(`scicenter_avatar_${data.user.id}`) || (cleanMeEmail ? localStorage.getItem(`scicenter_avatar_${cleanMeEmail}`) : '')) : '') || '';
+            const finalClass = data.user.studentClass || data.user.batch || (data.user as any).student_class || decodedUser?.studentClass || (typeof window !== 'undefined' ? (localStorage.getItem(`scicenter_class_${data.user.id}`) || (cleanMeEmail ? localStorage.getItem(`scicenter_class_${cleanMeEmail}`) : '')) : '') || '';
             const reconciledUser = {
               ...data.user,
               photoUrl: finalAvatar,

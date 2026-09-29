@@ -107,10 +107,15 @@ export default function PendingApprovalView({
                 text: '🎉 অভিনন্দন! আপনার অ্যাকাউন্টটি সফলভাবে অনুমোদিত হয়েছে। ক্লাসরুম আনলক করা হচ্ছে...'
               });
               if (onUpdateUser) {
+                const finalAvatar = sbUser.avatar || sbUser.photo_url || sbUser.photoUrl || sbUser.avatarUrl || user.photoUrl || user.avatarUrl || (typeof window !== 'undefined' ? localStorage.getItem(`scicenter_avatar_${user.id}`) : '') || '';
+                const finalClass = sbUser.student_class || sbUser.batch || sbUser.studentClass || user.studentClass || (typeof window !== 'undefined' ? localStorage.getItem(`scicenter_class_${user.id}`) : '') || '';
                 onUpdateUser({
                   ...user,
                   ...sbUser,
                   isApproved: true,
+                  photoUrl: finalAvatar,
+                  avatarUrl: finalAvatar,
+                  studentClass: finalClass,
                   enrolledCourseTitles: Array.isArray(sbUser.enrolledCourseTitles) && sbUser.enrolledCourseTitles.length > 0
                     ? sbUser.enrolledCourseTitles
                     : (user.enrolledCourseTitles || [])

@@ -22,6 +22,25 @@ import bannerMathStudio from '../assets/images/hero_mathematics_calculus_studio_
 import bannerBiologyGenetics from '../assets/images/hero_biology_genetics_lab_1787477092542.jpg';
 import coachingClassroomBg from '../assets/images/coaching_classroom_students_1787474667001.jpg';
 import sakibStudioBg from '../assets/images/science_studio_sakib_bg_1787476852835.jpg';
+
+// Curated 3D Science Studio & Space Physics Concept Banners for Course Cards
+export const PRESET_COURSE_BANNERS = [
+  { id: 'physics_lab', name: 'পদার্থবিজ্ঞান ল্যাব', subject: 'Physics', url: bannerPhysicsLab },
+  { id: 'particle_accel', name: 'কোয়ান্টাম এক্সিলারেটর', subject: 'Physics', url: bannerParticleAccelerator },
+  { id: 'black_hole', name: 'স্পেস ও ব্ল্যাক হোল', subject: 'Physics', url: bannerBlackHoleSpacetime },
+  { id: 'laser_optics', name: 'লেজার ও অপটিক্স', subject: 'Physics', url: bannerLaserOptics },
+  { id: 'electromagnetism', name: 'ইলেক্ট্রোম্যাগনেটিজম', subject: 'Physics', url: bannerElectromagnetismFlux },
+  { id: 'thermo', name: 'থার্মোডিনামিক্স', subject: 'Physics', url: bannerThermodynamicsEntropy },
+  { id: 'chem_hub', name: 'রসায়ন ও মলিকুলার হাব', subject: 'Chemistry', url: bannerChemistryHub },
+  { id: 'dna_bio', name: 'ডিএনএ ও জেনেটিক্স', subject: 'Biology', url: bannerBiologyGenetics },
+  { id: 'bio_cell', name: 'বায়ো সেল ৩D', subject: 'Biology', url: bannerBioCellOrganelle },
+  { id: 'neuro', name: 'নিউরো সিন্যাপ্স', subject: 'Biology', url: bannerNeuroSynapse },
+  { id: 'math_studio', name: 'উচ্চতর গণিত স্টুডিও', subject: 'Mathematics', url: bannerMathStudio },
+  { id: 'solar_fusion', name: 'সৌর ফিউশন', subject: 'Astronomy', url: bannerSolarFusion },
+  { id: 'cosmic_nebula', name: 'কসমিক নেবুলা', subject: 'Astronomy', url: bannerCosmicNebula },
+  { id: 'studio_3d', name: 'সায়েন্স স্টুডিও ৩D', subject: 'General', url: banner3DScienceStudio },
+  { id: 'science_hero', name: 'সায়েন্স হিরো ব্যানার', subject: 'General', url: bannerScienceHeroFull }
+];
 import { 
   Atom,
   Users, 
@@ -617,9 +636,10 @@ export default function AdminDashboard({
   const [courseSubject, setCourseSubject] = useState('Physics');
   const [courseClassLevel, setCourseClassLevel] = useState('HSC');
   const [customClassLevel, setCustomClassLevel] = useState('');
-  const [courseImageUrl, setCourseImageUrl] = useState('');
-  const [courseImageMode, setCourseImageMode] = useState<'file' | 'link'>('file');
+  const [courseImageUrl, setCourseImageUrl] = useState(() => PRESET_COURSE_BANNERS[0].url);
+  const [courseImageMode, setCourseImageMode] = useState<'preset' | 'file' | 'link'>('preset');
   const [isDragOverCourseImg, setIsDragOverCourseImg] = useState(false);
+  const [isUploadingCourseImg, setIsUploadingCourseImg] = useState(false);
   const [coursePrice, setCoursePrice] = useState('');
   const [courseOriginalPrice, setCourseOriginalPrice] = useState('');
   const [courseDuration, setCourseDuration] = useState('');
@@ -635,14 +655,23 @@ export default function AdminDashboard({
       return;
     }
     try {
+      setIsUploadingCourseImg(true);
       const compressedDataUrl = await compressImageFile(file, 800, 500, 0.75);
       setCourseImageUrl(compressedDataUrl);
       setCourseError('');
-      uploadMediaFile(file, 'course-images').then(url => {
-        if (url) setCourseImageUrl(url);
-      }).catch(() => {});
+      try {
+        const url = await uploadMediaFile(file, 'course-images');
+        if (url) {
+          setCourseImageUrl(url);
+        }
+      } catch (err) {
+        console.warn("Direct storage upload notice, using compressed image data URL:", err);
+      } finally {
+        setIsUploadingCourseImg(false);
+      }
     } catch (err: any) {
       setCourseError('ইমেজ প্রসেস করতে সমস্যা হয়েছে। আবার চেষ্টা করুন।');
+      setIsUploadingCourseImg(false);
     }
   };
 
@@ -1661,80 +1690,88 @@ export default function AdminDashboard({
 
     try {
       const courseId = 'crs_' + Math.random().toString(36).substring(2, 9);
-    const resolvedLevel = courseClassLevel === 'Custom' ? customClassLevel : courseClassLevel;
-    const resolvedFeatures = courseFeatures.split('\n').map(f => f.trim()).filter(Boolean);
-    const resolvedImage = courseImageUrl || 'https://images.unsplash.com/photo-1636466497217-26a8cbeaf0aa?w=800&auto=format&fit=crop&q=80';
-    const resolvedSupervisor = settings?.adminName || 'SAKIB HOSEN (Founder & Chief Science Mentor)';
-    const resolvedInstructor = settings?.adminName || 'SAKIB HOSEN (সাকিব স্যার)';
+      const resolvedLevel = courseClassLevel === 'Custom' ? customClassLevel : courseClassLevel;
+      const resolvedFeatures = courseFeatures.split('\n').map(f => f.trim()).filter(Boolean);
+      const resolvedImage = courseImageUrl || PRESET_COURSE_BANNERS[0].url;
+      const resolvedSupervisor = settings?.adminName || 'SAKIB HOSEN (Founder & Chief Science Mentor)';
+      const resolvedInstructor = settings?.adminName || 'SAKIB HOSEN (সাকিব স্যার)';
 
-    let supabaseCreated = false;
-    // 1. Direct Supabase Client Insertion: 100% instant persistence in Cloud
-    if (canAttemptSupabase()) {
-      try {
-        const { error: sbErr } = await supabase.from('app_courses').insert({
-          id: courseId,
-          title: courseTitle.trim(),
-          subject: courseSubject.trim(),
-          class_level: resolvedLevel,
-          batch: resolvedLevel,
-          image_url: resolvedImage,
-          price: Number(coursePrice) || 0,
-          original_price: courseOriginalPrice ? Number(courseOriginalPrice) : null,
-          duration: courseDuration ? courseDuration.trim() : '',
-          description: courseDescription ? courseDescription.trim() : '',
-          features: resolvedFeatures.length > 0 ? resolvedFeatures : ['রেকর্ডেড ও লাইভ ভিডিও ক্লাস', 'অধ্যায়ভিত্তিক এইচডি পিডিএফ লেকচার শিট'],
-          instructor: resolvedInstructor,
-          supervisor: resolvedSupervisor,
-          created_at: new Date().toISOString()
-        });
-        if (!sbErr) {
-          supabaseCreated = true;
-        } else {
-          console.warn("Direct Supabase course insert note:", sbErr);
+      let supabaseCreated = false;
+      // 1. Direct Supabase Client Insertion: 100% instant persistence in Cloud
+      if (canAttemptSupabase()) {
+        try {
+          const { error: sbErr } = await supabase.from('app_courses').insert({
+            id: courseId,
+            title: courseTitle.trim(),
+            subject: courseSubject.trim(),
+            class_level: resolvedLevel,
+            batch: resolvedLevel,
+            image_url: resolvedImage,
+            imageUrl: resolvedImage,
+            price: Number(coursePrice) || 0,
+            original_price: courseOriginalPrice ? Number(courseOriginalPrice) : null,
+            originalPrice: courseOriginalPrice ? Number(courseOriginalPrice) : null,
+            duration: courseDuration ? courseDuration.trim() : '',
+            description: courseDescription ? courseDescription.trim() : '',
+            features: resolvedFeatures.length > 0 ? resolvedFeatures : ['রেকর্ডেড ও লাইভ ভিডিও ক্লাস', 'অধ্যায়ভিত্তিক এইচডি পিডিএফ লেকচার শিট'],
+            instructor: resolvedInstructor,
+            supervisor: resolvedSupervisor,
+            data: {
+              imageUrl: resolvedImage,
+              image_url: resolvedImage,
+              classLevel: resolvedLevel
+            },
+            created_at: new Date().toISOString()
+          });
+          if (!sbErr) {
+            supabaseCreated = true;
+          } else {
+            console.warn("Direct Supabase course insert note:", sbErr);
+          }
+        } catch (sbEx) {
+          console.warn("Direct Supabase course insert exception:", sbEx);
         }
-      } catch (sbEx) {
-        console.warn("Direct Supabase course insert exception:", sbEx);
       }
-    }
 
-    // 2. Server API sync with Vercel serverless resilience
-    try {
-      const response = await fetch('/api/courses', {
-        method: 'POST',
-        headers: getAdminHeaders(true),
-        body: JSON.stringify({
-          id: courseId,
-          title: courseTitle,
-          subject: courseSubject,
-          classLevel: resolvedLevel,
-          imageUrl: resolvedImage,
-          price: Number(coursePrice),
-          originalPrice: courseOriginalPrice ? Number(courseOriginalPrice) : undefined,
-          duration: courseDuration,
-          description: courseDescription,
-          features: resolvedFeatures,
-          supervisor: resolvedSupervisor,
-          instructor: resolvedInstructor
-        })
-      });
+      // 2. Server API sync with Vercel serverless resilience
+      try {
+        const response = await fetch('/api/courses', {
+          method: 'POST',
+          headers: getAdminHeaders(true),
+          body: JSON.stringify({
+            id: courseId,
+            title: courseTitle,
+            subject: courseSubject,
+            classLevel: resolvedLevel,
+            imageUrl: resolvedImage,
+            image_url: resolvedImage,
+            price: Number(coursePrice),
+            originalPrice: courseOriginalPrice ? Number(courseOriginalPrice) : undefined,
+            duration: courseDuration,
+            description: courseDescription,
+            features: resolvedFeatures,
+            supervisor: resolvedSupervisor,
+            instructor: resolvedInstructor
+          })
+        });
 
-      if (!response.ok && !supabaseCreated) {
-        const responseText = await response.text().catch(() => '');
-        let data: any = {};
-        try { data = JSON.parse(responseText); } catch {}
-        throw new Error(data.error || `কোর্স পাবলিশ করতে ব্যর্থ হয়েছে (স্ট্যাটাস: ${response.status})`);
+        if (!response.ok && !supabaseCreated) {
+          const responseText = await response.text().catch(() => '');
+          let data: any = {};
+          try { data = JSON.parse(responseText); } catch {}
+          throw new Error(data.error || `কোর্স পাবলিশ করতে ব্যর্থ হয়েছে (স্ট্যাটাস: ${response.status})`);
+        }
+      } catch (apiErr: any) {
+        if (!supabaseCreated) {
+          throw apiErr;
+        }
       }
-    } catch (apiErr: any) {
-      if (!supabaseCreated) {
-        throw apiErr;
-      }
-    }
 
-    setCourseSuccess('কোর্সটি সফলভাবে পাবলিশ করা হয়েছে!');
-    setCourseTitle('');
-    setCourseClassLevel('HSC');
-    setCustomClassLevel('');
-    setCourseImageUrl('');
+      setCourseSuccess('কোর্সটি সফলভাবে পাবলিশ করা হয়েছে!');
+      setCourseTitle('');
+      setCourseClassLevel('HSC');
+      setCustomClassLevel('');
+      setCourseImageUrl(PRESET_COURSE_BANNERS[0].url);
     setCoursePrice('');
     setCourseOriginalPrice('');
     setCourseDuration('');

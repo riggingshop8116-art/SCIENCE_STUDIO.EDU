@@ -348,8 +348,13 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
       }
 
       if (onUpdateUser) {
+        const resolvedAvatar = user.photoUrl || user.avatarUrl || (user as any).avatar || (user as any).photo_url || (typeof window !== 'undefined' ? localStorage.getItem(`scicenter_avatar_${user.id}`) : '') || '';
+        const resolvedClass = user.studentClass || (user as any).student_class || (user as any).batch || (typeof window !== 'undefined' ? localStorage.getItem(`scicenter_class_${user.id}`) : '') || '';
         onUpdateUser({
           ...user,
+          photoUrl: resolvedAvatar,
+          avatarUrl: resolvedAvatar,
+          studentClass: resolvedClass,
           enrolledCourseTitles: updatedEnrolled,
           transactionId: transactionId.trim(),
           paymentMethod: paymentMethod,

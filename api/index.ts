@@ -67,11 +67,15 @@ export default function handler(req: any, res: any) {
       }
       
       // Strip trailing query parameters from path if any were appended to URL
-      if (targetPath.includes('?route=')) {
-        targetPath = targetPath.split('?')[0];
+      let querySuffix = '';
+      if (targetPath.includes('?')) {
+        const parts = targetPath.split('?');
+        targetPath = parts[0];
+        querySuffix = '?' + parts.slice(1).join('&').replace(/route=[^&]*&?/g, '').replace(/&&+/g, '&').replace(/^&|&$/g, '');
+        if (querySuffix === '?') querySuffix = '';
       }
       
-      req.url = targetPath;
+      req.url = targetPath + querySuffix;
 
       // Vercel Serverless runtime already parses JSON/URL-encoded bodies.
       // Setting req._body = true prevents Express body-parser from hanging on consumed stream!
@@ -88,11 +92,31 @@ export default function handler(req: any, res: any) {
         req._body = true;
       }
 
-      res.on('finish', () => resolve(true));
-      res.on('close', () => resolve(true));
+      // Safety timeout: Never allow Vercel 10s invocation limit to produce an unhandled HTML 500/504 page
+      const timeoutId = setTimeout(() => {
+        if (!res.headersSent) {
+          try {
+            res.status(504).json({ error: "অনুরোধের সময়সীমা অতিক্রম করেছে (Gateway Timeout)। অনুগ্রহ করে পুনরায় চেষ্টা করুন।" });
+          } catch (_) {}
+        }
+        resolve(true);
+      }, 8500);
+
+      res.on('finish', () => {
+        clearTimeout(timeoutId);
+        resolve(true);
+      });
+      res.on('close', () => {
+        clearTimeout(timeoutId);
+        resolve(true);
+      });
 
       const handlerApp = app || expressApp;
       handlerApp(req, res, () => {
+        clearTimeout(timeoutId);
+        if (!res.headersSent) {
+          res.status(404).json({ error: `API endpoint পাওয়া যায়নি: ${req.method} ${targetPath}` });
+        }
         resolve(true);
       });
     } catch (err: any) {
