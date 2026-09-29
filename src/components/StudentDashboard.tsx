@@ -71,6 +71,8 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
   const [activeNote, setActiveNote] = useState<Note | null>(null);
   const [classroomContentType, setClassroomContentType] = useState<'video' | 'pdf'>('video');
   const [bookmarkedIds, setBookmarkedIds] = useState<string[]>([]);
+  const [selectedCourseFilter, setSelectedCourseFilter] = useState('All');
+  const [selectedClassFilter, setSelectedClassFilter] = useState('All');
 
   // Video Player Ref & Settings state
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -78,6 +80,25 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
   const [playbackSpeed, setPlaybackSpeed] = useState<number>(1);
   const [selectedQuality, setSelectedQuality] = useState<string>('Auto (1080p)');
   const [showPlayerSettings, setShowPlayerSettings] = useState<boolean>(false);
+  const [copiedClassLink, setCopiedClassLink] = useState<boolean>(false);
+
+  // Courses and Payment modal states
+  const [coursesList, setCoursesList] = useState<Course[]>([]);
+  const [selectedCourseForPayment, setSelectedCourseForPayment] = useState<Course | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState<'bkash' | 'nagad' | 'rocket'>('bkash');
+  const [senderPhone, setSenderPhone] = useState('');
+  const [transactionId, setTransactionId] = useState('');
+  const [paymentSubmitting, setPaymentSubmitting] = useState(false);
+  const [paymentSuccessMessage, setPaymentSuccessMessage] = useState('');
+  const [paymentError, setPaymentError] = useState('');
+  const [copiedNumber, setCopiedNumber] = useState(false);
+
+  // Track enrolled course titles for student
+  const [enrolledCourses, setEnrolledCourses] = useState<string[]>(() => {
+    return user.enrolledCourseTitles && user.enrolledCourseTitles.length > 0
+      ? user.enrolledCourseTitles
+      : [];
+  });
 
   const handleSpeedChange = (speed: number) => {
     setPlaybackSpeed(speed);
@@ -132,8 +153,6 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
     window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
   }, []);
 
-  const [copiedClassLink, setCopiedClassLink] = useState<boolean>(false);
-
   const handleShareClass = () => {
     if (navigator.clipboard) {
       navigator.clipboard.writeText(window.location.href);
@@ -149,29 +168,11 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
     return '01700-000000';
   };
 
-  // Courses and Payment modal states
-  const [coursesList, setCoursesList] = useState<Course[]>([]);
-  const [selectedCourseForPayment, setSelectedCourseForPayment] = useState<Course | null>(null);
-  const [paymentMethod, setPaymentMethod] = useState<'bkash' | 'nagad' | 'rocket'>('bkash');
-  const [senderPhone, setSenderPhone] = useState('');
-  const [transactionId, setTransactionId] = useState('');
-  const [paymentSubmitting, setPaymentSubmitting] = useState(false);
-  const [paymentSuccessMessage, setPaymentSuccessMessage] = useState('');
-  const [paymentError, setPaymentError] = useState('');
-  const [copiedNumber, setCopiedNumber] = useState(false);
-
   const handleCopyNumber = (num: string) => {
     navigator.clipboard.writeText(num);
     setCopiedNumber(true);
     setTimeout(() => setCopiedNumber(false), 2200);
   };
-
-  // Track enrolled course titles for student
-  const [enrolledCourses, setEnrolledCourses] = useState<string[]>(() => {
-    return user.enrolledCourseTitles && user.enrolledCourseTitles.length > 0
-      ? user.enrolledCourseTitles
-      : [];
-  });
 
   useEffect(() => {
     if (user.enrolledCourseTitles) {
@@ -380,9 +381,6 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
       setBookmarkedIds([...bookmarkedIds, id]);
     }
   };
-
-  const [selectedCourseFilter, setSelectedCourseFilter] = useState('All');
-  const [selectedClassFilter, setSelectedClassFilter] = useState('All');
 
   // Helper to match a course with a class filter
   const isCourseMatchingClass = (course: any, filterValue: string): boolean => {
@@ -760,6 +758,7 @@ export default function StudentDashboard({ user, classes, notes, settings, onUpd
             coursesList={displayCoursesList}
             onUpdateUser={onUpdateUser}
             onLogout={onLogout}
+            onOpenProfile={() => setShowProfileModal(true)}
             onOpenPaymentModal={(course) => {
               setSelectedCourseForPayment(course);
               setPaymentSuccessMessage('');

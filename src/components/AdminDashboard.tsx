@@ -1189,9 +1189,7 @@ export default function AdminDashboard({
   };
 
   const handleRestoreDefaultBanners = async () => {
-    if (window.confirm('আপনি কি ডিফল্ট হিরো সায়েন্স ব্যানারগুলো ফিরিয়ে আনতে চান?')) {
-      await persistHeroBanners(defaultAdminHeroBanners);
-    }
+    await persistHeroBanners(defaultAdminHeroBanners);
   };
 
   const handleSaveSettings = async (e: React.FormEvent) => {
@@ -2265,7 +2263,10 @@ const handleConfirmDeleteCourse = async () => {
         headers: getAdminHeaders(true),
         body: JSON.stringify({ 
           isApproved: newApprovalStatus,
-          enrolledCourseTitles: targetUser.enrolledCourseTitles || []
+          enrolledCourseTitles: targetUser.enrolledCourseTitles || [],
+          photoUrl: targetUser.photoUrl || targetUser.avatarUrl || '',
+          avatarUrl: targetUser.avatarUrl || targetUser.photoUrl || '',
+          studentClass: targetUser.studentClass || ''
         })
       });
 

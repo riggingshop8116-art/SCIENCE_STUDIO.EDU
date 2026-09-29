@@ -26,10 +26,13 @@ import {
   PhoneCall,
   Info,
   Calendar,
-  Layers
+  Layers,
+  Camera,
+  User as UserIcon
 } from 'lucide-react';
 import { User, Course, Settings } from '../types';
 import { supabase, canAttemptSupabase } from '../lib/supabase';
+import StudentProfileModal from './StudentProfileModal';
 
 interface PendingApprovalViewProps {
   user: User;
@@ -38,6 +41,7 @@ interface PendingApprovalViewProps {
   onUpdateUser?: (updatedUser: User) => void;
   onLogout?: () => void;
   onOpenPaymentModal?: (course: Course) => void;
+  onOpenProfile?: () => void;
 }
 
 export default function PendingApprovalView({
@@ -46,13 +50,31 @@ export default function PendingApprovalView({
   coursesList,
   onUpdateUser,
   onLogout,
-  onOpenPaymentModal
+  onOpenPaymentModal,
+  onOpenProfile
 }: PendingApprovalViewProps) {
   const [checkingStatus, setCheckingStatus] = useState(false);
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'info' | 'error'; text: string } | null>(null);
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [showEditTrxModal, setShowEditTrxModal] = useState(false);
   const [showOtherCourses, setShowOtherCourses] = useState(false);
+  const [showProfileModal, setShowProfileModal] = useState(false);
+
+  const handleOpenProfile = () => {
+    if (onOpenProfile) {
+      onOpenProfile();
+    } else {
+      setShowProfileModal(true);
+    }
+  };
+
+  const resolvedUserAvatar = 
+    user.photoUrl || 
+    user.avatarUrl || 
+    (user as any).avatar || 
+    (user as any).photo_url || 
+    (typeof window !== 'undefined' ? (localStorage.getItem(`scicenter_avatar_${user.id}`) || '') : '') || 
+    '';
 
   // Edit TrxID Form state
   const [editTrxId, setEditTrxId] = useState(user.transactionId || '');
@@ -424,13 +446,34 @@ export default function PendingApprovalView({
         {/* Header Block: Animated Pending Badge & Title */}
         <div className="relative z-10 flex flex-col items-center text-center space-y-4 mb-8">
           
-          {/* Icon */}
+          {/* User Avatar with Profile Edit Trigger */}
           <div className="relative">
-            <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-gradient-to-br from-amber-500/20 via-orange-500/10 to-transparent border border-amber-400/40 flex items-center justify-center text-amber-400 shadow-sm">
-              <Hourglass className="w-8 h-8 sm:w-10 sm:h-10 animate-spin-slow" />
-            </div>
-            <div className="absolute -bottom-1 -right-1 p-1 rounded-full bg-slate-900 border border-amber-400/80 text-amber-300">
-              <Clock className="w-3.5 h-3.5" />
+            <button
+              type="button"
+              onClick={handleOpenProfile}
+              className="relative w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-cyan-500/10 border-2 border-cyan-400/50 overflow-hidden flex items-center justify-center cursor-pointer group shadow-[0_0_20px_rgba(6,182,212,0.25)] transition-all hover:scale-105 active:scale-95"
+              title="প্রোফাইল ছবি ও তথ্য পরিবর্তন করতে ক্লিক করুন"
+            >
+              {resolvedUserAvatar ? (
+                <img 
+                  src={resolvedUserAvatar} 
+                  alt={studentDisplayName} 
+                  className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300" 
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).style.display = 'none';
+                  }}
+                />
+              ) : (
+                <div className="w-full h-full bg-gradient-to-br from-amber-500/20 via-orange-500/10 to-transparent flex items-center justify-center text-amber-400">
+                  <UserIcon className="w-8 h-8 sm:w-10 sm:h-10 text-cyan-400" />
+                </div>
+              )}
+              <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                <Camera className="w-5 h-5 text-cyan-300" />
+              </div>
+            </button>
+            <div className="absolute -bottom-1 -right-1 p-1 rounded-full bg-slate-900 border border-amber-400/80 text-amber-300 shadow-md">
+              <Clock className="w-3.5 h-3.5 text-amber-400" />
             </div>
           </div>
 
@@ -450,7 +493,7 @@ export default function PendingApprovalView({
             প্রিয় <strong className="text-cyan-300 font-bold">{studentDisplayName}</strong>, সায়েন্স স্টুডিওতে আপনার রেজিস্ট্রেশন ও পেমেন্ট সংক্রান্ত তথ্য সফলভাবে ডাটাবেজে জমা হয়েছে। অ্যাডমিন / সাকিব স্যার আপনার ট্রানজেকশন তথ্য (TrxID) যাচাই করা মাত্র আপনার ক্লাসরুম ও সকল লেকচার স্বয়ংক্রিয়ভাবে আনলক হয়ে যাবে।
           </p>
 
-          {/* Live Action Bar: Check Live Status & Helpline */}
+          {/* Live Action Bar: Check Live Status, Edit Profile & Edit Trx */}
           <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
             <button
               onClick={() => handleCheckStatus(true)}
@@ -460,6 +503,16 @@ export default function PendingApprovalView({
             >
               <RefreshCw className={`w-4 h-4 ${checkingStatus ? 'animate-spin' : ''}`} />
               <span>{checkingStatus ? 'যাচাই করা হচ্ছে...' : 'অনুমোদনের স্ট্যাটাস পরীক্ষা করুন'}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleOpenProfile}
+              className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-600 hover:border-cyan-400 text-cyan-300 font-bold text-xs sm:text-sm flex items-center gap-2 transition-all cursor-pointer shadow-md active:scale-95"
+              title="প্রোফাইল ছবি ও তথ্য পরিবর্তন করুন"
+            >
+              <Camera className="w-4 h-4 text-cyan-400" />
+              <span>প্রোফাইল ছবি ও তথ্য আপডেট</span>
             </button>
 
             <button
@@ -924,6 +977,19 @@ export default function PendingApprovalView({
           </div>
         )}
       </AnimatePresence>
+
+      {/* Edit Profile Modal for Student (used only if not delegated to parent dashboard) */}
+      {!onOpenProfile && (
+        <StudentProfileModal
+          user={user}
+          isOpen={showProfileModal}
+          onClose={() => setShowProfileModal(false)}
+          onUpdateUser={(updated) => {
+            if (onUpdateUser) onUpdateUser(updated);
+          }}
+          classLevels={settings?.classLevels}
+        />
+      )}
 
     </div>
   );

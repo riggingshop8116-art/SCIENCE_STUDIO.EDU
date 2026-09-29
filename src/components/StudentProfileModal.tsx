@@ -33,24 +33,38 @@ export default function StudentProfileModal({
   onUpdateUser,
   classLevels = DEFAULT_CLASS_LEVELS
 }: StudentProfileModalProps) {
-  const [name, setName] = useState(user.name || '');
-  const [studentClass, setStudentClass] = useState(user.studentClass || 'HSC 1st Year');
+  const [name, setName] = useState(user?.name || '');
+  const [studentClass, setStudentClass] = useState(user?.studentClass || 'HSC 1st Year');
   const [customClass, setCustomClass] = useState('');
-  const [phone, setPhone] = useState(user.phone || '');
-  const [photoUrl, setPhotoUrl] = useState(user.photoUrl || user.avatarUrl || '');
-  const [previewPhoto, setPreviewPhoto] = useState(user.photoUrl || user.avatarUrl || '');
+  const [phone, setPhone] = useState(user?.phone || '');
+  const [photoUrl, setPhotoUrl] = useState(user?.photoUrl || user?.avatarUrl || '');
+  const [previewPhoto, setPreviewPhoto] = useState(user?.photoUrl || user?.avatarUrl || '');
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   
   const [isCompressing, setIsCompressing] = useState(false);
   const [loading, setLoading] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
 
+  // Sync state whenever modal is opened or user changes
+  React.useEffect(() => {
+    if (isOpen && user) {
+      setName(user.name || '');
+      setStudentClass(user.studentClass || 'HSC 1st Year');
+      setPhone(user.phone || '');
+      const currentAvatar = user.photoUrl || user.avatarUrl || (user as any).avatar || (user as any).photo_url || (typeof window !== 'undefined' ? (localStorage.getItem(`scicenter_avatar_${user.id}`) || '') : '') || '';
+      setPhotoUrl(currentAvatar);
+      setPreviewPhoto(currentAvatar);
+      setSelectedFile(null);
+      setErrorMsg('');
+      setSuccessMsg('');
+    }
+  }, [isOpen, user]);
+
   if (!isOpen) return null;
 
   // Combine default and custom class choices
   const availableClasses = Array.from(new Set([...DEFAULT_CLASS_LEVELS, ...(classLevels || [])]));
-
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];

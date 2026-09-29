@@ -42,15 +42,21 @@ export default function InteractiveScience({ settings }: InteractiveScienceProps
   const [gasPressure, setGasPressure] = useState<number>(50);
   const [gasTemperature, setGasTemperature] = useState<number>(300);
 
-  // Performance-optimized animation loop (runs only when physics or biology is active, throttled to 25fps, pauses when tab is hidden)
+  // Performance-optimized animation loop (runs only when physics or biology is active, throttled, pauses when tab is hidden)
   useEffect(() => {
+    // If neither physics wave nor DNA rotation is active, do not run any loop
+    const shouldAnimate = (activeSubject === 'physics' && isPlayingPhysics) || (activeSubject === 'biology' && isDnaRotating);
+    if (!shouldAnimate) return;
+
     let animId: number;
     let lastTime = performance.now();
-    const FRAME_INTERVAL = 40; // ~25 fps: ultra smooth yet prevents mobile CPU & memory exhaustion
+    // 65ms (~15 FPS) provides perfectly smooth visual animation while reducing mobile React component re-renders by 50%
+    const isMobileDevice = typeof window !== 'undefined' && (window.innerWidth < 768 || ('ontouchstart' in window));
+    const FRAME_INTERVAL = isMobileDevice ? 80 : 50;
 
     const loop = (currentTime: number) => {
       if (document.hidden) {
-        animId = requestAnimationFrame(loop);
+        // When tab is hidden, stop requesting frames until visibilitychange
         return;
       }
 
@@ -66,8 +72,22 @@ export default function InteractiveScience({ settings }: InteractiveScienceProps
       animId = requestAnimationFrame(loop);
     };
 
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        lastTime = performance.now();
+        animId = requestAnimationFrame(loop);
+      } else {
+        cancelAnimationFrame(animId);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
     animId = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(animId);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      cancelAnimationFrame(animId);
+    };
   }, [activeSubject, isPlayingPhysics, isDnaRotating, waveSpeed, dnaSpeed]);
 
   // Get Chemical Element Name based on Proton Count

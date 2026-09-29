@@ -9,6 +9,7 @@ import ScienceBackground from './components/ScienceBackground';
 import InteractiveScience from './components/InteractiveScience';
 import RoutineContactModals from './components/RoutineContactModals';
 import Footer from './components/Footer';
+import SectionErrorBoundary from './components/SectionErrorBoundary';
 import { Atom, Compass, Mail, Phone, MapPin, Sparkles, Shield } from 'lucide-react';
 import { supabase, canAttemptSupabase } from './lib/supabase';
 
@@ -593,60 +594,68 @@ export default function App() {
       {/* Main Dynamic Workspace Section */}
       <main className={`flex-1 w-full ${currentTab === 'admin' || currentTab === 'admin-settings' ? 'pb-0' : 'pb-28 lg:pb-0'}`}>
         {currentTab === 'home' && (
-          <Hero
-            onJoinClick={() => {
-              setAuthModalIsAdmin(false);
-              setAuthModalInitialMode('register');
-              setAuthModalOpen(true);
-            }}
-            onExploreClick={() => {
-              if (!user) {
+          <SectionErrorBoundary sectionName="হোম পেজ">
+            <Hero
+              onJoinClick={() => {
                 setAuthModalIsAdmin(false);
-                setAuthModalInitialMode('login');
+                setAuthModalInitialMode('register');
                 setAuthModalOpen(true);
-              } else {
-                setCurrentTab(user?.role === 'admin' ? 'admin' : 'classroom');
-              }
-            }}
-            isLoggedIn={!!user}
-            settings={settings}
-            courses={courses}
-            onOpenRoutine={() => setRoutineModalOpen(true)}
-            onOpenContact={() => setContactModalOpen(true)}
-            onExploreLab={() => {
-              setCurrentTab('lab');
-              window.scrollTo({ top: 0, behavior: 'smooth' });
-            }}
-          />
+              }}
+              onExploreClick={() => {
+                if (!user) {
+                  setAuthModalIsAdmin(false);
+                  setAuthModalInitialMode('login');
+                  setAuthModalOpen(true);
+                } else {
+                  setCurrentTab(user?.role === 'admin' ? 'admin' : 'classroom');
+                }
+              }}
+              isLoggedIn={!!user}
+              settings={settings}
+              courses={courses}
+              onOpenRoutine={() => setRoutineModalOpen(true)}
+              onOpenContact={() => setContactModalOpen(true)}
+              onExploreLab={() => {
+                setCurrentTab('lab');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+            />
+          </SectionErrorBoundary>
         )}
 
         {currentTab === 'lab' && (
-          <div className="w-full max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-12 py-8 sm:py-12 animate-fade-in">
-            <InteractiveScience settings={settings} />
-          </div>
+          <SectionErrorBoundary sectionName="সায়েন্স ল্যাব">
+            <div className="w-full max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-12 py-8 sm:py-12 animate-fade-in">
+              <InteractiveScience settings={settings} />
+            </div>
+          </SectionErrorBoundary>
         )}
 
         {currentTab === 'classroom' && user && (
-          <StudentDashboard
-            user={user}
-            classes={classes}
-            notes={notes}
-            settings={settings}
-            onUpdateUser={(updatedUser) => setUser(updatedUser)}
-            onLogout={handleLogout}
-          />
+          <SectionErrorBoundary sectionName="স্টুডেন্ট ক্লাসরুম">
+            <StudentDashboard
+              user={user}
+              classes={classes}
+              notes={notes}
+              settings={settings}
+              onUpdateUser={(updatedUser) => setUser(updatedUser)}
+              onLogout={handleLogout}
+            />
+          </SectionErrorBoundary>
         )}
 
         {(currentTab === 'admin' || currentTab === 'admin-settings') && user && user.role === 'admin' && (
-          <AdminDashboard
-            user={user}
-            classes={classes}
-            notes={notes}
-            onRefreshData={fetchContent}
-            settings={settings}
-            onRefreshSettings={fetchSettingsAndCourses}
-            initialSection={currentTab === 'admin-settings' ? 'settings' : 'dashboard'}
-          />
+          <SectionErrorBoundary sectionName="অ্যাডমিন ড্যাশবোর্ড">
+            <AdminDashboard
+              user={user}
+              classes={classes}
+              notes={notes}
+              onRefreshData={fetchContent}
+              settings={settings}
+              onRefreshSettings={fetchSettingsAndCourses}
+              initialSection={currentTab === 'admin-settings' ? 'settings' : 'dashboard'}
+            />
+          </SectionErrorBoundary>
         )}
       </main>
 

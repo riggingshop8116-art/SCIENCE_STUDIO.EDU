@@ -28,12 +28,27 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   private handleReset = () => {
+    try {
+      localStorage.removeItem('science_studio_saved_tab');
+    } catch {}
     this.setState({ hasError: false, error: null });
     window.location.href = '/';
   };
 
   private handleReload = () => {
+    try {
+      localStorage.removeItem('science_studio_saved_tab');
+    } catch {}
     window.location.reload();
+  };
+
+  private handleClearAndHome = () => {
+    try {
+      localStorage.clear();
+      sessionStorage.clear();
+    } catch {}
+    this.setState({ hasError: false, error: null });
+    window.location.href = '/';
   };
 
   render() {
@@ -77,6 +92,14 @@ export class ErrorBoundary extends Component<Props, State> {
               >
                 <Home className="w-4 h-4 text-cyan-400" />
                 হোম পেজে ফিরে যান
+              </button>
+
+              <button
+                onClick={this.handleClearAndHome}
+                className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/40 text-rose-300 font-semibold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                title="ক্যাশ পরিষ্কার করে ফ্রেশ শুরু করুন"
+              >
+                <span>ক্যাশ রিসেট ও হোম</span>
               </button>
             </div>
           </div>

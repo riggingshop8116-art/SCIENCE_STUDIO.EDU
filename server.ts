@@ -798,9 +798,7 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
   app.use((req, res, next) => {
     try {
       res.setHeader('X-Content-Type-Options', 'nosniff');
-      res.setHeader('X-XSS-Protection', '1; mode=block');
       res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-      res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
       if (typeof (res as any).removeHeader === 'function') {
         try {
           (res as any).removeHeader('X-Powered-By');
