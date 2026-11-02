@@ -241,118 +241,69 @@ export default function AuthModal({
         return;
       }
 
-      // RESILIENT CLIENT-SIDE FALLBACK
+      // RESILIENT CLIENT-SIDE FALLBACK (Used only if primary backend API is unreachable)
       if (activeAdminMode) {
-        // Direct Dedicated Admin Authentication Fallback
         const cleanPass = password.trim();
-        const isSuperAdminEmail = cleanEmail === 'mdshakibhossen2050@gmail.com';
-        const isHeadAdminEmail = cleanEmail === 'admin@sciencestudio.com';
 
-        // 1. Direct Super Admin Authentication (Md. Shakib Hossen)
-        if (isSuperAdminEmail) {
-          if (cleanPass === 'SHAKIB@2050#' || cleanPass === 'admin123') {
-            const superAdminUser = {
-              id: 'usr_super_admin',
-              name: 'Super Admin (Sakib Sir)',
-              email: 'mdshakibhossen2050@gmail.com',
-              role: 'admin' as const,
-              isApproved: true,
-              enrolledCourseTitles: [],
-              createdAt: new Date().toISOString()
-            };
-            const token = generateClientSessionToken(superAdminUser);
-            onSuccess({ user: superAdminUser, token });
-            onClose();
-            setName('');
-            setEmail('');
-            setPhone('');
-            setPassword('');
-            setFocusedField(null);
-            return;
-          } else {
-            throw new Error('পাসওয়ার্ড সঠিক নয়। অনুগ্রহ করে আপনার সুপার এডমিন পাসওয়ার্ড দিয়ে আবার চেষ্টা করুন।');
-          }
-        }
-
-        // 2. Direct Head Admin Authentication (Dr. Sayeed Rahman)
-        if (isHeadAdminEmail) {
-          if (cleanPass === 'admin123') {
-            const headAdminUser = {
-              id: 'usr_admin',
-              name: 'Dr. Sayeed Rahman',
-              email: 'admin@sciencestudio.com',
-              role: 'admin' as const,
-              isApproved: true,
-              enrolledCourseTitles: [],
-              createdAt: new Date().toISOString()
-            };
-            const token = generateClientSessionToken(headAdminUser);
-            onSuccess({ user: headAdminUser, token });
-            onClose();
-            setName('');
-            setEmail('');
-            setPhone('');
-            setPassword('');
-            setFocusedField(null);
-            return;
-          } else {
-            throw new Error('পাসওয়ার্ড সঠিক নয়। অনুগ্রহ করে আপনার এডমিন পাসওয়ার্ড দিয়ে আবার চেষ্টা করুন।');
-          }
-        }
-
-        // 3. Supabase Dynamic Admin Account Verification
+        // Secure Supabase Authentication Verification (Encrypted SSL, no hardcoded secrets)
         if (canAttemptSupabase()) {
           try {
-            const { data: sbUser } = await supabase
-              .from('app_users')
-              .select('*')
-              .ilike('email', cleanEmail)
-              .maybeSingle();
-
-            if (sbUser && (sbUser.role === 'admin' || sbUser.is_admin)) {
-              if (sbUser.password === cleanPass) {
-                const customAdminUser = {
-                  id: sbUser.id || 'usr_admin_' + Math.random().toString(36).substring(2, 7),
-                  name: sbUser.name || 'এডমিন',
-                  email: cleanEmail,
-                  role: 'admin' as const,
-                  isApproved: true,
-                  enrolledCourseTitles: [],
-                  createdAt: sbUser.created_at || new Date().toISOString()
-                };
-                const token = generateClientSessionToken(customAdminUser);
-                onSuccess({ user: customAdminUser, token });
-                onClose();
-                return;
-              } else {
-                throw new Error('পাসওয়ার্ড সঠিক নয়। অনুগ্রহ করে সঠিক পাসওয়ার্ড দিয়ে আবার চেষ্টা করুন।');
-              }
-            }
-
-            const { data: authData } = await supabase.auth.signInWithPassword({
+            // 1. Sign in via Supabase Auth to cryptographically verify credentials
+            const { data: authData, error: authErr } = await supabase.auth.signInWithPassword({
               email: cleanEmail,
               password: cleanPass
             });
-            if (authData?.user) {
+
+            if (authData?.user && !authErr) {
               const meta = authData.user.user_metadata || {};
-              if (meta.role === 'admin') {
-                const authAdminUser = {
-                  id: authData.user.id,
-                  name: meta.name || 'এডমিন',
+              let isAdmin = meta.role === 'admin';
+              let profile: any = null;
+
+              try {
+                const { data: sbProfile } = await supabase
+                  .from('app_users')
+                  .select('*')
+                  .or(`id.eq.${authData.user.id},email.ilike.${cleanEmail}`)
+                  .maybeSingle();
+
+                if (sbProfile) {
+                  profile = sbProfile;
+                  if (sbProfile.role === 'admin' || sbProfile.role === 'ADMIN' || sbProfile.is_admin) {
+                    isAdmin = true;
+                  }
+                }
+              } catch (_) {}
+
+              if (isAdmin) {
+                const verifiedAdminUser = {
+                  id: profile?.id || authData.user.id,
+                  name: profile?.name || meta.name || 'Administrator (সাকিব স্যার)',
                   email: cleanEmail,
                   role: 'admin' as const,
                   isApproved: true,
                   enrolledCourseTitles: [],
-                  createdAt: authData.user.created_at || new Date().toISOString()
+                  createdAt: profile?.created_at || authData.user.created_at || new Date().toISOString()
                 };
-                const token = generateClientSessionToken(authAdminUser);
-                onSuccess({ user: authAdminUser, token });
+                const token = generateClientSessionToken(verifiedAdminUser);
+                onSuccess({ user: verifiedAdminUser, token });
                 onClose();
+                setName('');
+                setEmail('');
+                setPhone('');
+                setPassword('');
+                setFocusedField(null);
                 return;
+              } else {
+                throw new Error('এই অ্যাকাউন্টের এডমিন অ্যাক্সেস নেই। এটি একটি স্টুডেন্ট অ্যাকাউন্ট।');
               }
+            } else if (authErr) {
+              if (authErr.message?.toLowerCase().includes('invalid login credentials')) {
+                throw new Error('পাসওয়ার্ড অথবা ইমেইল সঠিক নয়। অনুগ্রহ করে সঠিক তথ্য দিয়ে পুনরায় চেষ্টা করুন।');
+              }
+              throw new Error(authErr.message || 'এডমিন হিসেবে লগইন করতে ব্যর্থ হয়েছে।');
             }
           } catch (sbErr: any) {
-            if (sbErr.message && sbErr.message.includes('পাসওয়ার্ড')) throw sbErr;
+            if (sbErr.message) throw sbErr;
           }
         }
 

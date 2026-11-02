@@ -10,8 +10,31 @@ import InteractiveScience from './components/InteractiveScience';
 import RoutineContactModals from './components/RoutineContactModals';
 import Footer from './components/Footer';
 import SectionErrorBoundary from './components/SectionErrorBoundary';
+import AdminSecurityGuard from './components/AdminSecurityGuard';
 import { Atom, Compass, Mail, Phone, MapPin, Sparkles, Shield } from 'lucide-react';
 import { supabase, canAttemptSupabase } from './lib/supabase';
+
+// URL Path <-> Tab Synchronizers for professional client-side SPA routing
+export const getTabFromPath = (pathname: string): string => {
+  if (typeof window === 'undefined') return 'home';
+  const clean = pathname.replace(/\/+$/, '').toLowerCase();
+  if (clean === '/admin' || clean === '/admin/dashboard') return 'admin';
+  if (clean === '/admin-settings' || clean === '/admin/settings') return 'admin-settings';
+  if (clean === '/classroom' || clean === '/class') return 'classroom';
+  if (clean === '/lab' || clean === '/science-lab') return 'lab';
+  return 'home';
+};
+
+export const getPathFromTab = (tab: string): string => {
+  switch (tab) {
+    case 'admin': return '/admin';
+    case 'admin-settings': return '/admin-settings';
+    case 'classroom': return '/classroom';
+    case 'lab': return '/lab';
+    case 'home':
+    default: return '/';
+  }
+};
 
 const defaultSettings: Settings = {
   academyName: "SCIENCE STUDIO by Sakib",
@@ -34,7 +57,13 @@ export default function App() {
   const [classes, setClasses] = useState<Class[]>([]);
   const [notes, setNotes] = useState<Note[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
-  const [currentTab, setCurrentTab] = useState<string>('home');
+  const [currentTab, setCurrentTab] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      const urlTab = getTabFromPath(window.location.pathname);
+      if (urlTab !== 'home') return urlTab;
+    }
+    return 'home';
+  });
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authModalIsAdmin, setAuthModalIsAdmin] = useState(false);
   const [authModalInitialMode, setAuthModalInitialMode] = useState<'login' | 'register'>('login');
@@ -74,6 +103,26 @@ export default function App() {
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
   }, [currentTab]);
+
+  // Synchronize browser address bar with currentTab (e.g. /admin, /classroom, /lab, /)
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const targetPath = getPathFromTab(currentTab);
+      if (window.location.pathname !== targetPath) {
+        window.history.pushState({ tab: currentTab }, '', targetPath);
+      }
+    }
+  }, [currentTab]);
+
+  // Handle browser Back / Forward history navigation
+  useEffect(() => {
+    const handlePopState = () => {
+      const tab = getTabFromPath(window.location.pathname);
+      setCurrentTab(tab);
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   // Periodic inactivity monitor: auto logouts student if idle for more than 2 hours (admins never auto-logout)
   useEffect(() => {
@@ -221,13 +270,111 @@ export default function App() {
     return () => clearInterval(settingsInterval);
   }, []);
 
-  // Authentication & session recovery with inactivity validation
+  // Authentication & session recovery with inactivity validation & Supabase auth verification
   useEffect(() => {
     const restoreSession = async () => {
+      const urlRequestedTab = typeof window !== 'undefined' ? getTabFromPath(window.location.pathname) : 'home';
+      const isNavigatingToAdmin = urlRequestedTab === 'admin' || urlRequestedTab === 'admin-settings';
       const token = localStorage.getItem('science_studio_token');
-      // Rule: New device or unauthenticated visitor always starts on Homepage ('home')
+
+      // Check active Supabase session (e.g. supabase.auth.getSession())
+      let sbSessionUser: any = null;
+      if (canAttemptSupabase()) {
+        try {
+          const { data: sessionData } = await supabase.auth.getSession();
+          if (sessionData?.session?.user) {
+            sbSessionUser = sessionData.session.user;
+          }
+        } catch (e) {
+          console.warn("Notice: checking Supabase session", e);
+        }
+      }
+
+      // If no local science_studio_token exists, check if there is an active Supabase session
       if (!token) {
-        setCurrentTab('home');
+        if (sbSessionUser) {
+          try {
+            // Check if this Supabase user has admin privileges
+            let isAdmin = sbSessionUser.user_metadata?.role === 'admin';
+            let profile: any = null;
+            const { data: sbProfile } = await supabase
+              .from('app_users')
+              .select('*')
+              .or(`id.eq.${sbSessionUser.id},email.ilike.${sbSessionUser.email}`)
+              .maybeSingle();
+
+            if (sbProfile) {
+              profile = sbProfile;
+              if (sbProfile.role === 'admin' || sbProfile.role === 'ADMIN') {
+                isAdmin = true;
+              }
+            }
+
+            if (isAdmin) {
+              const adminUser: User = {
+                id: profile?.id || sbSessionUser.id,
+                name: profile?.name || sbSessionUser.user_metadata?.name || 'Administrator (সাকিব স্যার)',
+                email: profile?.email || sbSessionUser.email || 'admin@sciencestudio.com',
+                role: 'admin',
+                isApproved: true,
+                enrolledCourseTitles: [],
+                phone: profile?.phone || '',
+                studentClass: '',
+                photoUrl: profile?.avatar || profile?.photo_url || '',
+                avatarUrl: profile?.avatar || profile?.photo_url || '',
+                createdAt: profile?.created_at || profile?.createdAt || new Date().toISOString()
+              };
+              const sstToken = 'sst_' + btoa(unescape(encodeURIComponent(JSON.stringify(adminUser))));
+              localStorage.setItem('science_studio_token', sstToken);
+              localStorage.setItem('science_studio_last_active', String(Date.now()));
+              setUser(adminUser);
+              setCurrentTab(isNavigatingToAdmin ? urlRequestedTab : 'admin');
+              setLoading(false);
+              return;
+            } else if (profile) {
+              // Active student session in Supabase
+              const studentUser: User = {
+                id: profile.id || sbSessionUser.id,
+                name: profile.name || 'Student',
+                email: profile.email || sbSessionUser.email || '',
+                role: 'student',
+                isApproved: Boolean(profile.isApproved !== undefined ? profile.isApproved : profile.is_approved),
+                enrolledCourseTitles: profile.enrolledCourseTitles || profile.enrolled_courses || [],
+                phone: profile.phone || '',
+                studentClass: profile.student_class || profile.batch || '',
+                photoUrl: profile.avatar || profile.photo_url || '',
+                avatarUrl: profile.avatar || profile.photo_url || '',
+                createdAt: profile.created_at || profile.createdAt || new Date().toISOString()
+              };
+              const sstToken = 'sst_' + btoa(unescape(encodeURIComponent(JSON.stringify(studentUser))));
+              localStorage.setItem('science_studio_token', sstToken);
+              localStorage.setItem('science_studio_last_active', String(Date.now()));
+              setUser(studentUser);
+              if (isNavigatingToAdmin) {
+                // Keep on admin tab so AdminSecurityGuard informs them and provides options
+                setCurrentTab('admin');
+              } else {
+                setCurrentTab('classroom');
+              }
+              setLoading(false);
+              return;
+            }
+          } catch (e) {
+            console.warn("Notice: restoring session from Supabase session failed", e);
+          }
+        }
+
+        // Unauthenticated visitor
+        if (isNavigatingToAdmin) {
+          // Direct visit to /admin or /admin-settings without login:
+          // Stay on /admin and auto-trigger the admin login modal over the security guard
+          setCurrentTab('admin');
+          setAuthModalIsAdmin(true);
+          setAuthModalInitialMode('login');
+          setAuthModalOpen(true);
+        } else {
+          setCurrentTab(urlRequestedTab === 'lab' ? 'lab' : 'home');
+        }
         setLoading(false);
         return;
       }
@@ -338,15 +485,25 @@ export default function App() {
           } catch (e) {}
         }
 
-        const savedTab = localStorage.getItem('science_studio_saved_tab');
-        if (savedTab && ['home', 'classroom', 'admin', 'lab', 'admin-settings'].includes(savedTab)) {
-          if (savedTab.startsWith('admin') && decodedUser.role !== 'admin') {
-            setCurrentTab('classroom');
+        // Determine destination tab
+        if (isNavigatingToAdmin) {
+          if (decodedUser.role === 'admin') {
+            setCurrentTab(urlRequestedTab);
           } else {
-            setCurrentTab(savedTab);
+            // Keep on admin tab: AdminSecurityGuard will show guard & options
+            setCurrentTab('admin');
           }
         } else {
-          setCurrentTab(decodedUser.role === 'admin' ? 'admin' : 'classroom');
+          const savedTab = localStorage.getItem('science_studio_saved_tab');
+          if (savedTab && ['home', 'classroom', 'admin', 'lab', 'admin-settings'].includes(savedTab)) {
+            if (savedTab.startsWith('admin') && decodedUser.role !== 'admin') {
+              setCurrentTab('classroom');
+            } else {
+              setCurrentTab(savedTab);
+            }
+          } else {
+            setCurrentTab(decodedUser.role === 'admin' ? 'admin' : 'classroom');
+          }
         }
       }
 
@@ -373,16 +530,24 @@ export default function App() {
             setUser(reconciledUser);
             localStorage.setItem('science_studio_last_active', String(Date.now()));
 
-            // State Preservation: Return user to the exact tab they were working on before leaving
-            const savedTab = localStorage.getItem('science_studio_saved_tab');
-            if (savedTab && ['home', 'classroom', 'admin', 'lab', 'admin-settings'].includes(savedTab)) {
-              if (savedTab.startsWith('admin') && data.user.role !== 'admin') {
-                setCurrentTab('classroom');
+            // State Preservation: Return user to the requested tab
+            if (isNavigatingToAdmin) {
+              if (data.user.role === 'admin') {
+                setCurrentTab(urlRequestedTab);
               } else {
-                setCurrentTab(savedTab);
+                setCurrentTab('admin');
               }
             } else {
-              setCurrentTab(data.user.role === 'admin' ? 'admin' : 'classroom');
+              const savedTab = localStorage.getItem('science_studio_saved_tab');
+              if (savedTab && ['home', 'classroom', 'admin', 'lab', 'admin-settings'].includes(savedTab)) {
+                if (savedTab.startsWith('admin') && data.user.role !== 'admin') {
+                  setCurrentTab('classroom');
+                } else {
+                  setCurrentTab(savedTab);
+                }
+              } else {
+                setCurrentTab(data.user.role === 'admin' ? 'admin' : 'classroom');
+              }
             }
           }
         } else if (response.status === 401) {
@@ -391,7 +556,14 @@ export default function App() {
             localStorage.removeItem('science_studio_token');
             localStorage.removeItem('science_studio_saved_tab');
             setUser(null);
-            setCurrentTab('home');
+            if (isNavigatingToAdmin) {
+              setCurrentTab('admin');
+              setAuthModalIsAdmin(true);
+              setAuthModalInitialMode('login');
+              setAuthModalOpen(true);
+            } else {
+              setCurrentTab('home');
+            }
           }
         }
       } catch (err) {
@@ -657,6 +829,23 @@ export default function App() {
             />
           </SectionErrorBoundary>
         )}
+
+        {/* High-Security Guard for /admin and /admin-settings (Unauthenticated or Non-Admin Visitors) */}
+        {(currentTab === 'admin' || currentTab === 'admin-settings') && (!user || user.role !== 'admin') && (
+          <SectionErrorBoundary sectionName="অ্যাডমিন সিকিউরিটি গার্ড">
+            <AdminSecurityGuard
+              onOpenAdminLogin={() => {
+                setAuthModalIsAdmin(true);
+                setAuthModalInitialMode('login');
+                setAuthModalOpen(true);
+              }}
+              onReturnHome={() => setCurrentTab('home')}
+              onReturnClassroom={() => setCurrentTab('classroom')}
+              isStudentLoggedIn={Boolean(user && user.role !== 'admin')}
+              userEmail={user?.email || ''}
+            />
+          </SectionErrorBoundary>
+        )}
       </main>
 
       {/* High-Fidelity Futuristic Footer - Displayed on public & student views */}
@@ -668,11 +857,6 @@ export default function App() {
           setCurrentTab={setCurrentTab}
           onOpenAuth={() => {
             setAuthModalIsAdmin(false);
-            setAuthModalInitialMode('login');
-            setAuthModalOpen(true);
-          }}
-          onOpenAdminAuth={() => {
-            setAuthModalIsAdmin(true);
             setAuthModalInitialMode('login');
             setAuthModalOpen(true);
           }}

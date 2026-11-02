@@ -1,6 +1,6 @@
 import React from 'react';
 import { 
-  Atom, Mail, Phone, MapPin, Sparkles, Shield, Calendar, 
+  Atom, Mail, Phone, MapPin, Sparkles, Calendar, 
   Clock, ArrowUpRight, CheckCircle2, ChevronRight, Zap
 } from 'lucide-react';
 import { User, Settings } from '../types';
@@ -12,7 +12,6 @@ interface FooterProps {
   currentTab: string;
   setCurrentTab: (tab: string) => void;
   onOpenAuth: () => void;
-  onOpenAdminAuth?: () => void;
   onOpenRoutine: () => void;
   onOpenContact: () => void;
 }
@@ -23,7 +22,6 @@ export default function Footer({
   currentTab,
   setCurrentTab,
   onOpenAuth,
-  onOpenAdminAuth,
   onOpenRoutine,
   onOpenContact,
 }: FooterProps) {
@@ -170,28 +168,6 @@ export default function Footer({
             <span className="hover:text-cyan-300 transition-colors cursor-pointer">গোপনীয়তা নীতি (Privacy)</span>
             <span>•</span>
             <span className="hover:text-cyan-300 transition-colors cursor-pointer">ব্যবহারের শর্তাবলী (Terms)</span>
-            <span>•</span>
-            
-            {/* Admin Portal Symbol Link (Discreet Icon Only - Exclusively on Home Page Footer) */}
-            {currentTab === 'home' && (
-              <button
-                onClick={() => {
-                  if (user?.role === 'admin') {
-                    setCurrentTab('admin');
-                  } else if (onOpenAdminAuth) {
-                    onOpenAdminAuth();
-                  } else {
-                    onOpenAuth();
-                  }
-                }}
-                className="p-1.5 rounded-lg bg-slate-800/80 hover:bg-rose-500/20 border border-slate-700/70 hover:border-rose-500/50 text-slate-400 hover:text-rose-300 transition-all cursor-pointer shadow-sm hover:shadow-[0_0_12px_rgba(244,63,94,0.3)] group inline-flex items-center justify-center"
-                title="এডমিন প্যানেল"
-                aria-label="এডমিন প্যানেল"
-                id="footer-admin-portal-button"
-              >
-                <Shield className="w-3.5 h-3.5 group-hover:scale-110 transition-transform text-slate-400 group-hover:text-rose-400" />
-              </button>
-            )}
           </div>
         </div>
 
